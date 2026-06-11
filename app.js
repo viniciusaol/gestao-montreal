@@ -167,7 +167,7 @@ const btnLogout = document.getElementById('btn-logout');
 const tabPaid = document.getElementById('tab-paid');
 const tabPending = document.getElementById('tab-pending');
 
-let currentCommissionRate = 50;
+let currentCommissionRate = 47;
 let currentTab = 'paid';
 let studentsPaid = [];
 let studentsPending = [];
