@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Montreal Tênis - Controle de Comissões</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Printable header (only shown in print mode) -->
+  <div class="print-header">
+    <img src="assets/logos/Montreal_Logotipo_RGB_Horizontal_3.png" alt="Montreal Tênis Logo Escuro" class="print-logo">
+    <h1 id="print-report-title">Montreal Tênis - Relatório de Comissão</h1>
+    <div class="print-meta">
+      <p><strong>Professor:</strong> <span id="print-prof-name">Rodrigo Assunção</span></p>
+      <p><strong>Competência:</strong> <span id="print-period-name">Junho/2026</span></p>
+      <p><strong>Comissão Aplicada:</strong> <span id="print-commission-rate">50%</span></p>
+      <p><strong>Data de Emissão:</strong> <span id="print-generation-date">--/--/----</span></p>
+    </div>
+  </div>
+
+  <div class="app-wrapper">
+
+    <!-- Top Navbar -->
+    <header class="top-nav no-print">
+      <div class="top-nav-inner">
+        <div class="nav-brand">
+          <img src="assets/logos/Montreal_Logotipo_RGB_Horizontal_2.png" alt="Montreal Tênis" class="logo-img">
+        </div>
+        <div class="nav-controls">
+          <div class="control-group">
+            <label for="select-prof">Professor</label>
+            <select id="select-prof">
+              <option value="Rodrigo Assunção">Rodrigo Assunção</option>
+              <option value="João Assunção">João Assunção</option>
+              <option value="Leandro Bonete">Leandro Bonete</option>
+              <option value="Tatiana Araújo">Tatiana Araújo</option>
+              <option value="Sem professor">Sem Professor</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="select-year">Ano</label>
+            <select id="select-year"></select>
+          </div>
+          <div class="control-group">
+            <label for="select-month">Mês</label>
+            <select id="select-month">
+              <option value="01">Janeiro</option>
+              <option value="02">Fevereiro</option>
+              <option value="03">Março</option>
+              <option value="04">Abril</option>
+              <option value="05">Maio</option>
+              <option value="06">Junho</option>
+              <option value="07">Julho</option>
+              <option value="08">Agosto</option>
+              <option value="09">Setembro</option>
+              <option value="10">Outubro</option>
+              <option value="11">Novembro</option>
+              <option value="12">Dezembro</option>
+            </select>
+          </div>
+          <div class="control-group control-range">
+            <label for="input-commission">Comissão</label>
+            <div class="range-container">
+              <input type="range" id="input-commission" min="0" max="100" value="50" step="1">
+              <span id="commission-display">50%</span>
+            </div>
+          </div>
+          <button id="btn-print" class="btn btn-primary btn-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Exportar PDF
+          </button>
+          <button id="btn-logout" class="btn btn-outline btn-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            Sair
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Page Content -->
+    <main class="page-content">
+
+      <!-- Page Title -->
+      <div class="page-title-row no-print">
+        <div>
+          <h1 class="page-title">Controle Financeiro</h1>
+          <p class="page-subtitle" id="dashboard-subtitle">Visualizando comissões para Rodrigo Assunção em Junho/2026</p>
+        </div>
+        <div class="status-indicator">
+          <span class="indicator-dot"></span> Conectado
+        </div>
+      </div>
+
+      <!-- Main Page Navigation Tabs -->
+      <div class="main-tabs-nav no-print">
+        <button id="main-tab-commissions" class="main-tab-btn active">Controle de Comissões</button>
+        <button id="main-tab-operational" class="main-tab-btn">Relatórios Operacionais</button>
+      </div>
+
+      <!-- Section: Controle de Comissões -->
+      <div id="section-commissions">
+
+      <!-- Metrics Cards -->
+      <section class="metrics-grid no-print">
+        <div class="card metric-card">
+          <div class="metric-icon faturamento">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          </div>
+          <div class="metric-info">
+            <h3 id="lbl-total-pago">Valor Faturado (Total Pago)</h3>
+            <p class="metric-value" id="val-total-pago">R$ 0,00</p>
+          </div>
+        </div>
+        <div class="card metric-card highlight">
+          <div class="metric-icon comission">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
+          </div>
+          <div class="metric-info">
+            <h3 id="lbl-comissao-gerada">Comissão Gerada</h3>
+            <p class="metric-value" id="val-comissao-gerada">R$ 0,00</p>
+          </div>
+        </div>
+        <div class="card metric-card">
+          <div class="metric-icon pagamentos">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="12" y1="4" x2="12" y2="20"></line><line x1="2" y1="12" x2="22" y2="12"></line></svg>
+          </div>
+          <div class="metric-info">
+            <h3>Repasse Já Efetuado</h3>
+            <p class="metric-value" id="val-repasse-pago">R$ 0,00</p>
+          </div>
+        </div>
+        <div class="card metric-card accent-saldo">
+          <div class="metric-icon saldo">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          </div>
+          <div class="metric-info">
+            <h3 id="lbl-saldo-restante">Saldo Restante</h3>
+            <p class="metric-value" id="val-saldo-restante">R$ 0,00</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Period Breakdown -->
+      <section class="periods-section no-print">
+        <h2 class="section-title">Distribuição por Período de Pagamento</h2>
+        <div class="periods-grid">
+          <div class="card period-card">
+            <div class="period-header">
+              <span class="period-badge">1º Período</span>
+              <h4>Até dia 20</h4>
+            </div>
+            <div class="period-body">
+              <div class="period-val">
+                <span class="label">Valor Pago:</span>
+                <span id="period-1-pago" class="val">R$ 0,00</span>
+              </div>
+              <div class="period-val text-saibro">
+                <span class="label">Comissão:</span>
+                <span id="period-1-comissao" class="val font-semibold">R$ 0,00</span>
+              </div>
+            </div>
+            <div class="period-footer">
+              <small>Mensalidades e avulsas compensadas até o dia 20.</small>
+            </div>
+          </div>
+          <div class="card period-card">
+            <div class="period-header">
+              <span class="period-badge secondary">2º Período</span>
+              <h4>Após dia 20</h4>
+            </div>
+            <div class="period-body">
+              <div class="period-val">
+                <span class="label">Valor Pago:</span>
+                <span id="period-2-pago" class="val">R$ 0,00</span>
+              </div>
+              <div class="period-val text-saibro">
+                <span class="label">Comissão:</span>
+                <span id="period-2-comissao" class="val font-semibold">R$ 0,00</span>
+              </div>
+            </div>
+            <div class="period-footer">
+              <small>Mensalidades e avulsas compensadas após o dia 20.</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Payout Form + History -->
+      <section class="split-grid no-print">
+        <div class="card">
+          <h3 class="card-title">Lançar Repasse / Pagamento</h3>
+          <form id="form-payout" class="payout-form">
+            <div class="form-row">
+              <div class="form-group col-6">
+                <label for="payout-amount">Valor (R$)</label>
+                <input type="number" id="payout-amount" placeholder="0,00" step="0.01" min="0.01" required>
+              </div>
+              <div class="form-group col-6">
+                <label for="payout-date">Data do Pagamento</label>
+                <input type="date" id="payout-date" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="payout-period">Período de Referência</label>
+              <select id="payout-period" required>
+                <option value="ate_dia_20">1º Período (Até dia 20)</option>
+                <option value="apos_dia_20">2º Período (Fim de Mês)</option>
+                <option value="integral">Valor Integral / Adiantamento</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="payout-notes">Observações</label>
+              <textarea id="payout-notes" rows="2" placeholder="Ex: Pix efetuado pelo banco Itaú."></textarea>
+            </div>
+            <button type="submit" class="btn btn-secondary">Registrar Lançamento</button>
+          </form>
+        </div>
+
+        <div class="card history-card">
+          <h3 class="card-title">Histórico de Repasses (Mês Corrente)</h3>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Período</th>
+                  <th>Valor</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="payouts-history-rows">
+                <tr>
+                  <td colspan="4" class="empty-state">Carregando histórico...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Print-only Summary (visible only in PDF) -->
+      <section class="print-summary">
+        <div class="print-summary-grid">
+          <div class="print-summary-item">
+            <span class="print-summary-label" id="lbl-print-total-pago">Valor Faturado (Total Pago)</span>
+            <span class="print-summary-value" id="print-val-total-pago">R$ 0,00</span>
+          </div>
+          <div class="print-summary-item">
+            <span class="print-summary-label" id="lbl-print-comissao">Comissão Gerada</span>
+            <span class="print-summary-value print-summary-highlight" id="print-val-comissao">R$ 0,00</span>
+          </div>
+          <div class="print-summary-item">
+            <span class="print-summary-label">Repasse Já Efetuado</span>
+            <span class="print-summary-value" id="print-val-repasse">R$ 0,00</span>
+          </div>
+          <div class="print-summary-item">
+            <span class="print-summary-label" id="lbl-print-saldo">Saldo Restante</span>
+            <span class="print-summary-value print-summary-danger" id="print-val-saldo">R$ 0,00</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Student Detail Table -->
+      <section class="detailed-section printable-section">
+        <div class="detailed-header">
+          <h2 class="section-title">Detalhamento de Aulas por Aluno</h2>
+          <div class="tabs-control no-print">
+            <button id="tab-paid" class="tab-btn active">Alunos Pagos</button>
+            <button id="tab-pending" class="tab-btn">Pendentes de Pagamento</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-container">
+            <table class="data-table" id="students-table">
+              <thead>
+                <tr>
+                  <th>Aluno</th>
+                  <th class="text-center">Aulas Pagas</th>
+                  <th class="text-right">Valor Pago (Rateado)</th>
+                  <th class="text-right text-saibro">Comissão (<span class="comm-col-display">50%</span>)</th>
+                </tr>
+              </thead>
+              <tbody id="students-table-rows">
+                <tr>
+                  <td colspan="4" class="empty-state">Selecione um professor para visualizar.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      </div> <!-- End Section: Controle de Comissões -->
+
+      <!-- Section: Relatórios Operacionais -->
+      <div id="section-operational" style="display: none;">
+        <!-- Operational Metric Cards -->
+        <section class="metrics-grid no-print">
+          <div class="card metric-card">
+            <div class="metric-icon faturamento">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            </div>
+            <div class="metric-info">
+              <h3>Faturamento Líquido</h3>
+              <p class="metric-value" id="op-val-faturamento">R$ 0,00</p>
+            </div>
+          </div>
+          <div class="card metric-card">
+            <div class="metric-icon comission">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
+            </div>
+            <div class="metric-info">
+              <h3>Ticket Médio / Cliente</h3>
+              <p class="metric-value" id="op-val-ticket-medio">R$ 0,00</p>
+            </div>
+          </div>
+          <div class="card metric-card">
+            <div class="metric-icon pagamentos">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </div>
+            <div class="metric-info">
+              <h3>Clientes Ativos</h3>
+              <p class="metric-value" id="op-val-clientes-ativos">0</p>
+            </div>
+          </div>
+          <div class="card metric-card accent-saldo">
+            <div class="metric-icon saldo">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+            <div class="metric-info">
+              <h3>Ocupação Quadras (Horas)</h3>
+              <p class="metric-value" id="op-val-horas-ocupadas">0,00h</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Charts Grid -->
+        <section class="charts-grid no-print">
+          <div class="card chart-card">
+            <h3 class="card-title">Evolução de Receita e Alunos (6 Meses)</h3>
+            <div class="chart-container">
+              <canvas id="chart-revenue-history"></canvas>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <h3 class="card-title">Distribuição por Forma de Pagamento</h3>
+            <div class="chart-container">
+              <canvas id="chart-paymethod"></canvas>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <h3 class="card-title">Faturamento por Subcategoria</h3>
+            <div class="chart-container">
+              <canvas id="chart-subcategory"></canvas>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <h3 class="card-title">Taxa de Ocupação por Quadra (%)</h3>
+            <div class="chart-container">
+              <canvas id="chart-court-occupancy"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- Evolution Charts Row: Occupancy + Ticket Médio side by side -->
+        <section class="charts-grid no-print" style="margin-top: 1.5rem;">
+          <div class="card chart-card">
+            <h3 class="card-title">Evolução da Ocupação Produtiva — Todas as Quadras (6 Meses)</h3>
+            <div class="chart-container" style="height: 200px;">
+              <canvas id="chart-occupancy-history"></canvas>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <h3 class="card-title">Evolução do Ticket Médio / Cliente (6 Meses)</h3>
+            <div class="chart-container" style="height: 200px;">
+              <canvas id="chart-ticket-history"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tables Section -->
+        <section class="charts-grid no-print" style="margin-bottom: 2rem;">
+          <div class="card">
+            <h3 class="card-title">Eficiência do Uso de Quadras</h3>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Tipo Operacional</th>
+                    <th class="text-center">Bookings</th>
+                    <th class="text-right">Horas Ocupadas</th>
+                    <th class="text-right">Faturamento / Hora</th>
+                  </tr>
+                </thead>
+                <tbody id="op-table-efficiency-rows">
+                  <tr>
+                    <td colspan="4" class="empty-state">Carregando dados...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Ticket Médio Detalhado por Subcategoria</h3>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Subcategoria</th>
+                    <th class="text-center">Clientes</th>
+                    <th class="text-right">Total Líquido</th>
+                    <th class="text-right">Ticket Médio</th>
+                  </tr>
+                </thead>
+                <tbody id="op-table-subcategory-rows">
+                  <tr>
+                    <td colspan="4" class="empty-state">Carregando dados...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Footer -->
+      <footer class="page-footer no-print">
+        <p>Montreal Tênis Clube &copy; 2026 &mdash; Sistema de Gestão de Comissões v1.0</p>
+      </footer>
+
+    </main>
+  </div>
+
+  <!-- Login Screen Overlay -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-logo-container">
+        <img src="assets/logos/Montreal_Logotipo_RGB_Horizontal_2.png" alt="Montreal Tênis" class="login-logo">
+      </div>
+      <h2>Acesso Restrito</h2>
+      <p>Insira suas credenciais para acessar o painel financeiro.</p>
+      <form id="form-login">
+        <div class="form-group">
+          <label for="login-email">E-mail</label>
+          <input type="email" id="login-email" placeholder="seu@email.com" required>
+        </div>
+        <div class="form-group">
+          <label for="login-password">Senha</label>
+          <input type="password" id="login-password" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Entrar</button>
+      </form>
+      <div id="login-error" class="login-error" style="display: none;"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
