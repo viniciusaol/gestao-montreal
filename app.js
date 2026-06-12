@@ -173,6 +173,8 @@ let studentsPaid = [];
 let studentsPending = [];
 let metricsPaid = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period1Pago: 0, period1Comissao: 0, period2Pago: 0, period2Comissao: 0 };
 let metricsPending = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period1Pago: 0, period1Comissao: 0, period2Pago: 0, period2Comissao: 0 };
+let currentClassesData = [];
+let currentPayoutsData = [];
 
 // Set default date
 payoutDate.value = new Date().toISOString().split('T')[0];
@@ -325,174 +327,190 @@ async function loadDashboard() {
     const payoutsData = await supabaseSelect('mt_pagamentos_professores', payoutsParams);
     debugLog(`Repasses carregados: ${payoutsData.length} linhas.`);
 
-    // Group bookings by student for pending calculations
-    const pendingBookingsByStudent = {};
-    const paidAgg = {};
-    let totalPaidFaturamento = 0;
-    let period1PagoVal = 0;
-    let period2PagoVal = 0;
+    // Store in global cache for local recalculation
+    currentClassesData = classesData;
+    currentPayoutsData = payoutsData;
 
-    classesData.forEach(row => {
-      const studentName = row.participant_name || 'Desconhecido';
-      if (row.is_paid) {
-        const val = parseFloat(row.booking_value) || 0;
-        if (val > 0) {
-          totalPaidFaturamento += val;
-          if (row.pay_date) {
-            const datePart = row.pay_date.split(' ')[0];
-            const day = parseInt(datePart.split('-')[2], 10);
-            if (day <= 20) {
-              period1PagoVal += val;
-            } else {
-              period2PagoVal += val;
-            }
-          }
-          if (!paidAgg[studentName]) {
-            paidAgg[studentName] = { name: studentName, classesCount: 0, totalBilled: 0 };
-          }
-          paidAgg[studentName].classesCount += 1;
-          paidAgg[studentName].totalBilled += val;
-        }
-      } else {
-        // Unpaid / Pending
-        if (!pendingBookingsByStudent[studentName]) {
-          pendingBookingsByStudent[studentName] = [];
-        }
-        pendingBookingsByStudent[studentName].push(row);
-      }
-    });
-
-    studentsPaid = Object.values(paidAgg);
-
-    // Now calculate estimations for pending students
-    let totalPendingFaturamento = 0;
-    let period1PendingVal = 0;
-    let period2PendingVal = 0;
-    studentsPending = [];
-
-    Object.keys(pendingBookingsByStudent).forEach(studentName => {
-      const bookings = pendingBookingsByStudent[studentName];
-      
-      // Group bookings by unique weekly slot to identify F (frequency)
-      const slots = {};
-      bookings.forEach(b => {
-        const dateObj = new Date(b.booking_date + 'T00:00:00');
-        const dayOfWeek = dateObj.getDay();
-        const startTime = b.start_time || '00:00';
-        const pricingInfo = getBasePriceForBooking(b);
-        
-        const slotKey = `${dayOfWeek}_${startTime}_${pricingInfo.category}`;
-        if (!slots[slotKey]) {
-          slots[slotKey] = {
-            dayOfWeek,
-            startTime,
-            pricingInfo,
-            bookings: []
-          };
-        }
-        slots[slotKey].bookings.push(b);
-      });
-
-      const uniqueSlotsList = Object.values(slots);
-      const frequency = uniqueSlotsList.length;
-
-      // Frequency discount rate
-      let freqDiscountRate = 0;
-      if (frequency === 2) freqDiscountRate = 0.05;
-      else if (frequency >= 3) freqDiscountRate = 0.07;
-
-      let studentTotalBilled = 0;
-
-      uniqueSlotsList.forEach(slot => {
-        const pricing = slot.pricingInfo;
-        const nBookings = slot.bookings.length;
-
-        // Check if slot is off-peak (weekday between 10:00 and 15:00)
-        const isOffPeak = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5 && 
-                          (parseInt(slot.startTime.split(':')[0], 10) >= 10 && parseInt(slot.startTime.split(':')[0], 10) <= 15);
-
-        let slotProRataValue = 0;
-        if (pricing.isMonthly) {
-          const nTotal = getWeekdayOccurrencesInMonth(year, month, slot.dayOfWeek);
-          slotProRataValue = (nBookings / nTotal) * pricing.price;
-        } else {
-          slotProRataValue = nBookings * pricing.price;
-        }
-
-        // Apply discounts
-        let slotFinalValue = 0;
-        if (isOffPeak) {
-          slotFinalValue = slotProRataValue * 0.88; // 12% discount
-        } else {
-          slotFinalValue = slotProRataValue * (1 - freqDiscountRate);
-        }
-
-        // Distribute to individual bookings for period distribution
-        const perBookingValue = slotFinalValue / nBookings;
-        slot.bookings.forEach(b => {
-          b.estimated_value = perBookingValue;
-          const day = parseInt(b.booking_date.split('-')[2], 10);
-          if (day <= 20) {
-            period1PendingVal += perBookingValue;
-          } else {
-            period2PendingVal += perBookingValue;
-          }
-        });
-
-        studentTotalBilled += slotFinalValue;
-      });
-
-      totalPendingFaturamento += studentTotalBilled;
-      studentsPending.push({
-        name: studentName,
-        classesCount: bookings.length,
-        totalBilled: studentTotalBilled
-      });
-    });
-
-    const commissionGeneratedVal = totalPaidFaturamento * (currentCommissionRate / 100);
-    const period1ComissaoVal = period1PagoVal * (currentCommissionRate / 100);
-    const period2ComissaoVal = period2PagoVal * (currentCommissionRate / 100);
-
-    const pendingCommissionVal = totalPendingFaturamento * (currentCommissionRate / 100);
-    const period1PendingComissaoVal = period1PendingVal * (currentCommissionRate / 100);
-    const period2PendingComissaoVal = period2PendingVal * (currentCommissionRate / 100);
-
-    let totalRepassePagoVal = 0;
-    payoutsData.forEach(p => {
-      totalRepassePagoVal += parseFloat(p.amount);
-    });
-
-    // Populate global metrics objects
-    metricsPaid = {
-      faturamento: totalPaidFaturamento,
-      comissao: commissionGeneratedVal,
-      repasse: totalRepassePagoVal,
-      saldo: commissionGeneratedVal - totalRepassePagoVal,
-      period1Pago: period1PagoVal,
-      period1Comissao: period1ComissaoVal,
-      period2Pago: period2PagoVal,
-      period2Comissao: period2ComissaoVal
-    };
-
-    metricsPending = {
-      faturamento: totalPendingFaturamento,
-      comissao: pendingCommissionVal,
-      repasse: totalRepassePagoVal,
-      saldo: pendingCommissionVal - totalRepassePagoVal,
-      period1Pago: period1PendingVal,
-      period1Comissao: period1PendingComissaoVal,
-      period2Pago: period2PendingVal,
-      period2Comissao: period2PendingComissaoVal
-    };
-
-    renderPayoutsHistory(payoutsData);
-    renderDashboardUI();
+    // Perform calculations and rendering locally
+    calculateAndRenderDashboardData();
 
   } catch (err) {
     debugError('Erro ao buscar dados do Supabase', err);
     alert('Erro ao carregar os dados do dashboard. Verifique o console de diagnóstico no rodapé da página.');
   }
+}
+
+// ---- Calculate and Render Dashboard Data Locally (No network requests) ----
+function calculateAndRenderDashboardData() {
+  const classesData = currentClassesData;
+  const payoutsData = currentPayoutsData;
+  const year = selectYear.value;
+  const month = selectMonth.value;
+
+  // Group bookings by student for pending calculations
+  const pendingBookingsByStudent = {};
+  const paidAgg = {};
+  let totalPaidFaturamento = 0;
+  let period1PagoVal = 0;
+  let period2PagoVal = 0;
+
+  classesData.forEach(row => {
+    const studentName = row.participant_name || 'Desconhecido';
+    if (row.is_paid) {
+      const val = parseFloat(row.booking_value) || 0;
+      if (val > 0) {
+        totalPaidFaturamento += val;
+        if (row.pay_date) {
+          const datePart = row.pay_date.split(' ')[0];
+          const day = parseInt(datePart.split('-')[2], 10);
+          if (day <= 20) {
+            period1PagoVal += val;
+          } else {
+            period2PagoVal += val;
+          }
+        }
+        if (!paidAgg[studentName]) {
+          paidAgg[studentName] = { name: studentName, classesCount: 0, totalBilled: 0 };
+        }
+        paidAgg[studentName].classesCount += 1;
+        paidAgg[studentName].totalBilled += val;
+      }
+    } else {
+      // Unpaid / Pending
+      if (!pendingBookingsByStudent[studentName]) {
+        pendingBookingsByStudent[studentName] = [];
+      }
+      pendingBookingsByStudent[studentName].push(row);
+    }
+  });
+
+  studentsPaid = Object.values(paidAgg);
+
+  // Now calculate estimations for pending students
+  let totalPendingFaturamento = 0;
+  let period1PendingVal = 0;
+  let period2PendingVal = 0;
+  studentsPending = [];
+
+  Object.keys(pendingBookingsByStudent).forEach(studentName => {
+    const bookings = pendingBookingsByStudent[studentName];
+    
+    // Group bookings by unique weekly slot to identify F (frequency)
+    const slots = {};
+    bookings.forEach(b => {
+      const dateObj = new Date(b.booking_date + 'T00:00:00');
+      const dayOfWeek = dateObj.getDay();
+      const startTime = b.start_time || '00:00';
+      const pricingInfo = getBasePriceForBooking(b);
+      
+      const slotKey = `${dayOfWeek}_${startTime}_${pricingInfo.category}`;
+      if (!slots[slotKey]) {
+        slots[slotKey] = {
+          dayOfWeek,
+          startTime,
+          pricingInfo,
+          bookings: []
+        };
+      }
+      slots[slotKey].bookings.push(b);
+    });
+
+    const uniqueSlotsList = Object.values(slots);
+    const frequency = uniqueSlotsList.length;
+
+    // Frequency discount rate
+    let freqDiscountRate = 0;
+    if (frequency === 2) freqDiscountRate = 0.05;
+    else if (frequency >= 3) freqDiscountRate = 0.07;
+
+    let studentTotalBilled = 0;
+
+    uniqueSlotsList.forEach(slot => {
+      const pricing = slot.pricingInfo;
+      const nBookings = slot.bookings.length;
+
+      // Check if slot is off-peak (weekday between 10:00 and 15:00)
+      const isOffPeak = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5 && 
+                        (parseInt(slot.startTime.split(':')[0], 10) >= 10 && parseInt(slot.startTime.split(':')[0], 10) <= 15);
+
+      let slotProRataValue = 0;
+      if (pricing.isMonthly) {
+        const nTotal = getWeekdayOccurrencesInMonth(year, month, slot.dayOfWeek);
+        slotProRataValue = (nBookings / nTotal) * pricing.price;
+      } else {
+        slotProRataValue = nBookings * pricing.price;
+      }
+
+      // Apply discounts
+      let slotFinalValue = 0;
+      if (isOffPeak) {
+        slotFinalValue = slotProRataValue * 0.88; // 12% discount
+      } else {
+        slotFinalValue = slotProRataValue * (1 - freqDiscountRate);
+      }
+
+      // Distribute to individual bookings for period distribution
+      const perBookingValue = slotFinalValue / nBookings;
+      slot.bookings.forEach(b => {
+        b.estimated_value = perBookingValue;
+        const day = parseInt(b.booking_date.split('-')[2], 10);
+        if (day <= 20) {
+          period1PendingVal += perBookingValue;
+        } else {
+          period2PendingVal += perBookingValue;
+        }
+      });
+
+      studentTotalBilled += slotFinalValue;
+    });
+
+    totalPendingFaturamento += studentTotalBilled;
+    studentsPending.push({
+      name: studentName,
+      classesCount: bookings.length,
+      totalBilled: studentTotalBilled
+    });
+  });
+
+  const commissionGeneratedVal = totalPaidFaturamento * (currentCommissionRate / 100);
+  const period1ComissaoVal = period1PagoVal * (currentCommissionRate / 100);
+  const period2ComissaoVal = period2PagoVal * (currentCommissionRate / 100);
+
+  const pendingCommissionVal = totalPendingFaturamento * (currentCommissionRate / 100);
+  const period1PendingComissaoVal = period1PendingVal * (currentCommissionRate / 100);
+  const period2PendingComissaoVal = period2PendingVal * (currentCommissionRate / 100);
+
+  let totalRepassePagoVal = 0;
+  payoutsData.forEach(p => {
+    totalRepassePagoVal += parseFloat(p.amount);
+  });
+
+  // Populate global metrics objects
+  metricsPaid = {
+    faturamento: totalPaidFaturamento,
+    comissao: commissionGeneratedVal,
+    repasse: totalRepassePagoVal,
+    saldo: commissionGeneratedVal - totalRepassePagoVal,
+    period1Pago: period1PagoVal,
+    period1Comissao: period1ComissaoVal,
+    period2Pago: period2PagoVal,
+    period2Comissao: period2ComissaoVal
+  };
+
+  metricsPending = {
+    faturamento: totalPendingFaturamento,
+    comissao: pendingCommissionVal,
+    repasse: totalRepassePagoVal,
+    saldo: pendingCommissionVal - totalRepassePagoVal,
+    period1Pago: period1PendingVal,
+    period1Comissao: period1PendingComissaoVal,
+    period2Pago: period2PendingVal,
+    period2Comissao: period2PendingComissaoVal
+  };
+
+  renderPayoutsHistory(payoutsData);
+  renderDashboardUI();
+}
 }
 
 // ---- Render Payouts History ----
@@ -696,7 +714,9 @@ window.deletePayout = async function(payoutId) {
 inputCommission.addEventListener('input', (e) => {
   currentCommissionRate = parseInt(e.target.value, 10);
   commissionDisplay.innerText = `${currentCommissionRate}%`;
-  loadDashboard();
+  
+  // Recalculate locally without network requests (extremely fast and lag-free)
+  calculateAndRenderDashboardData();
 });
 
 // ---- PDF Export ----
@@ -1603,3 +1623,32 @@ if (document.readyState === 'loading') {
 } else {
   handleFilterChange();
 }
+
+// ---- Mobile Menu Logic ----
+const btnMobileMenu = document.getElementById('btn-mobile-menu');
+const btnCloseMenu = document.getElementById('btn-close-menu');
+const navControls = document.querySelector('.nav-controls');
+
+if (btnMobileMenu && navControls) {
+  btnMobileMenu.addEventListener('click', () => {
+    navControls.classList.add('active');
+  });
+}
+
+if (btnCloseMenu && navControls) {
+  btnCloseMenu.addEventListener('click', () => {
+    navControls.classList.remove('active');
+  });
+}
+
+// Auto-close menu drawer when selecting options or performing actions
+if (navControls) {
+  const closeTriggers = navControls.querySelectorAll('select, input, button:not(#btn-close-menu)');
+  closeTriggers.forEach(trigger => {
+    const eventType = trigger.tagName === 'SELECT' || trigger.type === 'range' ? 'change' : 'click';
+    trigger.addEventListener(eventType, () => {
+      navControls.classList.remove('active');
+    });
+  });
+}
+
