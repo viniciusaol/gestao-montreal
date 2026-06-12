@@ -1528,16 +1528,879 @@ function renderChartCourtOccupancy(data, yearInt, monthInt) {
 // ---- Main Tabs Event Listeners ----
 const mainTabCommissions = document.getElementById('main-tab-commissions');
 const mainTabOperational = document.getElementById('main-tab-operational');
+const mainTabFinancial = document.getElementById('main-tab-financial');
 const sectionCommissions = document.getElementById('section-commissions');
 const sectionOperational = document.getElementById('section-operational');
+const sectionFinancial = document.getElementById('section-financial');
 
-if (mainTabCommissions && mainTabOperational) {
+// ---- ROI Global Cache ----
+let savedDreData = null;
+let savedHistoricMonths = null;
+let savedCurrentMonthKey = null;
+
+function updateRoiAnalysis(dreData, currentMonthKey, historicMonths) {
+  savedDreData = dreData;
+  savedHistoricMonths = historicMonths;
+  savedCurrentMonthKey = currentMonthKey;
+
+  calculateAndRenderRoi();
+}
+
+function calculateAndRenderRoi() {
+  if (!savedDreData || !savedHistoricMonths || !savedCurrentMonthKey) return;
+
+  const investmentInput = document.getElementById('roi-input-investment');
+  const metricSelect = document.getElementById('roi-select-metric');
+
+  if (!investmentInput || !metricSelect) return;
+
+  const investment = parseFloat(investmentInput.value) || 0;
+  const metric = metricSelect.value;
+
+  if (investment <= 0) {
+    const elRetorno = document.getElementById('roi-val-retorno-periodo');
+    const elMensal = document.getElementById('roi-val-mensal');
+    const elAnualizado = document.getElementById('roi-val-anualizado');
+    const elPayback = document.getElementById('roi-val-payback');
+
+    if (elRetorno) elRetorno.innerText = 'R$ 0,00';
+    if (elMensal) elMensal.innerText = '0,00%';
+    if (elAnualizado) elAnualizado.innerText = '0,00%';
+    if (elPayback) elPayback.innerText = 'N/A';
+    
+    const body = document.getElementById('fin-roi-body');
+    if (body) {
+      body.innerHTML = `<tr><td colspan="5" class="empty-state">Insira um valor de investimento válido.</td></tr>`;
+    }
+    return;
+  }
+
+  function getReturn(d) {
+    if (metric === 'ebitda') {
+      return d.ebitda;
+    } else if (metric === 'caixa') {
+      return d.ebitda - d.ir;
+    } else if (metric === 'lucroLiquido') {
+      return d.lucroLiquido;
+    }
+    return 0;
+  }
+
+  // Active Month Highlight Metrics
+  const activeMonthData = savedDreData[savedCurrentMonthKey];
+  if (activeMonthData) {
+    const retVal = getReturn(activeMonthData);
+    const monthlyRoi = (retVal / investment) * 100;
+    const annualizedRoi = monthlyRoi * 12;
+
+    const elRetorno = document.getElementById('roi-val-retorno-periodo');
+    const elMensal = document.getElementById('roi-val-mensal');
+    const elAnualizado = document.getElementById('roi-val-anualizado');
+    const elPayback = document.getElementById('roi-val-payback');
+
+    if (elRetorno) elRetorno.innerText = formatCurrency(retVal);
+    
+    if (elMensal) {
+      elMensal.innerText = monthlyRoi.toFixed(3).replace('.', ',') + '%';
+      elMensal.style.color = retVal < 0 ? '#e63946' : 'var(--color-saibro)';
+    }
+
+    if (elAnualizado) {
+      elAnualizado.innerText = annualizedRoi.toFixed(2).replace('.', ',') + '%';
+      elAnualizado.style.color = retVal < 0 ? '#e63946' : '#2ec4b6';
+    }
+
+    if (elPayback) {
+      if (retVal > 0) {
+        const paybackYears = investment / (retVal * 12);
+        elPayback.innerText = paybackYears > 100 ? '> 100 anos' : paybackYears.toFixed(1).replace('.', ',') + ' anos';
+        elPayback.style.color = '#e9c46a';
+      } else {
+        elPayback.innerText = 'Infinito';
+        elPayback.style.color = '#e63946';
+      }
+    }
+  }
+
+  // Populate ROI history table
+  const body = document.getElementById('fin-roi-body');
+  if (body) {
+    body.innerHTML = savedHistoricMonths.map(m => {
+      const d = savedDreData[m.key];
+      const retVal = getReturn(d);
+      
+      const monthlyRoi = (retVal / investment) * 100;
+      const annualizedRoi = monthlyRoi * 12;
+
+      let paybackStr = 'Infinito';
+      let paybackClass = 'text-outflow';
+      if (retVal > 0) {
+        const paybackYears = investment / (retVal * 12);
+        paybackStr = paybackYears > 100 ? '> 100 anos' : paybackYears.toFixed(1).replace('.', ',') + ' anos';
+        paybackClass = '';
+      }
+
+      const retClass = retVal < 0 ? 'text-outflow' : (retVal > 0 ? 'text-inflow' : '');
+      const roiClass = retVal < 0 ? 'text-outflow' : '';
+
+      return `
+        <tr>
+          <td>${m.label}</td>
+          <td class="text-right ${retClass}">${formatCurrency(retVal)}</td>
+          <td class="text-right ${roiClass}">${monthlyRoi.toFixed(3).replace('.', ',')}%</td>
+          <td class="text-right ${roiClass}" style="font-weight: 600;">${annualizedRoi.toFixed(2).replace('.', ',')}%</td>
+          <td class="text-right ${paybackClass}">${paybackStr}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+}
+
+// ---- Financial Reports Data Loading & Rendering ----
+async function loadFinancialReports() {
+  debugLog('loadFinancialReports() disparado.');
+  if (!checkSession()) return;
+
+  const year = selectYear.value;
+  const month = selectMonth.value;
+  const monthStart = `${year}-${month}-01`;
+  const monthEnd = getEndOfMonth(monthStart);
+
+  // Set up 6 months window
+  const monthsBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const currentYearInt = parseInt(year, 10);
+  const currentMonthInt = parseInt(month, 10);
+
+  const historicMonths = [];
+  for (let i = 5; i >= 0; i--) {
+    let m = currentMonthInt - i;
+    let y = currentYearInt;
+    if (m <= 0) { m += 12; y -= 1; }
+    const mStr = String(m).padStart(2, '0');
+    historicMonths.push({ key: `${y}-${mStr}`, label: `${monthsBR[m - 1]}/${y}`, monthStart: `${y}-${mStr}-01` });
+  }
+
+  const firstMonth = historicMonths[0].monthStart;
+
+  try {
+    debugLog('Buscando dados financeiros do Supabase (janela de 6 meses)...');
+    const nextMonthStart = (() => {
+      const d = new Date(monthStart + 'T00:00:00');
+      d.setMonth(d.getMonth() + 1);
+      return d.toISOString().split('T')[0].substring(0, 8) + '01';
+    })();
+
+    const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${monthEnd}`;
+    const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
+    const salesParams = `select=amount,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
+    const commParams = `select=booking_value,booking_date,is_paid&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
+
+    const [allProcfyData, allInterData, allSalesData, allCommData] = await Promise.all([
+      supabaseSelect('procfy_lancamentos', procfyParams),
+      supabaseSelect('inter_movimentos_processados', interParams),
+      supabaseSelect('mt_faturamento_vendas', salesParams),
+      supabaseSelect('vw_mt_comissoes_detalhadas', commParams)
+    ]);
+
+    debugLog(`Lançamentos Procfy: ${allProcfyData.length} linhas.`);
+    debugLog(`Movimentos Inter: ${allInterData.length} linhas.`);
+    debugLog(`Lançamentos Vendas: ${allSalesData.length} linhas.`);
+    debugLog(`Agendamentos Comissões: ${allCommData.length} linhas.`);
+
+    // 1. Filter current month data locally
+    const currentMonthKey = `${year}-${month}`;
+    const currentProcfy = allProcfyData.filter(row => row.due_date && row.due_date.substring(0, 7) === currentMonthKey);
+    const currentInter = allInterData.filter(row => row.data_movimento && row.data_movimento.substring(0, 7) === currentMonthKey);
+
+    // 2. Perform Cash Flow (DFC) calculations
+    const monthlyData = {};
+    const allCategories = { fco: new Set(), fci: new Set(), fcs: new Set() };
+
+    historicMonths.forEach(({ key }) => {
+      monthlyData[key] = {
+        fco: { categories: {}, net: 0.0 },
+        fci: { categories: {}, net: 0.0 },
+        fcs: { categories: {}, net: 0.0 },
+        net: 0.0,
+        initial: 0.0,
+        final: 0.0
+      };
+    });
+
+    // Process Procfy paid transactions for DFC (only June 2026 onwards)
+    allProcfyData.forEach(tx => {
+      if (!tx.paid) return;
+      const monthKey = tx.due_date ? tx.due_date.substring(0, 7) : '';
+      if (!monthlyData[monthKey] || monthKey < '2026-06') return;
+
+      const amount = parseFloat(tx.amount) || 0;
+      const flow = tx.cost_center_descricao;
+      const category = tx.category_name || 'Sem Categoria';
+      const isRevenue = tx.transaction_type === 'revenue';
+      const sign = isRevenue ? 1 : -1;
+      const value = sign * amount;
+
+      let target = null;
+      if (flow === 'Operação') {
+        target = monthlyData[monthKey].fco;
+        allCategories.fco.add(category);
+      } else if (flow === 'Investimentos') {
+        target = monthlyData[monthKey].fci;
+        allCategories.fci.add(category);
+      } else if (flow === 'Sócios') {
+        target = monthlyData[monthKey].fcs;
+        allCategories.fcs.add(category);
+      }
+
+      if (target) {
+        target.categories[category] = (target.categories[category] || 0.0) + value;
+        target.net += value;
+        monthlyData[monthKey].net += value;
+      }
+    });
+
+    // Process Banco Inter CDB resgates for DFC (only June 2026 onwards)
+    allInterData.forEach(tx => {
+      const desc = (tx.descricao || '').toLowerCase();
+      const title = (tx.titulo || '').toLowerCase();
+      const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
+      if (isResgate) {
+        const monthKey = tx.data_movimento ? tx.data_movimento.substring(0, 7) : '';
+        if (!monthlyData[monthKey] || monthKey < '2026-06') return;
+
+        const amount = Math.abs(parseFloat(tx.valor_com_sinal)) || 0;
+        const category = 'Resgate de Aplicação Financeira (CDB)';
+        
+        allCategories.fci.add(category);
+        monthlyData[monthKey].fci.categories[category] = (monthlyData[monthKey].fci.categories[category] || 0.0) + amount;
+        monthlyData[monthKey].fci.net += amount;
+        monthlyData[monthKey].net += amount;
+      }
+    });
+
+    // Solve starting and ending balances for DFC
+    const monthKeys = historicMonths.map(m => m.key);
+    const n = monthKeys.length;
+
+    for (let i = 0; i < n; i++) {
+      const mKey = monthKeys[i];
+      if (mKey < '2026-05') {
+        monthlyData[mKey].initial = 0.0;
+        monthlyData[mKey].final = 0.0;
+      } else if (mKey === '2026-05') {
+        monthlyData[mKey].initial = 0.0;
+        monthlyData[mKey].final = 7280.98;
+      } else if (mKey === '2026-06') {
+        monthlyData[mKey].initial = 7280.98;
+        monthlyData[mKey].final = 7280.98 + monthlyData[mKey].net;
+      } else {
+        const prevKey = monthKeys[i - 1];
+        monthlyData[mKey].initial = monthlyData[prevKey].final;
+        monthlyData[mKey].final = monthlyData[mKey].initial + monthlyData[mKey].net;
+      }
+    }
+
+    // Render Metric Cards for the CURRENT selected month
+    const curData = monthlyData[currentMonthKey] || { initial: 0.0, fco: { net: 0.0 }, fci: { net: 0.0 }, fcs: { net: 0.0 }, final: 0.0 };
+    const curInitial = curData.initial;
+    const curFcoNet = curData.fco.net;
+    const curFciNet = curData.fci.net;
+    const curFcsNet = curData.fcs.net;
+    const curFinal = curData.final;
+
+    const elInicialSubtitle = document.getElementById('fin-val-saldo-inicial-subtitle');
+    if (elInicialSubtitle) {
+      elInicialSubtitle.innerText = 'Saldo Inicial: ' + formatCurrency(curInitial);
+    }
+    const elFco = document.getElementById('fin-val-fco');
+    if (elFco) elFco.innerText = formatCurrency(curFcoNet);
+    const elFci = document.getElementById('fin-val-fci');
+    if (elFci) elFci.innerText = formatCurrency(curFciNet);
+    const elFcs = document.getElementById('fin-val-fcs');
+    if (elFcs) elFcs.innerText = formatCurrency(curFcsNet);
+    
+    const elFinal = document.getElementById('fin-val-saldo-final');
+    if (elFinal) {
+      elFinal.innerText = formatCurrency(curFinal);
+      if (curFinal < 0) {
+        elFinal.style.color = '#e63946';
+      } else {
+        elFinal.style.color = '#2ec4b6';
+      }
+    }
+
+    // 3. Render DFC Table
+    // Populate headers
+    const headerRow = document.getElementById('fin-dfc-header-row');
+    if (headerRow) {
+      headerRow.innerHTML = `<th>Categoria / Fluxo</th>` + historicMonths.map(m => `<th class="text-right">${m.label}</th>`).join('');
+    }
+
+    // Helper to generate a DFC row
+    function makeDfcRowHtml(title, rowClasses, dataGetter) {
+      const cells = historicMonths.map(m => {
+        const val = dataGetter(m.key);
+        let valClass = '';
+        if (val > 0) valClass = 'text-inflow';
+        else if (val < 0) valClass = 'text-outflow';
+        
+        const isBalanceRow = rowClasses && rowClasses.includes('dfc-balance-row');
+        const formatted = val !== 0 ? formatCurrency(val) : (isBalanceRow ? formatCurrency(0) : '--');
+        return `<td class="text-right ${valClass}">${formatted}</td>`;
+      }).join('');
+      
+      const classAttr = rowClasses && rowClasses.length ? `class="${rowClasses.join(' ')}"` : '';
+      const isChild = rowClasses && rowClasses.some(c => c.endsWith('-child-row'));
+      const styleAttr = isChild ? 'style="display: none;"' : '';
+      return `<tr ${classAttr} ${styleAttr}><td>${title}</td>${cells}</tr>`;
+    }
+
+    // Helper to generate flow header row
+    function makeDfcHeaderRowHtml(title, flowKey, rowClasses) {
+      const cells = historicMonths.map(m => {
+        const val = monthlyData[m.key][flowKey].net;
+        let valClass = '';
+        if (val > 0) valClass = 'text-inflow';
+        else if (val < 0) valClass = 'text-outflow';
+        return `<td class="text-right ${valClass}">${val !== 0 ? formatCurrency(val) : formatCurrency(0)}</td>`;
+      }).join('');
+      
+      const classes = [...(rowClasses || [])];
+      if (!classes.includes('collapsed')) {
+        classes.push('collapsed');
+      }
+      const classAttr = `class="${classes.join(' ')}"`;
+      return `<tr ${classAttr} data-target="${flowKey}-child-row"><td><span class="arrow-indicator">▶</span>${title}</td>${cells}</tr>`;
+    }
+
+    // Sort categories: positive first for the selected month
+    const fcoCatsArray = Array.from(allCategories.fco);
+    fcoCatsArray.sort((a, b) => {
+      const valA = (monthlyData[currentMonthKey] && monthlyData[currentMonthKey].fco.categories[a]) || 0.0;
+      const valB = (monthlyData[currentMonthKey] && monthlyData[currentMonthKey].fco.categories[b]) || 0.0;
+      return valB - valA;
+    });
+
+    const fciCatsArray = Array.from(allCategories.fci);
+    fciCatsArray.sort((a, b) => {
+      const valA = (monthlyData[currentMonthKey] && monthlyData[currentMonthKey].fci.categories[a]) || 0.0;
+      const valB = (monthlyData[currentMonthKey] && monthlyData[currentMonthKey].fci.categories[b]) || 0.0;
+      return valB - valA;
+    });
+
+    const fcsCatsArray = Array.from(allCategories.fcs);
+    fcsCatsArray.sort((a, b) => {
+      const valA = (monthlyData[currentMonthKey] && monthlyData[currentMonthKey].fcs.categories[a]) || 0.0;
+      const valB = (monthlyData[currentMonthKey] && monthlyData[currentMonthKey].fcs.categories[b]) || 0.0;
+      return valB - valA;
+    });
+
+    // Assemble HTML for DFC
+    let dfcBodyHtml = '';
+    dfcBodyHtml += makeDfcRowHtml('Saldo Inicial (Caixa)', ['dfc-balance-row'], (key) => monthlyData[key].initial);
+    dfcBodyHtml += makeDfcHeaderRowHtml('Fluxo Operacional (FCO)', 'fco', ['flow-header-row', 'fco-header']);
+    fcoCatsArray.forEach(cat => {
+      dfcBodyHtml += makeDfcRowHtml(cat, ['fco-child-row'], (key) => (monthlyData[key] && monthlyData[key].fco.categories[cat]) || 0.0);
+    });
+    dfcBodyHtml += makeDfcHeaderRowHtml('Fluxo de Investimento (FCI)', 'fci', ['flow-header-row', 'fci-header']);
+    fciCatsArray.forEach(cat => {
+      dfcBodyHtml += makeDfcRowHtml(cat, ['fci-child-row'], (key) => (monthlyData[key] && monthlyData[key].fci.categories[cat]) || 0.0);
+    });
+    dfcBodyHtml += makeDfcHeaderRowHtml('Fluxo de Sócios (FCS)', 'fcs', ['flow-header-row', 'fcs-header']);
+    fcsCatsArray.forEach(cat => {
+      dfcBodyHtml += makeDfcRowHtml(cat, ['fcs-child-row'], (key) => (monthlyData[key] && monthlyData[key].fcs.categories[cat]) || 0.0);
+    });
+    dfcBodyHtml += makeDfcRowHtml('Saldo Final (Caixa)', ['dfc-balance-row'], (key) => monthlyData[key].final);
+
+    const dfcBody = document.getElementById('fin-dfc-body');
+    if (dfcBody) {
+      dfcBody.innerHTML = dfcBodyHtml;
+    }
+
+    // 4. Perform DRE Calculations
+    const round2 = val => Math.round(val * 100) / 100;
+    const dreData = {};
+    const operationalExpenseCategories = new Set();
+
+    historicMonths.forEach(({ key }) => {
+      dreData[key] = {
+        receitaBruta: 0.0,
+        impostos: 0.0,
+        receitaLiquida: 0.0,
+        comissao: 0.0,
+        energia: 0.0,
+        lucroBruto: 0.0,
+        despesasOperacionais: 0.0,
+        despesasOperacionaisCategories: {},
+        ebitda: 0.0,
+        depreciacao: 0.0,
+        ebit: 0.0,
+        ir: 0.0,
+        lucroLiquido: 0.0
+      };
+    });
+
+    // Populate DRE Gross Revenue
+    allSalesData.forEach(sale => {
+      const monthKey = sale.pay_date ? sale.pay_date.substring(0, 7) : '';
+      if (!dreData[monthKey]) return;
+      dreData[monthKey].receitaBruta += parseFloat(sale.amount) || 0.0;
+    });
+
+    // Populate DRE Commissions
+    allCommData.forEach(row => {
+      if (!row.is_paid) return;
+      const monthKey = row.booking_date ? row.booking_date.substring(0, 7) : '';
+      if (!dreData[monthKey]) return;
+      
+      const val = parseFloat(row.booking_value) || 0.0;
+      dreData[monthKey].comissao += val * (currentCommissionRate / 100);
+    });
+
+    // Populate DRE Expenses (Operation cost center)
+    allProcfyData.forEach(tx => {
+      if (!tx.paid) return;
+      if (tx.cost_center_descricao !== 'Operação') return;
+      if (tx.transaction_type === 'revenue') return;
+
+      const monthKey = tx.due_date ? tx.due_date.substring(0, 7) : '';
+      if (!dreData[monthKey]) return;
+
+      const amount = parseFloat(tx.amount) || 0.0;
+      const category = tx.category_name || 'Outras Despesas';
+
+      if (category === 'Energia Elétrica') {
+        dreData[monthKey].energia += amount;
+      } else {
+        dreData[monthKey].despesasOperacionais += amount;
+        dreData[monthKey].despesasOperacionaisCategories[category] = 
+          (dreData[monthKey].despesasOperacionaisCategories[category] || 0.0) + amount;
+        operationalExpenseCategories.add(category);
+      }
+    });
+
+    // Round inputs and solve intermediate totals
+    historicMonths.forEach(({ key }) => {
+      const d = dreData[key];
+      d.receitaBruta = round2(d.receitaBruta);
+      d.comissao = round2(d.comissao);
+      d.energia = round2(d.energia);
+      d.despesasOperacionais = round2(d.despesasOperacionais);
+
+      // If no activity (revenue is 0), keep everything zeroed
+      if (d.receitaBruta === 0.0) {
+        d.impostos = 0.0;
+        d.receitaLiquida = 0.0;
+        d.comissao = 0.0;
+        d.energia = 0.0;
+        d.lucroBruto = 0.0;
+        d.despesasOperacionais = 0.0;
+        d.despesasOperacionaisCategories = {};
+        d.ebitda = 0.0;
+        d.depreciacao = 0.0;
+        d.ebit = 0.0;
+        d.ir = 0.0;
+        d.lucroLiquido = 0.0;
+        return;
+      }
+
+      // Calculate Simples Nacional based on (Gross Revenue - Commission)
+      const baseCalculo = Math.max(0.0, d.receitaBruta - d.comissao);
+      const rbt12 = baseCalculo * 12;
+
+      let nominalRate = 0.0;
+      let deductible = 0.0;
+
+      if (rbt12 <= 180000.0) {
+        nominalRate = 0.06;
+        deductible = 0.0;
+      } else if (rbt12 <= 360000.0) {
+        nominalRate = 0.112;
+        deductible = 9360.0;
+      } else if (rbt12 <= 720000.0) {
+        nominalRate = 0.135;
+        deductible = 17640.0;
+      } else if (rbt12 <= 1800000.0) {
+        nominalRate = 0.16;
+        deductible = 35640.0;
+      } else if (rbt12 <= 3600000.0) {
+        nominalRate = 0.143;
+        deductible = 125640.0;
+      } else {
+        nominalRate = 0.19;
+        deductible = 378000.0;
+      }
+
+      const effectiveRate = rbt12 > 0 ? (rbt12 * nominalRate - deductible) / rbt12 : 0.0;
+      const totalSimples = baseCalculo * Math.max(0.0, effectiveRate);
+
+      // Separate IR (4.00%) from Impostos (96.00%)
+      d.ir = round2(totalSimples * 0.04);
+      d.impostos = round2(totalSimples * 0.96);
+
+      d.receitaLiquida = round2(d.receitaBruta - d.impostos);
+      d.lucroBruto = round2(d.receitaLiquida - d.comissao - d.energia);
+      d.ebitda = round2(d.lucroBruto - d.despesasOperacionais);
+      
+      // Depreciation (Fixed 7666.67 per active month)
+      d.depreciacao = 7666.67;
+      d.ebit = round2(d.ebitda - d.depreciacao);
+      d.lucroLiquido = round2(d.ebit - d.ir);
+    });
+
+    // 5. Render DRE Table
+    const dreHeaderRow = document.getElementById('fin-dre-header-row');
+    if (dreHeaderRow) {
+      dreHeaderRow.innerHTML = `<th>Categoria / Conta</th>` + historicMonths.map(m => `<th class="text-right">${m.label}</th>`).join('');
+    }
+
+    // Helper to generate DRE Cell with Vertical Analysis (AV)
+    function makeDreCellHtml(val, receitaLiquida, isNegativeRed = false, isPositiveGreen = false) {
+      const formattedVal = formatCurrency(val);
+      const pct = receitaLiquida > 0 ? (val / receitaLiquida * 100) : 0.0;
+      const formattedPct = pct.toFixed(1).replace('.', ',') + '%';
+      
+      let colorClass = '';
+      if (isNegativeRed && val < 0) colorClass = 'text-outflow';
+      else if (isPositiveGreen && val > 0) colorClass = 'text-inflow';
+      
+      return `
+        <td class="text-right ${colorClass}">
+          <span>${formattedVal}</span>
+          <span class="vertical-analysis">${formattedPct}</span>
+        </td>
+      `;
+    }
+
+    // Helper to generate a standard DRE row
+    function renderDreRowHtml(title, rowClasses, getValueFn, isNegativeRed = false, isPositiveGreen = false) {
+      const cells = historicMonths.map(m => {
+        const d = dreData[m.key];
+        const val = getValueFn(d);
+        return makeDreCellHtml(val, d.receitaLiquida, isNegativeRed, isPositiveGreen);
+      }).join('');
+      
+      const classAttr = rowClasses && rowClasses.length ? `class="${rowClasses.join(' ')}"` : '';
+      const isChild = rowClasses && rowClasses.includes('dre-op-child-row');
+      const styleAttr = isChild ? 'style="display: none;"' : '';
+      return `<tr ${classAttr} ${styleAttr}><td>${title}</td>${cells}</tr>`;
+    }
+
+    // Helper to generate collapsible header row for Despesas Operacionais in DRE
+    function renderDreCollapsibleHeaderRowHtml(title, targetKey, getValueFn) {
+      const cells = historicMonths.map(m => {
+        const d = dreData[m.key];
+        const val = getValueFn(d);
+        return makeDreCellHtml(val, d.receitaLiquida, true, false);
+      }).join('');
+      
+      return `
+        <tr class="flow-header-row collapsed" data-target="${targetKey}">
+          <td><span class="arrow-indicator">▶</span>${title}</td>
+          ${cells}
+        </tr>
+      `;
+    }
+
+    const sortedOpCategories = Array.from(operationalExpenseCategories).sort();
+
+    let dreBodyHtml = '';
+    dreBodyHtml += renderDreRowHtml('Receita Bruta', [], (d) => d.receitaBruta);
+    dreBodyHtml += renderDreRowHtml('Impostos (Simples Nacional)', [], (d) => -d.impostos, true);
+    dreBodyHtml += renderDreRowHtml('Receita Líquida', ['dre-result-row'], (d) => d.receitaLiquida);
+    dreBodyHtml += renderDreRowHtml('Comissão Professores', [], (d) => -d.comissao, true);
+    dreBodyHtml += renderDreRowHtml('Energia (Elétrica)', [], (d) => -d.energia, true);
+    dreBodyHtml += renderDreRowHtml('Lucro Bruto', ['dre-result-row'], (d) => d.lucroBruto);
+    dreBodyHtml += renderDreCollapsibleHeaderRowHtml('Despesas Operacionais', 'dre-op-child-row', (d) => -d.despesasOperacionais);
+    
+    sortedOpCategories.forEach(cat => {
+      dreBodyHtml += renderDreRowHtml(cat, ['dre-child-row', 'dre-op-child-row'], (d) => {
+        const catVal = d.despesasOperacionaisCategories[cat] || 0.0;
+        return -catVal;
+      }, true);
+    });
+
+    dreBodyHtml += renderDreRowHtml('EBITDA', ['dre-result-row'], (d) => d.ebitda);
+    dreBodyHtml += renderDreRowHtml('Depreciação (Quadra)', [], (d) => -d.depreciacao, true);
+    dreBodyHtml += renderDreRowHtml('EBIT', ['dre-result-row'], (d) => d.ebit);
+    dreBodyHtml += renderDreRowHtml('Imposto de Renda (IR)', [], (d) => -d.ir, true);
+    dreBodyHtml += renderDreRowHtml('Lucro Líquido', ['dre-result-row'], (d) => d.lucroLiquido, true, true);
+
+    const dreBody = document.getElementById('fin-dre-body');
+    if (dreBody) {
+      dreBody.innerHTML = dreBodyHtml;
+    }
+
+    // 6. Register collapse event handlers for both DFC and DRE
+    document.querySelectorAll('#fin-dfc-table .flow-header-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const targetClass = row.getAttribute('data-target');
+        const isCollapsed = row.classList.toggle('collapsed');
+        document.querySelectorAll('#fin-dfc-table .' + targetClass).forEach(child => {
+          child.style.display = isCollapsed ? 'none' : '';
+        });
+        const arrow = row.querySelector('.arrow-indicator');
+        if (arrow) {
+          arrow.innerText = isCollapsed ? '▶' : '▼';
+        }
+      });
+    });
+
+    document.querySelectorAll('#fin-dre-table .flow-header-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const targetClass = row.getAttribute('data-target');
+        const isCollapsed = row.classList.toggle('collapsed');
+        document.querySelectorAll('#fin-dre-table .' + targetClass).forEach(child => {
+          child.style.display = isCollapsed ? 'none' : '';
+        });
+        const arrow = row.querySelector('.arrow-indicator');
+        if (arrow) {
+          arrow.innerText = isCollapsed ? '▶' : '▼';
+        }
+      });
+    });
+
+    // 7. Render Audit Transaction List
+    renderAuditTransactions(currentProcfy, currentInter);
+
+    // 8. Update ROI Analysis
+    updateRoiAnalysis(dreData, currentMonthKey, historicMonths);
+
+  } catch (err) {
+    debugError('Erro ao carregar relatórios financeiros', err);
+  }
+}
+
+// ---- Category Table Renderer ----
+function renderCategoryTable(containerId, cats) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const entries = Object.entries(cats);
+  if (entries.length === 0) {
+    container.innerHTML = `<tr><td colspan="4" class="empty-state">Sem lançamentos para este fluxo.</td></tr>`;
+    return;
+  }
+
+  // Sort categories alphabetically
+  entries.sort((a, b) => a[0].localeCompare(b[0]));
+
+  let totalInflows = 0;
+  let totalOutflows = 0;
+
+  let html = entries.map(([catName, data]) => {
+    const net = data.inflows - data.outflows;
+    totalInflows += data.inflows;
+    totalOutflows += data.outflows;
+    
+    let netClass = '';
+    if (net > 0) netClass = 'text-inflow';
+    if (net < 0) netClass = 'text-outflow';
+
+    return `
+      <tr>
+        <td>${catName}</td>
+        <td class="text-right font-semibold">${data.inflows > 0 ? formatCurrency(data.inflows) : '--'}</td>
+        <td class="text-right font-semibold">${data.outflows > 0 ? formatCurrency(data.outflows) : '--'}</td>
+        <td class="text-right ${netClass}">${formatCurrency(net)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const totalNet = totalInflows - totalOutflows;
+  let totalNetClass = '';
+  if (totalNet > 0) totalNetClass = 'text-inflow';
+  if (totalNet < 0) totalNetClass = 'text-outflow';
+
+  html += `
+    <tr style="border-top: 2px solid var(--border); font-weight: 800;">
+      <td>TOTAL</td>
+      <td class="text-right">${totalInflows > 0 ? formatCurrency(totalInflows) : '--'}</td>
+      <td class="text-right">${totalOutflows > 0 ? formatCurrency(totalOutflows) : '--'}</td>
+      <td class="text-right ${totalNetClass}">${formatCurrency(totalNet)}</td>
+    </tr>
+  `;
+
+  container.innerHTML = html;
+}
+
+// ---- Audit Transactions Renderer ----
+function renderAuditTransactions(procfy, inter) {
+  const container = document.getElementById('fin-transactions-rows');
+  if (!container) return;
+
+  const list = [];
+
+  // Add Procfy paid transactions
+  procfy.forEach(tx => {
+    if (!tx.paid) return;
+    const val = parseFloat(tx.amount) || 0;
+    const isRev = tx.transaction_type === 'revenue';
+    list.push({
+      date: tx.due_date || '',
+      name: tx.name || 'Sem nome',
+      category: tx.category_name || 'Sem Categoria',
+      flow: tx.cost_center_descricao || 'Outros',
+      value: isRev ? val : -val
+    });
+  });
+
+  // Add Inter CDB resgates
+  inter.forEach(tx => {
+    const desc = (tx.descricao || '').toLowerCase();
+    const title = (tx.titulo || '').toLowerCase();
+    const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
+    if (isResgate) {
+      const val = Math.abs(parseFloat(tx.valor_com_sinal)) || 0;
+      list.push({
+        date: tx.data_movimento || '',
+        name: tx.descricao || tx.titulo || 'Resgate CDB',
+        category: 'Resgate de Aplicação Financeira (CDB)',
+        flow: 'Investimentos',
+        value: val
+      });
+    }
+  });
+
+  if (list.length === 0) {
+    container.innerHTML = `<tr><td colspan="5" class="empty-state">Nenhum lançamento para este período.</td></tr>`;
+    return;
+  }
+
+  // Sort by date desc, then by value absolute desc
+  list.sort((a, b) => {
+    const d1 = a.date.split('T')[0];
+    const d2 = b.date.split('T')[0];
+    if (d1 !== d2) return d2.localeCompare(d1);
+    return Math.abs(b.value) - Math.abs(a.value);
+  });
+
+  container.innerHTML = list.map(item => {
+    let valClass = '';
+    let valText = formatCurrency(item.value);
+    if (item.value > 0) {
+      valClass = 'text-inflow';
+      valText = '+' + valText;
+    } else if (item.value < 0) {
+      valClass = 'text-outflow';
+    }
+    
+    let flowColor = 'var(--text-muted)';
+    if (item.flow === 'Operação') flowColor = 'var(--color-saibro)';
+    else if (item.flow === 'Investimentos') flowColor = '#2a9d8f';
+    else if (item.flow === 'Sócios') flowColor = '#e9c46a';
+
+    return `
+      <tr>
+        <td>${formatDateBR(item.date)}</td>
+        <td class="font-semibold">${item.name}</td>
+        <td><span class="period-badge secondary" style="font-size:0.7rem;">${item.category}</span></td>
+        <td><span class="period-badge" style="background:transparent; border-color:${flowColor}; color:${flowColor}; font-size:0.7rem;">${item.flow}</span></td>
+        <td class="text-right ${valClass}">${valText}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ---- Historical Cash Flow Chart Renderer ----
+function renderChartCashFlowHistory(labels, fco, fci, fcs, balances) {
+  destroyChart('cashflowHistory');
+  const canvas = document.getElementById('chart-cashflow-history');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  chartInstances['cashflowHistory'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'FCO (Operação)',
+          data: fco,
+          backgroundColor: '#C05131',
+          stack: 'flows'
+        },
+        {
+          label: 'FCI (Investimentos)',
+          data: fci,
+          backgroundColor: '#2a9d8f',
+          stack: 'flows'
+        },
+        {
+          label: 'FCS (Sócios)',
+          data: fcs,
+          backgroundColor: '#e9c46a',
+          stack: 'flows'
+        },
+        {
+          label: 'Saldo Final (Caixa)',
+          data: balances,
+          type: 'line',
+          borderColor: '#f1f4e0',
+          backgroundColor: '#f1f4e0',
+          borderWidth: 2.5,
+          tension: 0.35,
+          yAxisID: 'y1',
+          pointRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: { color: 'rgba(241, 244, 224, 0.8)', font: { family: 'Hanken Grotesk', size: 11 } }
+        },
+        tooltip: {
+          callbacks: {
+            label: context => {
+              const val = context.raw || 0;
+              return ` ${context.dataset.label}: R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          grid: { color: 'rgba(241, 244, 224, 0.05)' },
+          ticks: { color: 'rgba(241, 244, 224, 0.7)', font: { family: 'Hanken Grotesk' } }
+        },
+        y: {
+          stacked: true,
+          grid: { color: 'rgba(241, 244, 224, 0.05)' },
+          ticks: {
+            color: 'rgba(241, 244, 224, 0.7)',
+            font: { family: 'Hanken Grotesk' },
+            callback: v => 'R$ ' + v.toLocaleString('pt-BR')
+          }
+        },
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: {
+            color: 'rgba(241, 244, 224, 0.7)',
+            font: { family: 'Hanken Grotesk' },
+            callback: v => 'R$ ' + v.toLocaleString('pt-BR')
+          }
+        }
+      }
+    }
+  });
+}
+
+if (mainTabCommissions && mainTabOperational && mainTabFinancial) {
   mainTabCommissions.addEventListener('click', () => {
     currentMainTab = 'commissions';
     mainTabCommissions.classList.add('active');
     mainTabOperational.classList.remove('active');
+    mainTabFinancial.classList.remove('active');
     if (sectionCommissions) sectionCommissions.style.display = 'block';
     if (sectionOperational) sectionOperational.style.display = 'none';
+    if (sectionFinancial) sectionFinancial.style.display = 'none';
 
     // Restore page title for commissions
     const pageTitle = document.querySelector('.page-title');
@@ -1561,8 +2424,10 @@ if (mainTabCommissions && mainTabOperational) {
     currentMainTab = 'operational';
     mainTabOperational.classList.add('active');
     mainTabCommissions.classList.remove('active');
+    mainTabFinancial.classList.remove('active');
     if (sectionCommissions) sectionCommissions.style.display = 'none';
     if (sectionOperational) sectionOperational.style.display = 'block';
+    if (sectionFinancial) sectionFinancial.style.display = 'none';
 
     // Update page title and subtitle for operational context
     const pageTitle = document.querySelector('.page-title');
@@ -1575,7 +2440,7 @@ if (mainTabCommissions && mainTabOperational) {
       pageSubtitle.innerText = `Dados operacionais consolidados — ${getMonthNameBR(monthStart)}`;
     }
 
-    // Hide professor filter and commission rate — irrelevant for operational reports
+    // Hide professor filter and commission rate
     if (selectProf) {
       const g = selectProf.closest('.control-group');
       if (g) { g.style.display = 'none'; }
@@ -1587,6 +2452,40 @@ if (mainTabCommissions && mainTabOperational) {
     if (btnPrint) btnPrint.style.display = 'none';
 
     loadOperationalReports();
+  });
+
+  mainTabFinancial.addEventListener('click', () => {
+    currentMainTab = 'financial';
+    mainTabFinancial.classList.add('active');
+    mainTabCommissions.classList.remove('active');
+    mainTabOperational.classList.remove('active');
+    if (sectionCommissions) sectionCommissions.style.display = 'none';
+    if (sectionOperational) sectionOperational.style.display = 'none';
+    if (sectionFinancial) sectionFinancial.style.display = 'block';
+
+    // Update page title and subtitle for financial context
+    const pageTitle = document.querySelector('.page-title');
+    if (pageTitle) pageTitle.innerText = 'Relatórios Financeiros';
+    const pageSubtitle = document.getElementById('dashboard-subtitle');
+    if (pageSubtitle) {
+      const year = selectYear.value;
+      const month = selectMonth.value;
+      const monthStart = `${year}-${month}-01`;
+      pageSubtitle.innerText = `Fluxo de Caixa Consolidado — ${getMonthNameBR(monthStart)}`;
+    }
+
+    // Hide professor filter and commission rate
+    if (selectProf) {
+      const g = selectProf.closest('.control-group');
+      if (g) { g.style.display = 'none'; }
+    }
+    if (inputCommission) {
+      const g = inputCommission.closest('.control-group');
+      if (g) { g.style.display = 'none'; }
+    }
+    if (btnPrint) btnPrint.style.display = 'none';
+
+    loadFinancialReports();
   });
 }
 
@@ -1607,12 +2506,78 @@ if (tabPaid && tabPending) {
   });
 }
 
+// ---- Financial Sub-Tab Event Listeners (DFC vs DRE vs ROI) ----
+const btnShowDfc = document.getElementById('btn-show-dfc');
+const btnShowDre = document.getElementById('btn-show-dre');
+const btnShowRoi = document.getElementById('btn-show-roi');
+const cardDfc = document.getElementById('fin-dfc-card');
+const cardDre = document.getElementById('fin-dre-card');
+const cardRoi = document.getElementById('fin-roi-card');
+
+if (btnShowDfc && btnShowDre && btnShowRoi && cardDfc && cardDre && cardRoi) {
+  btnShowDfc.addEventListener('click', () => {
+    btnShowDfc.classList.add('active');
+    btnShowDre.classList.remove('active');
+    btnShowRoi.classList.remove('active');
+    cardDfc.style.display = 'block';
+    cardDre.style.display = 'none';
+    cardRoi.style.display = 'none';
+
+    if (sectionFinancial) {
+      sectionFinancial.classList.add('show-dfc');
+      sectionFinancial.classList.remove('show-dre');
+      sectionFinancial.classList.remove('show-roi');
+    }
+  });
+
+  btnShowDre.addEventListener('click', () => {
+    btnShowDre.classList.add('active');
+    btnShowDfc.classList.remove('active');
+    btnShowRoi.classList.remove('active');
+    cardDfc.style.display = 'none';
+    cardDre.style.display = 'block';
+    cardRoi.style.display = 'none';
+
+    if (sectionFinancial) {
+      sectionFinancial.classList.add('show-dre');
+      sectionFinancial.classList.remove('show-dfc');
+      sectionFinancial.classList.remove('show-roi');
+    }
+  });
+
+  btnShowRoi.addEventListener('click', () => {
+    btnShowRoi.classList.add('active');
+    btnShowDfc.classList.remove('active');
+    btnShowDre.classList.remove('active');
+    cardDfc.style.display = 'none';
+    cardDre.style.display = 'none';
+    cardRoi.style.display = 'block';
+
+    if (sectionFinancial) {
+      sectionFinancial.classList.add('show-roi');
+      sectionFinancial.classList.remove('show-dfc');
+      sectionFinancial.classList.remove('show-dre');
+    }
+    
+    // Recalculate and render ROI data
+    calculateAndRenderRoi();
+  });
+
+  // Attach ROI interactive listeners
+  const roiInvestment = document.getElementById('roi-input-investment');
+  const roiMetric = document.getElementById('roi-select-metric');
+  if (roiInvestment) roiInvestment.addEventListener('input', calculateAndRenderRoi);
+  if (roiMetric) roiMetric.addEventListener('change', calculateAndRenderRoi);
+}
+
 // ---- Combined Filter Change Handler ----
 async function handleFilterChange() {
   if (currentMainTab === 'commissions') {
     await loadDashboard();
-  } else {
+  } else if (currentMainTab === 'operational') {
     await loadOperationalReports();
+  } else {
+    await loadFinancialReports();
   }
 }
 
@@ -1620,6 +2585,24 @@ async function handleFilterChange() {
 selectProf.addEventListener('change', handleFilterChange);
 selectYear.addEventListener('change', handleFilterChange);
 selectMonth.addEventListener('change', handleFilterChange);
+
+// Toggle transactions detail section collapse/expand
+const btnToggleTransactions = document.getElementById('btn-toggle-transactions');
+const transactionsCardContainer = document.getElementById('transactions-card-container');
+const transactionsArrow = document.getElementById('transactions-arrow-indicator');
+
+if (btnToggleTransactions && transactionsCardContainer && transactionsArrow) {
+  btnToggleTransactions.addEventListener('click', () => {
+    const isHidden = transactionsCardContainer.style.display === 'none';
+    if (isHidden) {
+      transactionsCardContainer.style.display = 'block';
+      transactionsArrow.innerText = '▼';
+    } else {
+      transactionsCardContainer.style.display = 'none';
+      transactionsArrow.innerText = '▶';
+    }
+  });
+}
 
 // ---- Initial Load ----
 debugLog('App JS inicializado. Usando REST API direta com autenticação.');

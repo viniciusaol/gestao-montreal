@@ -106,6 +106,7 @@
       <div class="main-tabs-nav no-print">
         <button id="main-tab-commissions" class="main-tab-btn active">Controle de Comissões</button>
         <button id="main-tab-operational" class="main-tab-btn">Relatórios Operacionais</button>
+        <button id="main-tab-financial" class="main-tab-btn">Relatórios Financeiros</button>
       </div>
 
       <!-- Section: Controle de Comissões -->
@@ -432,6 +433,208 @@
           </div>
         </section>
       </div>
+
+      <!-- Section: Relatórios Financeiros -->
+      <div id="section-financial" style="display: none;" class="show-dfc">
+        <!-- Financial Metric Cards -->
+        <section class="metrics-grid no-print">
+          <div class="card metric-card">
+            <div class="metric-icon pagamentos">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            </div>
+            <div class="metric-info">
+              <h3>Líquido Operação (FCO)</h3>
+              <p class="metric-value" id="fin-val-fco">R$ 0,00</p>
+            </div>
+          </div>
+          <div class="card metric-card">
+            <div class="metric-icon faturamento">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+            </div>
+            <div class="metric-info">
+              <h3>Líquido Investimento (FCI)</h3>
+              <p class="metric-value" id="fin-val-fci">R$ 0,00</p>
+            </div>
+          </div>
+          <div class="card metric-card accent-saldo">
+            <div class="metric-icon comission">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </div>
+            <div class="metric-info">
+              <h3>Líquido Sócios (FCS)</h3>
+              <p class="metric-value" id="fin-val-fcs">R$ 0,00</p>
+            </div>
+          </div>
+          <div class="card metric-card highlight">
+            <div class="metric-icon fin-saldo">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"></path><path d="M18 12a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h4v-6z"></path></svg>
+            </div>
+            <div class="metric-info">
+              <h3>Saldo Final (Caixa)</h3>
+              <p class="metric-value" id="fin-val-saldo-final">R$ 0,00</p>
+              <small class="metric-subtitle" id="fin-val-saldo-inicial-subtitle" style="display:block;color:rgba(241,244,224,0.45);font-size:0.72rem;margin-top:2px;">Saldo Inicial: R$ 0,00</small>
+            </div>
+          </div>
+        </section>
+
+        <!-- Selection of financial reports -->
+        <div class="tabs-control no-print" style="margin-bottom: 1.5rem;">
+          <button id="btn-show-dfc" class="tab-btn active">Fluxo de Caixa (DFC)</button>
+          <button id="btn-show-dre" class="tab-btn">Demonstração de Resultado (DRE)</button>
+          <button id="btn-show-roi" class="tab-btn">Retorno sobre Investimento (ROI)</button>
+        </div>
+
+        <!-- Demonstration of Cash Flow (DFC) -->
+        <section id="fin-dfc-card" class="detailed-section printable-section" style="margin-top: 0.5rem; margin-bottom: 2rem;">
+          <div class="card">
+            <h3 class="card-title">Demonstração do Fluxo de Caixa (DFC)</h3>
+            <div class="table-container">
+              <table class="data-table" id="fin-dfc-table" style="min-width: 800px;">
+                <thead>
+                  <tr id="fin-dfc-header-row">
+                    <th>Categoria / Fluxo</th>
+                    <!-- Month headers will be populated dynamically by JS -->
+                  </tr>
+                </thead>
+                <tbody id="fin-dfc-body">
+                  <tr><td colspan="7" class="empty-state">Carregando dados...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Demonstration of Income Statement (DRE) -->
+        <section id="fin-dre-card" class="detailed-section printable-section" style="margin-top: 0.5rem; margin-bottom: 2rem; display: none;">
+          <div class="card">
+            <h3 class="card-title">Demonstração do Resultado do Exercício (DRE)</h3>
+            <div class="table-container">
+              <table class="data-table" id="fin-dre-table" style="min-width: 800px;">
+                <thead>
+                  <tr id="fin-dre-header-row">
+                    <th>Categoria / Conta</th>
+                    <!-- Month headers populated by JS -->
+                  </tr>
+                </thead>
+                <tbody id="fin-dre-body">
+                  <tr><td colspan="7" class="empty-state">Carregando dados...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Return on Investment (ROI) Analysis -->
+        <section id="fin-roi-card" class="detailed-section printable-section" style="margin-top: 0.5rem; margin-bottom: 2rem; display: none;">
+          <div class="card">
+            <h3 class="card-title" style="margin-bottom: 1.5rem;">Análise de Retorno sobre Investimento (ROI)</h3>
+            
+            <!-- ROI Inputs (Interactive controls) -->
+            <div class="roi-controls no-print" style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 2rem; background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border);">
+              <div class="control-group" style="flex: 1; min-width: 250px;">
+                <label for="roi-input-investment" style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Investimento Total dos Sócios (R$)</label>
+                <input type="number" id="roi-input-investment" value="2300000" step="50000" min="0" style="width: 100%; padding: 0.65rem 0.85rem; background: #111; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: 0.95rem; font-weight: 600;">
+              </div>
+              <div class="control-group" style="flex: 1; min-width: 250px;">
+                <label for="roi-select-metric" style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Métrica de Retorno (Base de Cálculo)</label>
+                <select id="roi-select-metric" style="width: 100%; padding: 0.65rem 0.85rem; background: #111; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer;">
+                  <option value="caixa">Geração de Caixa Livre (EBITDA - IR - Recomendado)</option>
+                  <option value="ebitda">EBITDA (Operacional Bruto)</option>
+                  <option value="lucroLiquido">Lucro Líquido (Contábil com Depreciação)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- ROI Metrics Grid (Active Month Highlight) -->
+            <div class="metrics-grid no-print" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 2rem;">
+              <div class="card metric-card" style="padding: 1.25rem; background: rgba(255,255,255,0.015); border: 1px solid var(--border);">
+                <div class="metric-info">
+                  <h3 id="roi-lbl-retorno-periodo" style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Retorno no Período Selecionado</h3>
+                  <p class="metric-value" id="roi-val-retorno-periodo" style="font-size: 1.65rem; font-weight: 800; color: var(--color-creme);">R$ 0,00</p>
+                </div>
+              </div>
+              <div class="card metric-card" style="padding: 1.25rem; background: rgba(255,255,255,0.015); border: 1px solid var(--border);">
+                <div class="metric-info">
+                  <h3 style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">ROI Mensal no Período</h3>
+                  <p class="metric-value" id="roi-val-mensal" style="font-size: 1.65rem; font-weight: 800; color: var(--color-saibro);">0,00%</p>
+                </div>
+              </div>
+              <div class="card metric-card" style="padding: 1.25rem; background: rgba(255,255,255,0.015); border: 1px solid var(--border);">
+                <div class="metric-info">
+                  <h3 style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">ROI Anualizado (Run-rate)</h3>
+                  <p class="metric-value" id="roi-val-anualizado" style="font-size: 1.65rem; font-weight: 800; color: #2ec4b6;">0,00%</p>
+                </div>
+              </div>
+              <div class="card metric-card" style="padding: 1.25rem; background: rgba(255,255,255,0.015); border: 1px solid var(--border);">
+                <div class="metric-info">
+                  <h3 style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Prazo de Payback</h3>
+                  <p class="metric-value" id="roi-val-payback" style="font-size: 1.65rem; font-weight: 800; color: #e9c46a;">0 anos</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Historical ROI Table -->
+            <div class="table-container" style="margin-bottom: 2rem;">
+              <h4 style="margin-bottom: 1rem; color: var(--text-main); font-size: 1rem; font-weight: 700;">Histórico do ROI (Janela de 6 Meses)</h4>
+              <table class="data-table" id="fin-roi-table" style="width: 100%;">
+                <thead>
+                  <tr id="fin-roi-header-row">
+                    <th>Mês</th>
+                    <th class="text-right">Retorno do Mês</th>
+                    <th class="text-right">ROI Mensal</th>
+                    <th class="text-right">ROI Anualizado</th>
+                    <th class="text-right">Payback Estimado</th>
+                  </tr>
+                </thead>
+                <tbody id="fin-roi-body">
+                  <tr><td colspan="5" class="empty-state">Carregando dados...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Educational Section / Analysis -->
+            <div class="roi-analysis-panel" style="background: rgba(192, 81, 49, 0.05); border: 1px solid rgba(192, 81, 49, 0.2); border-radius: var(--radius-md); padding: 1.5rem; line-height: 1.6;">
+              <h4 style="color: var(--color-saibro); margin-bottom: 0.75rem; font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                Análise Educativa de ROI para os Sócios
+              </h4>
+              <p style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 0.75rem;">
+                <strong>Por que usar Geração de Caixa ou EBITDA em vez de Lucro Líquido?</strong><br>
+                O investimento inicial de <strong>R$ 2,3 milhões</strong> na infraestrutura (barracão e quadras) gera uma despesa contábil mensal de <strong>R$ 7.666,67</strong> referente à depreciação linear (25 anos). Esta despesa reduz o <strong>Lucro Líquido contábil</strong>, porém <em>não representa saída de caixa real</em>. Assim, avaliar o retorno com base no Lucro Líquido indicaria um ROI negativo, mesmo com o clube operando no azul.
+              </p>
+              <p style="font-size: 0.9rem; color: var(--text-main);">
+                <strong>Efeito de Escala:</strong> A taxa de ocupação das quadras atualmente encontra-se abaixo da capacidade máxima. Como a maior parte dos custos do clube é fixa (aluguel do imóvel, energia base, sistemas), qualquer aumento no faturamento bruto (ex: mais locações de quadras em horários vagos) irá impactar quase que integralmente o EBITDA, acelerando significativamente a taxa de retorno (ROI) e reduzindo o payback dos sócios.
+              </p>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Transaction Audit List -->
+        <section class="detailed-section printable-section" style="margin-top: 1.5rem; margin-bottom: 2rem;">
+          <h2 class="section-title" id="btn-toggle-transactions" style="cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+            <span class="arrow-indicator" id="transactions-arrow-indicator">▶</span>Detalhamento dos Lançamentos do Mês
+          </h2>
+          <div class="card" id="transactions-card-container" style="display: none;">
+            <div class="table-container">
+              <table class="data-table" id="fin-transactions-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Descrição / Beneficiário</th>
+                    <th>Categoria</th>
+                    <th>Fluxo (CC)</th>
+                    <th class="text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody id="fin-transactions-rows">
+                  <tr><td colspan="5" class="empty-state">Carregando dados...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div> <!-- End Section: Relatórios Financeiros -->
 
       <!-- Footer -->
       <footer class="page-footer no-print">
