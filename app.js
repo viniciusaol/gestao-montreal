@@ -46,10 +46,15 @@ function getUserToken() {
 function checkSession() {
   const token = getUserToken();
   const overlay = document.getElementById('login-overlay');
+  const appWrapper = document.querySelector('.app-wrapper');
   if (token) {
     if (overlay) {
       overlay.style.visibility = 'hidden';
       overlay.style.opacity = '0';
+      overlay.style.display = 'none';
+    }
+    if (appWrapper) {
+      appWrapper.style.display = 'block';
     }
     return true;
   } else {
@@ -57,6 +62,9 @@ function checkSession() {
       overlay.style.visibility = 'visible';
       overlay.style.opacity = '1';
       overlay.style.display = 'flex';
+    }
+    if (appWrapper) {
+      appWrapper.style.display = 'none';
     }
     return false;
   }
@@ -511,7 +519,6 @@ function calculateAndRenderDashboardData() {
   renderPayoutsHistory(payoutsData);
   renderDashboardUI();
 }
-}
 
 // ---- Render Payouts History ----
 function renderPayoutsHistory(payouts) {
@@ -788,9 +795,7 @@ if (formLogin) {
 if (btnLogout) {
   btnLogout.addEventListener('click', () => {
     localStorage.removeItem('mt_session');
-    loginOverlay.style.visibility = 'visible';
-    loginOverlay.style.opacity = '1';
-    loginOverlay.style.display = 'flex';
+    checkSession();
     
     // Clear data
     valTotalPago.innerText = 'R$ 0,00';
