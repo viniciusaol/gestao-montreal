@@ -662,7 +662,14 @@ input:focus, select:focus, textarea:focus {
   .page-content {
     padding: 1rem 0.75rem;
     width: 100%;
-    overflow-x: hidden;
+    /* overflow-x: hidden removed — breaks .table-container horizontal scroll on mobile */
+  }
+
+  /* Financial tables: allow horizontal scroll via table-container */
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
   }
 
   .page-title-row {
