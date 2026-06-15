@@ -2960,28 +2960,84 @@ function calculateAndRenderProjection() {
   // Filter base month bookings
   const juneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix));
   
-  // Identify payment methods for each student customer_code from allPaymentMethodsData
-  const studentPaymentTypes = {}; 
-  const studentMethods = {}; 
+  // Calculate next month start date format YYYY-MM-01
+  const nextMonthStart = (() => {
+    const d = new Date(monthStart + 'T00:00:00');
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().split('T')[0].substring(0, 8) + '01';
+  })();
+
+  // Filter payments in the base month
+  const basePayments = allPaymentMethodsData.filter(p => p.payment_date && p.payment_date >= monthStart && p.payment_date < nextMonthStart);
+  const baseMp = allMpPaymentsData.filter(p => p.date_approved && p.date_approved >= monthStart && p.date_approved < nextMonthStart);
+
+  // Calculate the online credit card ratio in the base month using baseMp
+  let mpPix = 0;
+  let mpCredit = 0;
+  let mpSaldo = 0;
+  let mpOther = 0;
   
-  allPaymentMethodsData.forEach(p => {
-    if (!p.customer_code) return;
-    const method = (p.pay_method || '').toLowerCase();
-    const isD30 = method.includes('credito') || method.includes('crédito') || method === 'tarjeta';
-    if (!studentMethods[p.customer_code]) {
-      studentMethods[p.customer_code] = { d0Count: 0, d30Count: 0 };
-    }
-    if (isD30) {
-      studentMethods[p.customer_code].d30Count++;
+  baseMp.forEach(p => {
+    const amt = parseFloat(p.transaction_amount) || 0;
+    const type = p.payment_type_id;
+    const method = p.payment_method_id;
+    
+    if (type === 'bank_transfer' || method === 'pix') {
+      mpPix += amt;
+    } else if (type === 'credit_card') {
+      mpCredit += amt;
+    } else if (type === 'account_money') {
+      mpSaldo += amt;
     } else {
-      studentMethods[p.customer_code].d0Count++;
+      mpOther += amt;
     }
   });
   
-  Object.keys(studentMethods).forEach(cc => {
-    const counts = studentMethods[cc];
-    studentPaymentTypes[cc] = counts.d30Count >= counts.d0Count ? 'D-30' : 'D-0';
+  const mpTotal = mpPix + mpCredit + mpSaldo + mpOther;
+
+  let localCredit = 0;
+  let localTarjeta = 0;
+  let localDebit = 0;
+  let localEfectivo = 0;
+  let localTransfer = 0;
+  let onlineTotal = 0;
+
+  basePayments.forEach(p => {
+    const method = (p.pay_method || '').toLowerCase();
+    const amt = parseFloat(p.amount) || 0;
+
+    if (method.includes('credito') || method.includes('crédito')) {
+      localCredit += amt;
+    } else if (method === 'tarjeta') {
+      localTarjeta += amt;
+    } else if (method.includes('debito') || method.includes('débito')) {
+      localDebit += amt;
+    } else if (method === 'efectivo') {
+      localEfectivo += amt;
+    } else if (method === 'transferencia' || method === 'pix') {
+      localTransfer += amt;
+    } else if (method === 'pagamento online') {
+      onlineTotal += amt;
+    }
   });
+
+  let onlineCredit = 0;
+  let onlineD0 = 0;
+
+  if (onlineTotal > 0) {
+    if (mpTotal > 0) {
+      onlineCredit = onlineTotal * (mpCredit / mpTotal);
+      onlineD0 = onlineTotal * ((mpPix + mpSaldo + mpOther) / mpTotal);
+    } else {
+      onlineCredit = onlineTotal * 0.70;
+      onlineD0 = onlineTotal * 0.30;
+    }
+  }
+
+  const totalBaseFaturamento = localCredit + localTarjeta + localDebit + localEfectivo + localTransfer + onlineTotal;
+  const totalBaseD30 = localCredit + localTarjeta + onlineCredit;
+  const baseD30Ratio = totalBaseFaturamento > 0 ? (totalBaseD30 / totalBaseFaturamento) : 0.70;
+  const baseD0Ratio = 1 - baseD30Ratio;
 
   // Calculate student slot values in base month
   const juneUnpaidByStudent = {};
@@ -3071,7 +3127,6 @@ function calculateAndRenderProjection() {
         dayOfWeek,
         startTime,
         values: [],
-        paymentType: studentPaymentTypes[b.customer_code] || 'D-30',
         isPaid: b.is_paid
       };
     }
@@ -3088,8 +3143,7 @@ function calculateAndRenderProjection() {
         customerCode: g.customerCode,
         dayOfWeek: g.dayOfWeek,
         startTime: g.startTime,
-        unitPrice: avgVal,
-        paymentType: g.paymentType
+        unitPrice: avgVal
       });
     }
   });
@@ -3102,12 +3156,8 @@ function calculateAndRenderProjection() {
   juneBookings.forEach(b => {
     if (b.is_paid) return;
     let val = juneUnpaidEstimatedValues[b.booking_id] || 0.0;
-    const paymentType = studentPaymentTypes[b.customer_code] || 'D-30';
-    if (paymentType === 'D-0') {
-      juneRemainingUnpaidInflowsD0 += val;
-    } else {
-      juneRemainingUnpaidInflowsD30 += val;
-    }
+    juneRemainingUnpaidInflowsD0 += val * baseD0Ratio;
+    juneRemainingUnpaidInflowsD30 += val * baseD30Ratio;
   });
 
   let juneRemainingUnpaidOutflows = 0.0;
@@ -3143,15 +3193,12 @@ function calculateAndRenderProjection() {
   const rollingFixedExpenses = [juneFixedExpensesBaseline];
 
   const juneD30TuitionTotal = juneBookings.map(b => {
-    const paymentType = studentPaymentTypes[b.customer_code] || 'D-30';
-    if (paymentType === 'D-30') {
-      return b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0);
-    }
-    return 0.0;
+    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0);
+    return val * baseD30Ratio;
   }).reduce((sum, val) => sum + val, 0.0);
 
   let prevD30Tuition = juneD30TuitionTotal;
-  let prevD30Variable = juneVariableRevenueBaseline * 0.70; 
+  let prevD30Variable = juneVariableRevenueBaseline * baseD30Ratio; 
 
   let prevMonthFinalBalance = julyOpeningBalance;
 
@@ -3161,30 +3208,23 @@ function calculateAndRenderProjection() {
     const curMonthStr = mKey.substring(5, 7);
 
     let tuitionGenerated = 0.0;
-    let tuitionD0 = 0.0;
-    let tuitionD30 = 0.0;
 
     activeJuneSlots.forEach(slot => {
       const occurrences = getWeekdayOccurrencesInMonth(curYearStr, curMonthStr, slot.dayOfWeek);
       const slotVal = occurrences * slot.unitPrice;
       tuitionGenerated += slotVal;
-      if (slot.paymentType === 'D-0') {
-        tuitionD0 += slotVal;
-      } else {
-        tuitionD30 += slotVal;
-      }
     });
 
     tuitionGenerated = round2(tuitionGenerated * (1 + growthRate));
-    tuitionD0 = round2(tuitionD0 * (1 + growthRate));
-    tuitionD30 = round2(tuitionD30 * (1 + growthRate));
+    const tuitionD0 = round2(tuitionGenerated * baseD0Ratio);
+    const tuitionD30 = round2(tuitionGenerated * baseD30Ratio);
 
     const avgVarRevenue = rollingVariableRevenues.reduce((s, v) => s + v, 0) / rollingVariableRevenues.length;
     let projectedVarRevenue = round2(avgVarRevenue * (1 + growthRate));
     rollingVariableRevenues.push(projectedVarRevenue);
 
-    let varD0 = round2(projectedVarRevenue * 0.30);
-    let varD30 = round2(projectedVarRevenue * 0.70);
+    let varD0 = round2(projectedVarRevenue * baseD0Ratio);
+    let varD30 = round2(projectedVarRevenue * baseD30Ratio);
 
     const tuitionReceivedD0 = tuitionD0;
     const tuitionReceivedD30 = prevD30Tuition;
@@ -3219,16 +3259,14 @@ function calculateAndRenderProjection() {
     tuitionFees += tuitionReceivedD30 * 0.025; // Adjusted to 2.5% (Mercado Pago / Card Credit)
 
     activeJuneSlots.forEach(slot => {
-      if (slot.paymentType === 'D-0') {
-        const occurrences = getWeekdayOccurrencesInMonth(curYearStr, curMonthStr, slot.dayOfWeek);
-        const slotVal = round2(occurrences * slot.unitPrice * (1 + growthRate));
-        
-        const payments = allPaymentMethodsData.filter(p => p.customer_code === slot.customerCode);
-        const isDebit = payments.some(p => (p.pay_method || '').toLowerCase() === 'cartão débito');
-        
-        if (isDebit) {
-          tuitionFees += slotVal * 0.0099;
-        }
+      const occurrences = getWeekdayOccurrencesInMonth(curYearStr, curMonthStr, slot.dayOfWeek);
+      const slotVal = round2(occurrences * slot.unitPrice * (1 + growthRate));
+      
+      const payments = allPaymentMethodsData.filter(p => p.customer_code === slot.customerCode);
+      const isDebit = payments.some(p => (p.pay_method || '').toLowerCase() === 'cartão débito');
+      
+      if (isDebit) {
+        tuitionFees += (slotVal * baseD0Ratio) * 0.0099;
       }
     });
 
