@@ -1433,7 +1433,11 @@ function renderChartPaymethods(data) {
           callbacks: {
             label: context => {
               const val = context.raw || 0;
-              return ` ${context.label}: R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+              const dataset = context.dataset.data;
+              const total = dataset.reduce((sum, v) => sum + v, 0);
+              const percentage = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+              const formattedPercentage = String(percentage).replace('.', ',');
+              return ` ${context.label}: R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${formattedPercentage}%)`;
             }
           }
         }
