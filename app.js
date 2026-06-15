@@ -927,6 +927,80 @@ async function loadOperationalReports() {
       `select=customer_code&paid=eq.true&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&is_canceled=eq.false&tipo=neq.refund`
     );
 
+    // Fetch Mercado Pago payments
+    const mpParams = `select=payment_type_id,payment_method_id,transaction_amount&date_approved=gte.${monthStart}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
+    let mpData = [];
+    try {
+      mpData = await supabaseSelect('mp_pagamentos', mpParams);
+    } catch (err) {
+      debugError('Erro ao buscar dados do Mercado Pago', err);
+    }
+
+    // Process and break down "Pagamento online" in payData
+    const onlineItemIndex = payData.findIndex(d => d.pay_method === 'Pagamento online');
+    if (onlineItemIndex !== -1) {
+      const onlineTotal = parseFloat(payData[onlineItemIndex].valor_total) || 0;
+      payData.splice(onlineItemIndex, 1);
+
+      if (onlineTotal > 0) {
+        let sumPix = 0;
+        let sumCredit = 0;
+        let sumSaldo = 0;
+        let sumOther = 0;
+
+        mpData.forEach(p => {
+          const amt = parseFloat(p.transaction_amount) || 0;
+          const type = p.payment_type_id;
+          const method = p.payment_method_id;
+
+          if (type === 'bank_transfer' || method === 'pix') {
+            sumPix += amt;
+          } else if (type === 'credit_card') {
+            sumCredit += amt;
+          } else if (type === 'account_money') {
+            sumSaldo += amt;
+          } else {
+            sumOther += amt;
+          }
+        });
+
+        const mpTotal = sumPix + sumCredit + sumSaldo + sumOther;
+
+        if (mpTotal > 0) {
+          const scale = onlineTotal / mpTotal;
+          if (sumPix > 0) {
+            payData.push({
+              pay_method: 'Mercado Pago - Pix',
+              valor_total: (sumPix * scale).toFixed(2)
+            });
+          }
+          if (sumCredit > 0) {
+            payData.push({
+              pay_method: 'Mercado Pago - Cartão Crédito',
+              valor_total: (sumCredit * scale).toFixed(2)
+            });
+          }
+          if (sumSaldo > 0) {
+            payData.push({
+              pay_method: 'Mercado Pago - Saldo MP',
+              valor_total: (sumSaldo * scale).toFixed(2)
+            });
+          }
+          if (sumOther > 0) {
+            payData.push({
+              pay_method: 'Mercado Pago - Outro',
+              valor_total: (sumOther * scale).toFixed(2)
+            });
+          }
+        } else {
+          payData.push({
+            pay_method: 'Mercado Pago - Outro',
+            valor_total: onlineTotal.toFixed(2)
+          });
+        }
+      }
+    }
+
     // 2. Aggregate current month's KPIs
     let totalFaturamentoLiquido = 0;
     subData.forEach(item => {
@@ -1328,7 +1402,20 @@ function renderChartPaymethods(data) {
       labels: labels,
       datasets: [{
         data: values,
-        backgroundColor: ['#C05131', '#2a9d8f', '#e9c46a', '#f4a261', '#457b9d', '#9b5de5'],
+        backgroundColor: [
+          '#C05131', // Cartão Crédito (Saibro)
+          '#2a9d8f', // Pix (Teal)
+          '#e9c46a', // tarjeta (Yellow)
+          '#f4a261', // Cartão Débito (Warm Orange)
+          '#457b9d', // efectivo (Muted Blue)
+          '#9b5de5', // transferencia (Purple)
+          '#3a86c8', // Mercado Pago - Pix (Bright Blue)
+          '#e76f51', // Mercado Pago - Cartão Crédito (Coral)
+          '#06d6a0', // Mercado Pago - Saldo MP (Mint Green)
+          '#8d99ae', // Mercado Pago - Outro (Slate Gray)
+          '#ff006e', // Reserva 1 (Magenta)
+          '#f15bb5'  // Reserva 2 (Pink)
+        ],
         borderWidth: 1,
         borderColor: '#1c1c1c'
       }]
