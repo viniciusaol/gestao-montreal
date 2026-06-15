@@ -3197,7 +3197,7 @@ function calculateAndRenderProjection() {
     const commissionPaid = round2(tuitionGenerated * commissionRate);
 
     let tuitionFees = 0.0;
-    tuitionFees += tuitionReceivedD30 * 0.0193;
+    tuitionFees += tuitionReceivedD30 * 0.025; // Adjusted to 2.5% (Mercado Pago / Card Credit)
 
     activeJuneSlots.forEach(slot => {
       if (slot.paymentType === 'D-0') {
@@ -3213,7 +3213,7 @@ function calculateAndRenderProjection() {
       }
     });
 
-    const variableFees = (variableReceivedD30 * 0.0193);
+    const variableFees = (variableReceivedD30 * 0.025); // Adjusted to 2.5%
 
     const totalFees = round2(tuitionFees + variableFees);
 
