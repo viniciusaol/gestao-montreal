@@ -1692,13 +1692,13 @@ async function loadFinancialReports() {
 
     const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${monthEnd}`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
-    const salesParams = `select=amount,pay_date&paid=eq.true&is_canceled=eq.false&tipo=neq.refund&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
+    const salesParams = `select=valor_faturamento,pay_date&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
     const commParams = `select=booking_value,booking_date,is_paid&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
 
     const [allProcfyData, allInterData, allSalesData, allCommData] = await Promise.all([
       supabaseSelect('procfy_lancamentos', procfyParams),
       supabaseSelect('inter_movimentos_processados', interParams),
-      supabaseSelect('mt_faturamento_vendas', salesParams),
+      supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
       supabaseSelect('vw_mt_comissoes_detalhadas', commParams)
     ]);
 
@@ -1944,7 +1944,7 @@ async function loadFinancialReports() {
     allSalesData.forEach(sale => {
       const monthKey = sale.pay_date ? sale.pay_date.substring(0, 7) : '';
       if (!dreData[monthKey]) return;
-      dreData[monthKey].receitaBruta += parseFloat(sale.amount) || 0.0;
+      dreData[monthKey].receitaBruta += parseFloat(sale.valor_faturamento) || 0.0;
     });
 
     // Populate DRE Commissions
