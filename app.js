@@ -1833,18 +1833,24 @@ async function loadFinancialReports() {
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
     const salesParams = `select=valor_faturamento,pay_date&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
     const commParams = `select=booking_value,booking_date,is_paid&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
+    const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
+    const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
-    const [allProcfyData, allInterData, allSalesData, allCommData] = await Promise.all([
+    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData] = await Promise.all([
       supabaseSelect('procfy_lancamentos', procfyParams),
       supabaseSelect('inter_movimentos_processados', interParams),
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
-      supabaseSelect('vw_mt_comissoes_detalhadas', commParams)
+      supabaseSelect('vw_mt_comissoes_detalhadas', commParams),
+      supabaseSelect('mt_faturamento_pagamentos', payParams),
+      supabaseSelect('mp_pagamentos', mpParams)
     ]);
 
     debugLog(`Lançamentos Procfy: ${allProcfyData.length} linhas.`);
     debugLog(`Movimentos Inter: ${allInterData.length} linhas.`);
     debugLog(`Lançamentos Vendas: ${allSalesData.length} linhas.`);
     debugLog(`Agendamentos Comissões: ${allCommData.length} linhas.`);
+    debugLog(`Lançamentos Pagamentos (MatchPoint): ${allPaymentMethodsData.length} linhas.`);
+    debugLog(`Lançamentos Mercado Pago: ${allMpPaymentsData.length} linhas.`);
 
     // 1. Filter current month data locally
     const currentMonthKey = `${year}-${month}`;
@@ -2068,6 +2074,7 @@ async function loadFinancialReports() {
         receitaLiquida: 0.0,
         comissao: 0.0,
         energia: 0.0,
+        taxasProcessamento: 0.0,
         lucroBruto: 0.0,
         despesasOperacionais: 0.0,
         despesasOperacionaisCategories: {},
@@ -2118,12 +2125,41 @@ async function loadFinancialReports() {
       }
     });
 
+    // Populate DRE processing fees
+    allMpPaymentsData.forEach(mp => {
+      const dateStr = mp.date_approved;
+      if (!dateStr) return;
+      const monthKey = dateStr.substring(0, 7);
+      if (!dreData[monthKey]) return;
+      dreData[monthKey].taxasProcessamento += parseFloat(mp.fee_amount) || 0.0;
+    });
+
+    allPaymentMethodsData.forEach(pay => {
+      const payMethod = pay.pay_method;
+      if (payMethod === 'Pagamento online') return;
+
+      const dateStr = pay.payment_date;
+      if (!dateStr) return;
+      const monthKey = dateStr.substring(0, 7);
+      if (!dreData[monthKey]) return;
+
+      const amt = parseFloat(pay.amount) || 0.0;
+      let rate = 0.0;
+      if (payMethod === 'tarjeta' || payMethod === 'Cartão Crédito') {
+        rate = 0.0193;
+      } else if (payMethod === 'Cartão Débito') {
+        rate = 0.0099;
+      }
+      dreData[monthKey].taxasProcessamento += amt * rate;
+    });
+
     // Round inputs and solve intermediate totals
     historicMonths.forEach(({ key }) => {
       const d = dreData[key];
       d.receitaBruta = round2(d.receitaBruta);
       d.comissao = round2(d.comissao);
       d.energia = round2(d.energia);
+      d.taxasProcessamento = round2(d.taxasProcessamento);
       d.despesasOperacionais = round2(d.despesasOperacionais);
 
       // If no activity (revenue is 0), keep everything zeroed
@@ -2132,6 +2168,7 @@ async function loadFinancialReports() {
         d.receitaLiquida = 0.0;
         d.comissao = 0.0;
         d.energia = 0.0;
+        d.taxasProcessamento = 0.0;
         d.lucroBruto = 0.0;
         d.despesasOperacionais = 0.0;
         d.despesasOperacionaisCategories = {};
@@ -2178,7 +2215,7 @@ async function loadFinancialReports() {
       d.impostos = round2(totalSimples * 0.96);
 
       d.receitaLiquida = round2(d.receitaBruta - d.impostos);
-      d.lucroBruto = round2(d.receitaLiquida - d.comissao - d.energia);
+      d.lucroBruto = round2(d.receitaLiquida - d.comissao - d.energia - d.taxasProcessamento);
       d.ebitda = round2(d.lucroBruto - d.despesasOperacionais);
       
       // Depreciation (Fixed 7666.67 per active month)
@@ -2249,6 +2286,7 @@ async function loadFinancialReports() {
     dreBodyHtml += renderDreRowHtml('Receita Líquida', ['dre-result-row'], (d) => d.receitaLiquida);
     dreBodyHtml += renderDreRowHtml('Comissão Professores', [], (d) => -d.comissao, true);
     dreBodyHtml += renderDreRowHtml('Energia (Elétrica)', [], (d) => -d.energia, true);
+    dreBodyHtml += renderDreRowHtml('Taxas de processamento', [], (d) => -d.taxasProcessamento, true);
     dreBodyHtml += renderDreRowHtml('Lucro Bruto', ['dre-result-row'], (d) => d.lucroBruto);
     dreBodyHtml += renderDreCollapsibleHeaderRowHtml('Despesas Operacionais', 'dre-op-child-row', (d) => -d.despesasOperacionais);
     
