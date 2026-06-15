@@ -2930,16 +2930,31 @@ function calculateAndRenderProjection() {
   const commissionRate = elCommission ? parseFloat(elCommission.value) / 100 : 0.47;
   const safetyRate = elSafety ? parseFloat(elSafety.value) / 100 : 0.0;
 
-  const targetMonths = [
-    { key: '2026-07', label: 'Julho/2026', monthStart: '2026-07-01', monthEnd: '2026-07-31' },
-    { key: '2026-08', label: 'Agosto/2026', monthStart: '2026-08-01', monthEnd: '2026-08-31' },
-    { key: '2026-09', label: 'Setembro/2026', monthStart: '2026-09-01', monthEnd: '2026-09-30' }
-  ];
+  const monthsFullBR = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const targetMonths = [];
+  const currentMonthInt = parseInt(month, 10);
+  const currentYearInt = parseInt(year, 10);
+
+  for (let i = 1; i <= 3; i++) {
+    let m = currentMonthInt + i;
+    let y = currentYearInt;
+    if (m > 12) {
+      m -= 12;
+      y += 1;
+    }
+    const mStr = String(m).padStart(2, '0');
+    const label = `${monthsFullBR[m - 1]}/${y}`;
+    const key = `${y}-${mStr}`;
+    const monthStart = `${y}-${mStr}-01`;
+    const monthEnd = getEndOfMonth(monthStart);
+    targetMonths.push({ key, label, monthStart, monthEnd });
+  }
 
   const round2 = val => Math.round(val * 100) / 100;
   
-  // Filter June bookings
-  const juneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith('2026-06'));
+  const baseMonthPrefix = `${year}-${month}`;
+  // Filter base month bookings
+  const juneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix));
   
   // Identify payment methods for each student customer_code from allPaymentMethodsData
   const studentPaymentTypes = {}; 
@@ -2964,7 +2979,7 @@ function calculateAndRenderProjection() {
     studentPaymentTypes[cc] = counts.d30Count >= counts.d0Count ? 'D-30' : 'D-0';
   });
 
-  // Calculate student slot values in June
+  // Calculate student slot values in base month
   const juneUnpaidByStudent = {};
   
   juneBookings.forEach(b => {
@@ -3008,7 +3023,7 @@ function calculateAndRenderProjection() {
       
       let slotProRataValue = 0;
       if (pricing.isMonthly) {
-        const nTotal = getWeekdayOccurrencesInMonth('2026', '06', slot.dayOfWeek);
+        const nTotal = getWeekdayOccurrencesInMonth(year, month, slot.dayOfWeek);
         slotProRataValue = (nBookings / nTotal) * pricing.price;
       } else {
         slotProRataValue = nBookings * pricing.price;
@@ -3075,7 +3090,7 @@ function calculateAndRenderProjection() {
     }
   });
 
-  const junePaidFinal = (monthlyData['2026-06'] && monthlyData['2026-06'].final) || 7280.98;
+  const junePaidFinal = (monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].final) || 7280.98;
 
   let juneRemainingUnpaidInflowsD0 = 0.0;
   let juneRemainingUnpaidInflowsD30 = 0.0; 
@@ -3096,7 +3111,7 @@ function calculateAndRenderProjection() {
   
   allProcfyData.forEach(tx => {
     const dateStr = tx.due_date;
-    if (!dateStr || !dateStr.startsWith('2026-06')) return;
+    if (!dateStr || !dateStr.startsWith(baseMonthPrefix)) return;
     if (tx.paid) return;
     
     const amount = parseFloat(tx.amount) || 0.0;
@@ -3109,14 +3124,14 @@ function calculateAndRenderProjection() {
 
   const julyOpeningBalance = junePaidFinal + juneRemainingUnpaidInflowsD0 + juneRemainingUnpaidInflowsProcfy - juneRemainingUnpaidOutflows;
   
-  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith('2026-06'))
+  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix))
                                      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
   const junePaidTuition = juneBookings.filter(b => b.is_paid)
                                       .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
   const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
 
-  const juneFixedExpensesBaseline = (dreData['2026-06'] ? dreData['2026-06'].energia : 0.0) +
-                                    (dreData['2026-06'] ? dreData['2026-06'].despesasOperacionais : 0.0);
+  const juneFixedExpensesBaseline = (dreData[baseMonthPrefix] ? dreData[baseMonthPrefix].energia : 0.0) +
+                                    (dreData[baseMonthPrefix] ? dreData[baseMonthPrefix].despesasOperacionais : 0.0);
 
   const projectionResults = {};
   
