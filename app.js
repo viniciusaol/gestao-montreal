@@ -205,6 +205,55 @@ payoutDate.value = new Date().toISOString().split('T')[0];
   selectMonth.value = currentMonth;
 })();
 
+async function populateProfessors() {
+  try {
+    debugLog('Carregando lista de professores dinamicamente...');
+    const prevSelected = selectProf.value;
+
+    const data = await supabaseSelect('vw_mt_comissoes_detalhadas', 'select=professor');
+    const uniqueProfs = Array.from(new Set(data.map(d => d.professor).filter(Boolean))).sort();
+
+    if (uniqueProfs.length === 0) {
+      throw new Error('Nenhum professor retornado pelo banco.');
+    }
+
+    selectProf.innerHTML = '';
+
+    uniqueProfs.forEach(prof => {
+      if (prof !== 'Sem professor') {
+        const opt = document.createElement('option');
+        opt.value = prof;
+        opt.textContent = prof;
+        selectProf.appendChild(opt);
+      }
+    });
+
+    if (uniqueProfs.includes('Sem professor')) {
+      const opt = document.createElement('option');
+      opt.value = 'Sem professor';
+      opt.textContent = 'Sem Professor';
+      selectProf.appendChild(opt);
+    }
+
+    if (prevSelected && uniqueProfs.includes(prevSelected)) {
+      selectProf.value = prevSelected;
+    } else {
+      selectProf.selectedIndex = 0;
+    }
+
+    debugLog(`Dropdown de professores populado com: ${uniqueProfs.join(', ')}. Selecionado: ${selectProf.value}`);
+  } catch (err) {
+    debugError('Erro ao carregar lista de professores do Supabase', err);
+    selectProf.innerHTML = `
+      <option value="Rodrigo Assunção">Rodrigo Assunção</option>
+      <option value="João Assunção">João Assunção</option>
+      <option value="Leandro Bonete">Leandro Bonete</option>
+      <option value="Tatiana Araújo">Tatiana Araújo</option>
+      <option value="Sem professor">Sem Professor</option>
+    `;
+  }
+}
+
 // ---- Utilities ----
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -778,6 +827,9 @@ if (formLogin) {
       // Clear form
       loginEmail.value = '';
       loginPassword.value = '';
+
+      // Populate professors dynamically
+      await populateProfessors();
 
       // Load data
       await loadDashboard();
@@ -2605,11 +2657,18 @@ if (btnToggleTransactions && transactionsCardContainer && transactionsArrow) {
 }
 
 // ---- Initial Load ----
-debugLog('App JS inicializado. Usando REST API direta com autenticação.');
+async function initApp() {
+  debugLog('App JS inicializado. Usando REST API direta com autenticação.');
+  if (checkSession()) {
+    await populateProfessors();
+  }
+  await handleFilterChange();
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', handleFilterChange);
+  document.addEventListener('DOMContentLoaded', initApp);
 } else {
-  handleFilterChange();
+  initApp();
 }
 
 // ---- Mobile Menu Logic ----
