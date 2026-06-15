@@ -183,6 +183,7 @@ let metricsPaid = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period1Pa
 let metricsPending = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period1Pago: 0, period1Comissao: 0, period2Pago: 0, period2Comissao: 0 };
 let currentClassesData = [];
 let currentPayoutsData = [];
+let cachedFinancialData = null;
 
 // Set default date
 payoutDate.value = new Date().toISOString().split('T')[0];
@@ -1829,10 +1830,16 @@ async function loadFinancialReports() {
       return d.toISOString().split('T')[0].substring(0, 8) + '01';
     })();
 
-    const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${monthEnd}`;
+    const projectionEnd = (() => {
+      const d = new Date(monthEnd + 'T00:00:00');
+      d.setMonth(d.getMonth() + 3);
+      return getEndOfMonth(d.toISOString().split('T')[0]);
+    })();
+
+    const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${projectionEnd}`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
     const salesParams = `select=valor_faturamento,pay_date&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
-    const commParams = `select=booking_value,booking_date,is_paid&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
+    const commParams = `select=booking_value,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
@@ -2343,6 +2350,26 @@ async function loadFinancialReports() {
     // 8. Update ROI Analysis
     updateRoiAnalysis(dreData, currentMonthKey, historicMonths);
 
+    // Save to global cache for projection
+    cachedFinancialData = {
+      allProcfyData,
+      allInterData,
+      allSalesData,
+      allCommData,
+      allPaymentMethodsData,
+      allMpPaymentsData,
+      monthStart,
+      monthEnd,
+      year,
+      month,
+      historicMonths,
+      monthlyData,
+      dreData
+    };
+
+    // Calculate and render projection
+    calculateAndRenderProjection();
+
   } catch (err) {
     debugError('Erro ao carregar relatórios financeiros', err);
   }
@@ -2683,27 +2710,32 @@ if (tabPaid && tabPending) {
   });
 }
 
-// ---- Financial Sub-Tab Event Listeners (DFC vs DRE vs ROI) ----
+// ---- Financial Sub-Tab Event Listeners (DFC vs DRE vs ROI vs Projection) ----
 const btnShowDfc = document.getElementById('btn-show-dfc');
 const btnShowDre = document.getElementById('btn-show-dre');
 const btnShowRoi = document.getElementById('btn-show-roi');
+const btnShowProjection = document.getElementById('btn-show-projection');
 const cardDfc = document.getElementById('fin-dfc-card');
 const cardDre = document.getElementById('fin-dre-card');
 const cardRoi = document.getElementById('fin-roi-card');
+const cardProjection = document.getElementById('fin-projection-card');
 
-if (btnShowDfc && btnShowDre && btnShowRoi && cardDfc && cardDre && cardRoi) {
+if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && cardDfc && cardDre && cardRoi && cardProjection) {
   btnShowDfc.addEventListener('click', () => {
     btnShowDfc.classList.add('active');
     btnShowDre.classList.remove('active');
     btnShowRoi.classList.remove('active');
+    btnShowProjection.classList.remove('active');
     cardDfc.style.display = 'block';
     cardDre.style.display = 'none';
     cardRoi.style.display = 'none';
+    cardProjection.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-dfc');
       sectionFinancial.classList.remove('show-dre');
       sectionFinancial.classList.remove('show-roi');
+      sectionFinancial.classList.remove('show-projection');
     }
   });
 
@@ -2711,14 +2743,17 @@ if (btnShowDfc && btnShowDre && btnShowRoi && cardDfc && cardDre && cardRoi) {
     btnShowDre.classList.add('active');
     btnShowDfc.classList.remove('active');
     btnShowRoi.classList.remove('active');
+    btnShowProjection.classList.remove('active');
     cardDfc.style.display = 'none';
     cardDre.style.display = 'block';
     cardRoi.style.display = 'none';
+    cardProjection.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-dre');
       sectionFinancial.classList.remove('show-dfc');
       sectionFinancial.classList.remove('show-roi');
+      sectionFinancial.classList.remove('show-projection');
     }
   });
 
@@ -2726,18 +2761,42 @@ if (btnShowDfc && btnShowDre && btnShowRoi && cardDfc && cardDre && cardRoi) {
     btnShowRoi.classList.add('active');
     btnShowDfc.classList.remove('active');
     btnShowDre.classList.remove('active');
+    btnShowProjection.classList.remove('active');
     cardDfc.style.display = 'none';
     cardDre.style.display = 'none';
     cardRoi.style.display = 'block';
+    cardProjection.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-roi');
       sectionFinancial.classList.remove('show-dfc');
       sectionFinancial.classList.remove('show-dre');
+      sectionFinancial.classList.remove('show-projection');
     }
     
     // Recalculate and render ROI data
     calculateAndRenderRoi();
+  });
+
+  btnShowProjection.addEventListener('click', () => {
+    btnShowProjection.classList.add('active');
+    btnShowDfc.classList.remove('active');
+    btnShowDre.classList.remove('active');
+    btnShowRoi.classList.remove('active');
+    cardDfc.style.display = 'none';
+    cardDre.style.display = 'none';
+    cardRoi.style.display = 'none';
+    cardProjection.style.display = 'block';
+
+    if (sectionFinancial) {
+      sectionFinancial.classList.add('show-projection');
+      sectionFinancial.classList.remove('show-dfc');
+      sectionFinancial.classList.remove('show-dre');
+      sectionFinancial.classList.remove('show-roi');
+    }
+    
+    // Recalculate and render Projection data
+    calculateAndRenderProjection();
   });
 
   // Attach ROI interactive listeners
@@ -2745,6 +2804,23 @@ if (btnShowDfc && btnShowDre && btnShowRoi && cardDfc && cardDre && cardRoi) {
   const roiMetric = document.getElementById('roi-select-metric');
   if (roiInvestment) roiInvestment.addEventListener('input', calculateAndRenderRoi);
   if (roiMetric) roiMetric.addEventListener('change', calculateAndRenderRoi);
+
+  // Attach Projection interactive listeners
+  const projGrowth = document.getElementById('proj-input-growth');
+  const projCommission = document.getElementById('proj-input-commission');
+  const projSafety = document.getElementById('proj-input-safety');
+  if (projGrowth) {
+    projGrowth.addEventListener('input', calculateAndRenderProjection);
+    projGrowth.addEventListener('change', calculateAndRenderProjection);
+  }
+  if (projCommission) {
+    projCommission.addEventListener('input', calculateAndRenderProjection);
+    projCommission.addEventListener('change', calculateAndRenderProjection);
+  }
+  if (projSafety) {
+    projSafety.addEventListener('input', calculateAndRenderProjection);
+    projSafety.addEventListener('change', calculateAndRenderProjection);
+  }
 }
 
 // ---- Combined Filter Change Handler ----
@@ -2822,5 +2898,396 @@ if (navControls) {
       navControls.classList.remove('active');
     });
   });
+}
+
+// ---- Cash Flow Projection Calculations and Rendering ----
+function calculateAndRenderProjection() {
+  if (!cachedFinancialData) {
+    debugLog("Sem dados financeiros cacheados para a projeção.");
+    return;
+  }
+
+  const {
+    allProcfyData,
+    allInterData,
+    allSalesData,
+    allCommData,
+    allPaymentMethodsData,
+    allMpPaymentsData,
+    monthStart,
+    monthEnd,
+    year,
+    month,
+    monthlyData,
+    dreData
+  } = cachedFinancialData;
+
+  const elGrowth = document.getElementById('proj-input-growth');
+  const elCommission = document.getElementById('proj-input-commission');
+  const elSafety = document.getElementById('proj-input-safety');
+
+  const growthRate = elGrowth ? parseFloat(elGrowth.value) / 100 : 0.0;
+  const commissionRate = elCommission ? parseFloat(elCommission.value) / 100 : 0.47;
+  const safetyRate = elSafety ? parseFloat(elSafety.value) / 100 : 0.0;
+
+  const targetMonths = [
+    { key: '2026-07', label: 'Julho/2026', monthStart: '2026-07-01', monthEnd: '2026-07-31' },
+    { key: '2026-08', label: 'Agosto/2026', monthStart: '2026-08-01', monthEnd: '2026-08-31' },
+    { key: '2026-09', label: 'Setembro/2026', monthStart: '2026-09-01', monthEnd: '2026-09-30' }
+  ];
+
+  const round2 = val => Math.round(val * 100) / 100;
+  
+  // Filter June bookings
+  const juneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith('2026-06'));
+  
+  // Identify payment methods for each student customer_code from allPaymentMethodsData
+  const studentPaymentTypes = {}; 
+  const studentMethods = {}; 
+  
+  allPaymentMethodsData.forEach(p => {
+    if (!p.customer_code) return;
+    const method = (p.pay_method || '').toLowerCase();
+    const isD30 = method.includes('credito') || method.includes('crédito') || method === 'tarjeta';
+    if (!studentMethods[p.customer_code]) {
+      studentMethods[p.customer_code] = { d0Count: 0, d30Count: 0 };
+    }
+    if (isD30) {
+      studentMethods[p.customer_code].d30Count++;
+    } else {
+      studentMethods[p.customer_code].d0Count++;
+    }
+  });
+  
+  Object.keys(studentMethods).forEach(cc => {
+    const counts = studentMethods[cc];
+    studentPaymentTypes[cc] = counts.d30Count >= counts.d0Count ? 'D-30' : 'D-0';
+  });
+
+  // Calculate student slot values in June
+  const juneUnpaidByStudent = {};
+  
+  juneBookings.forEach(b => {
+    const studentName = b.participant_name || 'Desconhecido';
+    if (!b.is_paid) {
+      if (!juneUnpaidByStudent[studentName]) {
+        juneUnpaidByStudent[studentName] = [];
+      }
+      juneUnpaidByStudent[studentName].push(b);
+    }
+  });
+  
+  const juneUnpaidEstimatedValues = {};
+  
+  Object.keys(juneUnpaidByStudent).forEach(studentName => {
+    const bookings = juneUnpaidByStudent[studentName];
+    const slots = {};
+    bookings.forEach(b => {
+      const dateObj = new Date(b.booking_date + 'T00:00:00');
+      const dayOfWeek = dateObj.getDay();
+      const startTime = b.start_time || '00:00';
+      const pricingInfo = getBasePriceForBooking(b);
+      const slotKey = `${dayOfWeek}_${startTime}_${pricingInfo.category}`;
+      if (!slots[slotKey]) {
+        slots[slotKey] = { dayOfWeek, startTime, pricingInfo, bookings: [] };
+      }
+      slots[slotKey].bookings.push(b);
+    });
+    
+    const uniqueSlotsList = Object.values(slots);
+    const frequency = uniqueSlotsList.length;
+    let freqDiscountRate = 0;
+    if (frequency === 2) freqDiscountRate = 0.05;
+    else if (frequency >= 3) freqDiscountRate = 0.07;
+    
+    uniqueSlotsList.forEach(slot => {
+      const pricing = slot.pricingInfo;
+      const nBookings = slot.bookings.length;
+      const isOffPeak = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5 && 
+                        (parseInt(slot.startTime.split(':')[0], 10) >= 10 && parseInt(slot.startTime.split(':')[0], 10) <= 15);
+      
+      let slotProRataValue = 0;
+      if (pricing.isMonthly) {
+        const nTotal = getWeekdayOccurrencesInMonth('2026', '06', slot.dayOfWeek);
+        slotProRataValue = (nBookings / nTotal) * pricing.price;
+      } else {
+        slotProRataValue = nBookings * pricing.price;
+      }
+      
+      let slotFinalValue = 0;
+      if (isOffPeak) {
+        slotFinalValue = slotProRataValue * 0.88;
+      } else {
+        slotFinalValue = slotProRataValue * (1 - freqDiscountRate);
+      }
+      
+      const perBookingValue = slotFinalValue / nBookings;
+      slot.bookings.forEach(b => {
+        juneUnpaidEstimatedValues[b.booking_id] = perBookingValue;
+      });
+    });
+  });
+  
+  const activeJuneSlots = [];
+  const slotGroups = {};
+  
+  juneBookings.forEach(b => {
+    const studentName = b.participant_name || 'Desconhecido';
+    const dateObj = new Date(b.booking_date + 'T00:00:00');
+    const dayOfWeek = dateObj.getDay();
+    const startTime = b.start_time || '00:00';
+    const slotKey = `${studentName}_${dayOfWeek}_${startTime}`;
+    
+    let val = 0;
+    if (b.is_paid) {
+      val = parseFloat(b.booking_value) || 0.0;
+    } else {
+      val = juneUnpaidEstimatedValues[b.booking_id] || 0.0;
+    }
+    
+    if (!slotGroups[slotKey]) {
+      slotGroups[slotKey] = {
+        studentName,
+        customerCode: b.customer_code,
+        dayOfWeek,
+        startTime,
+        values: [],
+        paymentType: studentPaymentTypes[b.customer_code] || 'D-30',
+        isPaid: b.is_paid
+      };
+    }
+    if (val > 0) {
+      slotGroups[slotKey].values.push(val);
+    }
+  });
+  
+  Object.values(slotGroups).forEach(g => {
+    const avgVal = g.values.length > 0 ? g.values.reduce((s, v) => s + v, 0) / g.values.length : 0.0;
+    if (avgVal > 0) {
+      activeJuneSlots.push({
+        studentName: g.studentName,
+        customerCode: g.customerCode,
+        dayOfWeek: g.dayOfWeek,
+        startTime: g.startTime,
+        unitPrice: avgVal,
+        paymentType: g.paymentType
+      });
+    }
+  });
+
+  const junePaidFinal = (monthlyData['2026-06'] && monthlyData['2026-06'].final) || 7280.98;
+
+  let juneRemainingUnpaidInflowsD0 = 0.0;
+  let juneRemainingUnpaidInflowsD30 = 0.0; 
+  
+  juneBookings.forEach(b => {
+    if (b.is_paid) return;
+    let val = juneUnpaidEstimatedValues[b.booking_id] || 0.0;
+    const paymentType = studentPaymentTypes[b.customer_code] || 'D-30';
+    if (paymentType === 'D-0') {
+      juneRemainingUnpaidInflowsD0 += val;
+    } else {
+      juneRemainingUnpaidInflowsD30 += val;
+    }
+  });
+
+  let juneRemainingUnpaidOutflows = 0.0;
+  let juneRemainingUnpaidInflowsProcfy = 0.0;
+  
+  allProcfyData.forEach(tx => {
+    const dateStr = tx.due_date;
+    if (!dateStr || !dateStr.startsWith('2026-06')) return;
+    if (tx.paid) return;
+    
+    const amount = parseFloat(tx.amount) || 0.0;
+    if (tx.transaction_type === 'revenue') {
+      juneRemainingUnpaidInflowsProcfy += amount;
+    } else {
+      juneRemainingUnpaidOutflows += amount;
+    }
+  });
+
+  const julyOpeningBalance = junePaidFinal + juneRemainingUnpaidInflowsD0 + juneRemainingUnpaidInflowsProcfy - juneRemainingUnpaidOutflows;
+  
+  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith('2026-06'))
+                                     .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
+  const junePaidTuition = juneBookings.filter(b => b.is_paid)
+                                      .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
+  const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
+
+  const juneFixedExpensesBaseline = (dreData['2026-06'] ? dreData['2026-06'].energia : 0.0) +
+                                    (dreData['2026-06'] ? dreData['2026-06'].despesasOperacionais : 0.0);
+
+  const projectionResults = {};
+  
+  const rollingVariableRevenues = [juneVariableRevenueBaseline];
+  const rollingFixedExpenses = [juneFixedExpensesBaseline];
+
+  const juneD30TuitionTotal = juneBookings.map(b => {
+    const paymentType = studentPaymentTypes[b.customer_code] || 'D-30';
+    if (paymentType === 'D-30') {
+      return b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0);
+    }
+    return 0.0;
+  }).reduce((sum, val) => sum + val, 0.0);
+
+  let prevD30Tuition = juneD30TuitionTotal;
+  let prevD30Variable = juneVariableRevenueBaseline * 0.70; 
+
+  let prevMonthFinalBalance = julyOpeningBalance;
+
+  targetMonths.forEach((m, idx) => {
+    const mKey = m.key;
+    const curYearStr = mKey.substring(0, 4);
+    const curMonthStr = mKey.substring(5, 7);
+
+    let tuitionGenerated = 0.0;
+    let tuitionD0 = 0.0;
+    let tuitionD30 = 0.0;
+
+    activeJuneSlots.forEach(slot => {
+      const occurrences = getWeekdayOccurrencesInMonth(curYearStr, curMonthStr, slot.dayOfWeek);
+      const slotVal = occurrences * slot.unitPrice;
+      tuitionGenerated += slotVal;
+      if (slot.paymentType === 'D-0') {
+        tuitionD0 += slotVal;
+      } else {
+        tuitionD30 += slotVal;
+      }
+    });
+
+    tuitionGenerated = round2(tuitionGenerated * (1 + growthRate));
+    tuitionD0 = round2(tuitionD0 * (1 + growthRate));
+    tuitionD30 = round2(tuitionD30 * (1 + growthRate));
+
+    const avgVarRevenue = rollingVariableRevenues.reduce((s, v) => s + v, 0) / rollingVariableRevenues.length;
+    let projectedVarRevenue = round2(avgVarRevenue * (1 + growthRate));
+    rollingVariableRevenues.push(projectedVarRevenue);
+
+    let varD0 = round2(projectedVarRevenue * 0.30);
+    let varD30 = round2(projectedVarRevenue * 0.70);
+
+    const tuitionReceivedD0 = tuitionD0;
+    const tuitionReceivedD30 = prevD30Tuition;
+
+    const variableReceivedD0 = varD0;
+    const variableReceivedD30 = prevD30Variable;
+
+    const totalInflow = round2(tuitionReceivedD0 + tuitionReceivedD30 + variableReceivedD0 + variableReceivedD30);
+
+    prevD30Tuition = tuitionD30;
+    prevD30Variable = varD30;
+
+    const procfyScheduled = allProcfyData.filter(tx => {
+      const dateStr = tx.due_date;
+      return dateStr && dateStr.startsWith(mKey) && !tx.paid && tx.transaction_type !== 'revenue';
+    }).reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+
+    const procfyScheduledRounded = round2(procfyScheduled);
+
+    const avgFixedExpenses = rollingFixedExpenses.reduce((s, v) => s + v, 0) / rollingFixedExpenses.length;
+    
+    const baseProvision = Math.max(0.0, avgFixedExpenses - procfyScheduledRounded);
+    const safetyProvision = (procfyScheduledRounded + baseProvision) * safetyRate;
+    const totalFixedProvision = round2(baseProvision + safetyProvision);
+
+    const totalMonthFixedExpenses = procfyScheduledRounded + totalFixedProvision;
+    rollingFixedExpenses.push(totalMonthFixedExpenses);
+
+    const commissionPaid = round2(tuitionGenerated * commissionRate);
+
+    let tuitionFees = 0.0;
+    tuitionFees += tuitionReceivedD30 * 0.0193;
+
+    activeJuneSlots.forEach(slot => {
+      if (slot.paymentType === 'D-0') {
+        const occurrences = getWeekdayOccurrencesInMonth(curYearStr, curMonthStr, slot.dayOfWeek);
+        const slotVal = round2(occurrences * slot.unitPrice * (1 + growthRate));
+        
+        const payments = allPaymentMethodsData.filter(p => p.customer_code === slot.customerCode);
+        const isDebit = payments.some(p => (p.pay_method || '').toLowerCase() === 'cartão débito');
+        
+        if (isDebit) {
+          tuitionFees += slotVal * 0.0099;
+        }
+      }
+    });
+
+    const variableFees = (variableReceivedD30 * 0.0193);
+
+    const totalFees = round2(tuitionFees + variableFees);
+
+    const totalOutflow = round2(procfyScheduledRounded + totalFixedProvision + commissionPaid + totalFees);
+
+    const netFlow = round2(totalInflow - totalOutflow);
+    const finalBalance = round2(prevMonthFinalBalance + netFlow);
+
+    projectionResults[mKey] = {
+      initialBalance: prevMonthFinalBalance,
+      tuitionReceivedD0,
+      tuitionReceivedD30,
+      variableReceivedD0,
+      variableReceivedD30,
+      totalInflow,
+      procfyScheduled: procfyScheduledRounded,
+      fixedProvision: totalFixedProvision,
+      commissionPaid,
+      processingFees: totalFees,
+      totalOutflow,
+      netFlow,
+      finalBalance
+    };
+
+    prevMonthFinalBalance = finalBalance;
+  });
+
+  const headerRow = document.getElementById('fin-projection-header-row');
+  if (headerRow) {
+    headerRow.innerHTML = `<th>Categoria / Conta</th>` + targetMonths.map(m => `<th class="text-right">${m.label} (Projetado)</th>`).join('');
+  }
+
+  function makeProjRowHtml(title, rowClasses, dataGetter, isNegativeRed = false, isPositiveGreen = false) {
+    const cells = targetMonths.map(m => {
+      const val = dataGetter(projectionResults[m.key]);
+      let valClass = '';
+      if (isNegativeRed && val < 0) valClass = 'text-outflow';
+      else if (isPositiveGreen && val > 0) valClass = 'text-inflow';
+      
+      const formatted = formatCurrency(Math.abs(val));
+      const signedFormatted = val < 0 ? `-${formatted}` : formatted;
+      
+      return `<td class="text-right ${valClass}">${signedFormatted}</td>`;
+    }).join('');
+    
+    const classAttr = rowClasses && rowClasses.length ? `class="${rowClasses.join(' ')}"` : '';
+    return `<tr ${classAttr}><td>${title}</td>${cells}</tr>`;
+  }
+
+  let html = '';
+  html += makeProjRowHtml('Saldo Inicial (Caixa)', ['dfc-balance-row'], r => r.initialBalance);
+  
+  html += `<tr class="flow-header-row collapsed"><td><span class="arrow-indicator">▼</span>(+) Entradas de Caixa</td>` + 
+          targetMonths.map(m => `<td class="text-right text-inflow">${formatCurrency(projectionResults[m.key].totalInflow)}</td>`).join('') + `</tr>`;
+  
+  html += makeProjRowHtml('Mensalidades (Recebimento D-0)', ['fco-child-row'], r => r.tuitionReceivedD0);
+  html += makeProjRowHtml('Mensalidades (Recebimento D-30)', ['fco-child-row'], r => r.tuitionReceivedD30);
+  html += makeProjRowHtml('Locações e Outros (Recebimento D-0)', ['fco-child-row'], r => r.variableReceivedD0);
+  html += makeProjRowHtml('Locações e Outros (Recebimento D-30)', ['fco-child-row'], r => r.variableReceivedD30);
+
+  html += `<tr class="flow-header-row collapsed"><td><span class="arrow-indicator">▼</span>(-) Saídas de Caixa</td>` + 
+          targetMonths.map(m => `<td class="text-right text-outflow">-${formatCurrency(projectionResults[m.key].totalOutflow)}</td>`).join('') + `</tr>`;
+  
+  html += makeProjRowHtml('Despesas Agendadas (Procfy)', ['fco-child-row'], r => -r.procfyScheduled, true);
+  html += makeProjRowHtml('Provisão de Custos Recorrentes', ['fco-child-row'], r => -r.fixedProvision, true);
+  html += makeProjRowHtml('Comissões de Professores', ['fco-child-row'], r => -r.commissionPaid, true);
+  html += makeProjRowHtml('Taxas de Processamento', ['fco-child-row'], r => -r.processingFees, true);
+
+  html += makeProjRowHtml('(=) Fluxo Líquido do Mês', ['dfc-balance-row'], r => r.netFlow, false, true);
+  html += makeProjRowHtml('Saldo Final (Caixa)', ['dfc-balance-row'], r => r.finalBalance);
+
+  const tbody = document.getElementById('fin-projection-body');
+  if (tbody) {
+    tbody.innerHTML = html;
+  }
 }
 
