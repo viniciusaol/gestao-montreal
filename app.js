@@ -872,7 +872,7 @@ async function loadOperationalReports() {
     })();
     const paidVendasData = await supabaseSelect(
       'mt_faturamento_vendas',
-      `select=customer_code&paid=eq.true&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&is_canceled=eq.false`
+      `select=customer_code&paid=eq.true&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&is_canceled=eq.false&tipo=neq.refund`
     );
 
     // 2. Aggregate current month's KPIs
@@ -1049,7 +1049,7 @@ async function loadOperationalReports() {
     // 6. Ticket Médio History: paying clients per month over the same 6-month window
     const histPaidVendasData = await supabaseSelect(
       'mt_faturamento_vendas',
-      `select=customer_code,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`
+      `select=customer_code,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&tipo=neq.refund`
     );
 
     // Group distinct paying customers by month (YYYY-MM key)
@@ -1692,7 +1692,7 @@ async function loadFinancialReports() {
 
     const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${monthEnd}`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
-    const salesParams = `select=amount,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
+    const salesParams = `select=amount,pay_date&paid=eq.true&is_canceled=eq.false&tipo=neq.refund&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
     const commParams = `select=booking_value,booking_date,is_paid&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
 
     const [allProcfyData, allInterData, allSalesData, allCommData] = await Promise.all([
