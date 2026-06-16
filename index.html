@@ -482,6 +482,7 @@
           <button id="btn-show-dre" class="tab-btn">Demonstração de Resultado (DRE)</button>
           <button id="btn-show-roi" class="tab-btn">Retorno sobre Investimento (ROI)</button>
           <button id="btn-show-projection" class="tab-btn">Projeção de Caixa</button>
+          <button id="btn-show-projection-current" class="tab-btn">Projeção – Mês Atual</button>
         </div>
 
         <!-- Demonstration of Cash Flow (DFC) -->
@@ -644,6 +645,81 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <!-- Projection Current Month -->
+        <section id="fin-projection-current-card" class="detailed-section printable-section" style="margin-top: 0.5rem; margin-bottom: 2rem; display: none;">
+          <div class="card">
+            <h3 class="card-title">Projeção de Caixa — Mês Atual (A partir de Hoje)</h3>
+            
+            <div class="table-container" style="max-height: 500px; overflow-y: auto;">
+              <table class="data-table" id="fin-proj-current-table" style="min-width: 900px; border-collapse: collapse;">
+                <thead>
+                  <tr style="position: sticky; top: 0; background: var(--bg-card); z-index: 10;">
+                    <th>Data</th>
+                    <th class="text-right">Saldo Inicial</th>
+                    <th class="text-right">(+) Entradas</th>
+                    <th class="text-right">(-) Saídas Operacionais</th>
+                    <th class="text-right">(=) Caixa Operacional</th>
+                    <th class="text-right">(-) Investimentos</th>
+                    <th class="text-right">(=) Fluxo Líquido</th>
+                    <th class="text-right">Saldo Final</th>
+                  </tr>
+                </thead>
+                <tbody id="fin-proj-current-body">
+                  <tr><td colspan="8" class="empty-state">Carregando projeção diária...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- Details Panel for Overdue/Pending items -->
+            <div id="fin-proj-current-details" style="margin-top: 2rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem;">
+              <!-- Overdue items -->
+              <div class="card" style="padding: 1.25rem; background: rgba(230, 57, 70, 0.03); border: 1px solid rgba(230, 57, 70, 0.15);">
+                <h4 style="color: #e63946; font-size: 0.9rem; font-weight: 700; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 6px;">
+                  ⚠️ Contas Vencidas no Mês (Sumadas no dia de hoje)
+                </h4>
+                <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                  <table class="data-table" style="font-size: 0.8rem; width: 100%;">
+                    <thead>
+                      <tr style="position: sticky; top: 0; background: #26191a; z-index: 5;">
+                        <th>Vencimento</th>
+                        <th>Descrição</th>
+                        <th>Fluxo</th>
+                        <th class="text-right">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody id="fin-proj-current-overdue-rows">
+                      <tr><td colspan="4" class="empty-state">Nenhuma conta vencida.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              <!-- Upcoming large items -->
+              <div class="card" style="padding: 1.25rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border);">
+                <h4 style="color: var(--color-creme); font-size: 0.9rem; font-weight: 700; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 6px;">
+                  📅 Próximos Lançamentos Agendados do Mês
+                </h4>
+                <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                  <table class="data-table" style="font-size: 0.8rem; width: 100%;">
+                    <thead>
+                      <tr style="position: sticky; top: 0; background: #1c1c1c; z-index: 5;">
+                        <th>Vencimento</th>
+                        <th>Descrição</th>
+                        <th>Fluxo</th>
+                        <th class="text-right">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody id="fin-proj-current-upcoming-rows">
+                      <tr><td colspan="4" class="empty-state">Nenhum lançamento agendado.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            
           </div>
         </section>
 

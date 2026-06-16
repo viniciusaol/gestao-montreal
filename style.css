@@ -1198,7 +1198,8 @@ input:focus, select:focus, textarea:focus {
 
   .show-dfc #fin-dfc-card,
   .show-dre #fin-dre-card,
-  .show-roi #fin-roi-card {
+  .show-roi #fin-roi-card,
+  .show-projection-current #fin-projection-current-card {
     display: block !important;
   }
   #transactions-card-container {

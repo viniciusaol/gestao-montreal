@@ -1847,13 +1847,14 @@ async function loadFinancialReports() {
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
-    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData] = await Promise.all([
+    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData] = await Promise.all([
       supabaseSelect('procfy_lancamentos', procfyParams),
       supabaseSelect('inter_movimentos_processados', interParams),
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
       supabaseSelect('vw_mt_comissoes_detalhadas', commParams),
       supabaseSelect('mt_faturamento_pagamentos', payParams),
-      supabaseSelect('mp_pagamentos', mpParams)
+      supabaseSelect('mp_pagamentos', mpParams),
+      supabaseSelect('mt_pagamentos_professores', `reference_period=eq.${monthStart}`)
     ]);
 
     debugLog(`Lançamentos Procfy: ${allProcfyData.length} linhas.`);
@@ -2362,6 +2363,7 @@ async function loadFinancialReports() {
       allCommData,
       allPaymentMethodsData,
       allMpPaymentsData,
+      allGlobalPayoutsData,
       monthStart,
       monthEnd,
       year,
@@ -2373,6 +2375,7 @@ async function loadFinancialReports() {
 
     // Calculate and render projection
     calculateAndRenderProjection();
+    calculateAndRenderCurrentMonthProjection();
 
   } catch (err) {
     debugError('Erro ao carregar relatórios financeiros', err);
@@ -2719,27 +2722,33 @@ const btnShowDfc = document.getElementById('btn-show-dfc');
 const btnShowDre = document.getElementById('btn-show-dre');
 const btnShowRoi = document.getElementById('btn-show-roi');
 const btnShowProjection = document.getElementById('btn-show-projection');
+const btnShowProjectionCurrent = document.getElementById('btn-show-projection-current');
 const cardDfc = document.getElementById('fin-dfc-card');
 const cardDre = document.getElementById('fin-dre-card');
 const cardRoi = document.getElementById('fin-roi-card');
 const cardProjection = document.getElementById('fin-projection-card');
+const cardProjectionCurrent = document.getElementById('fin-projection-current-card');
 
-if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && cardDfc && cardDre && cardRoi && cardProjection) {
+if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjectionCurrent && 
+    cardDfc && cardDre && cardRoi && cardProjection && cardProjectionCurrent) {
   btnShowDfc.addEventListener('click', () => {
     btnShowDfc.classList.add('active');
     btnShowDre.classList.remove('active');
     btnShowRoi.classList.remove('active');
     btnShowProjection.classList.remove('active');
+    btnShowProjectionCurrent.classList.remove('active');
     cardDfc.style.display = 'block';
     cardDre.style.display = 'none';
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'none';
+    cardProjectionCurrent.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-dfc');
       sectionFinancial.classList.remove('show-dre');
       sectionFinancial.classList.remove('show-roi');
       sectionFinancial.classList.remove('show-projection');
+      sectionFinancial.classList.remove('show-projection-current');
     }
   });
 
@@ -2748,16 +2757,19 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && cardDfc && ca
     btnShowDfc.classList.remove('active');
     btnShowRoi.classList.remove('active');
     btnShowProjection.classList.remove('active');
+    btnShowProjectionCurrent.classList.remove('active');
     cardDfc.style.display = 'none';
     cardDre.style.display = 'block';
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'none';
+    cardProjectionCurrent.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-dre');
       sectionFinancial.classList.remove('show-dfc');
       sectionFinancial.classList.remove('show-roi');
       sectionFinancial.classList.remove('show-projection');
+      sectionFinancial.classList.remove('show-projection-current');
     }
   });
 
@@ -2766,16 +2778,19 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && cardDfc && ca
     btnShowDfc.classList.remove('active');
     btnShowDre.classList.remove('active');
     btnShowProjection.classList.remove('active');
+    btnShowProjectionCurrent.classList.remove('active');
     cardDfc.style.display = 'none';
     cardDre.style.display = 'none';
     cardRoi.style.display = 'block';
     cardProjection.style.display = 'none';
+    cardProjectionCurrent.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-roi');
       sectionFinancial.classList.remove('show-dfc');
       sectionFinancial.classList.remove('show-dre');
       sectionFinancial.classList.remove('show-projection');
+      sectionFinancial.classList.remove('show-projection-current');
     }
     
     // Recalculate and render ROI data
@@ -2787,20 +2802,47 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && cardDfc && ca
     btnShowDfc.classList.remove('active');
     btnShowDre.classList.remove('active');
     btnShowRoi.classList.remove('active');
+    btnShowProjectionCurrent.classList.remove('active');
     cardDfc.style.display = 'none';
     cardDre.style.display = 'none';
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'block';
+    cardProjectionCurrent.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-projection');
       sectionFinancial.classList.remove('show-dfc');
       sectionFinancial.classList.remove('show-dre');
       sectionFinancial.classList.remove('show-roi');
+      sectionFinancial.classList.remove('show-projection-current');
     }
     
     // Recalculate and render Projection data
     calculateAndRenderProjection();
+  });
+
+  btnShowProjectionCurrent.addEventListener('click', () => {
+    btnShowProjectionCurrent.classList.add('active');
+    btnShowDfc.classList.remove('active');
+    btnShowDre.classList.remove('active');
+    btnShowRoi.classList.remove('active');
+    btnShowProjection.classList.remove('active');
+    cardDfc.style.display = 'none';
+    cardDre.style.display = 'none';
+    cardRoi.style.display = 'none';
+    cardProjection.style.display = 'none';
+    cardProjectionCurrent.style.display = 'block';
+
+    if (sectionFinancial) {
+      sectionFinancial.classList.add('show-projection-current');
+      sectionFinancial.classList.remove('show-dfc');
+      sectionFinancial.classList.remove('show-dre');
+      sectionFinancial.classList.remove('show-roi');
+      sectionFinancial.classList.remove('show-projection');
+    }
+    
+    // Recalculate and render Current Month Projection data
+    calculateAndRenderCurrentMonthProjection();
   });
 
   // Attach ROI interactive listeners
@@ -2814,16 +2856,16 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && cardDfc && ca
   const projCommission = document.getElementById('proj-input-commission');
   const projSafety = document.getElementById('proj-input-safety');
   if (projGrowth) {
-    projGrowth.addEventListener('input', calculateAndRenderProjection);
-    projGrowth.addEventListener('change', calculateAndRenderProjection);
+    projGrowth.addEventListener('input', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
+    projGrowth.addEventListener('change', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
   }
   if (projCommission) {
-    projCommission.addEventListener('input', calculateAndRenderProjection);
-    projCommission.addEventListener('change', calculateAndRenderProjection);
+    projCommission.addEventListener('input', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
+    projCommission.addEventListener('change', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
   }
   if (projSafety) {
-    projSafety.addEventListener('input', calculateAndRenderProjection);
-    projSafety.addEventListener('change', calculateAndRenderProjection);
+    projSafety.addEventListener('input', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
+    projSafety.addEventListener('change', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
   }
 }
 
@@ -3380,5 +3422,502 @@ function calculateAndRenderProjection() {
       }
     });
   });
+}
+
+function get30DaysBefore(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() - 30);
+  return d.toISOString().split('T')[0];
+}
+
+function calculateAndRenderCurrentMonthProjection() {
+  if (!cachedFinancialData) {
+    debugLog("Sem dados financeiros cacheados para a projeção do mês atual.");
+    return;
+  }
+
+  const {
+    allProcfyData,
+    allInterData,
+    allSalesData,
+    allCommData,
+    allPaymentMethodsData,
+    allMpPaymentsData,
+    allGlobalPayoutsData,
+    monthStart,
+    monthEnd,
+    year,
+    month,
+    monthlyData,
+    dreData
+  } = cachedFinancialData;
+
+  const round2 = val => Math.round(val * 100) / 100;
+
+  // 1. Determine "Today" context for the current month.
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const currentDay = today.getDate();
+
+  const selectedYearInt = parseInt(year, 10);
+  const selectedMonthInt = parseInt(month, 10);
+
+  let startDay = 1;
+  let isCurrentRealMonth = false;
+
+  if (selectedYearInt === currentYear && selectedMonthInt === currentMonth) {
+    startDay = currentDay;
+    isCurrentRealMonth = true;
+  } else if (selectedYearInt < currentYear || (selectedYearInt === currentYear && selectedMonthInt < currentMonth)) {
+    const daysInSelMonth = new Date(selectedYearInt, selectedMonthInt, 0).getDate();
+    startDay = daysInSelMonth + 1;
+  } else {
+    startDay = 1;
+  }
+
+  const daysInMonth = new Date(selectedYearInt, selectedMonthInt, 0).getDate();
+  const baseMonthPrefix = `${year}-${month}`;
+
+  const elGrowth = document.getElementById('proj-input-growth');
+  const elCommission = document.getElementById('proj-input-commission');
+
+  const growthRate = elGrowth ? parseFloat(elGrowth.value) / 100 : 0.0;
+  const commissionRate = elCommission ? parseFloat(elCommission.value) / 100 : 0.47;
+
+  const nextMonthStart = (() => {
+    const d = new Date(monthStart + 'T00:00:00');
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().split('T')[0].substring(0, 8) + '01';
+  })();
+
+  const basePayments = allPaymentMethodsData.filter(p => p.payment_date && p.payment_date >= monthStart && p.payment_date < nextMonthStart);
+  const baseMp = allMpPaymentsData.filter(p => p.date_approved && p.date_approved >= monthStart && p.date_approved < nextMonthStart);
+
+  let mpPix = 0, mpCredit = 0, mpSaldo = 0, mpOther = 0;
+  baseMp.forEach(p => {
+    const amt = parseFloat(p.transaction_amount) || 0;
+    const type = p.payment_type_id;
+    const method = p.payment_method_id;
+    if (type === 'bank_transfer' || method === 'pix') mpPix += amt;
+    else if (type === 'credit_card') mpCredit += amt;
+    else if (type === 'account_money') mpSaldo += amt;
+    else mpOther += amt;
+  });
+  const mpTotal = mpPix + mpCredit + mpSaldo + mpOther;
+
+  let localCredit = 0, localTarjeta = 0, localDebit = 0, localEfectivo = 0, localTransfer = 0, onlineTotal = 0;
+  basePayments.forEach(p => {
+    const method = (p.pay_method || '').toLowerCase();
+    const amt = parseFloat(p.amount) || 0;
+    if (method.includes('credito') || method.includes('crédito')) localCredit += amt;
+    else if (method === 'tarjeta') localTarjeta += amt;
+    else if (method.includes('debito') || method.includes('débito')) localDebit += amt;
+    else if (method === 'efectivo') localEfectivo += amt;
+    else if (method === 'transferencia' || method === 'pix') localTransfer += amt;
+    else if (method === 'pagamento online') onlineTotal += amt;
+  });
+
+  let onlineCredit = 0;
+  if (onlineTotal > 0) {
+    if (mpTotal > 0) onlineCredit = onlineTotal * (mpCredit / mpTotal);
+    else onlineCredit = onlineTotal * 0.70;
+  }
+  const totalBaseFaturamento = localCredit + localTarjeta + localDebit + localEfectivo + localTransfer + onlineTotal;
+  const totalBaseD30 = localCredit + localTarjeta + onlineCredit;
+  const baseD30Ratio = totalBaseFaturamento > 0 ? (totalBaseD30 / totalBaseFaturamento) : 0.70;
+  const baseD0Ratio = 1 - baseD30Ratio;
+
+  const juneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix));
+  const juneUnpaidByStudent = {};
+  juneBookings.forEach(b => {
+    const studentName = b.participant_name || 'Desconhecido';
+    if (!b.is_paid) {
+      if (!juneUnpaidByStudent[studentName]) juneUnpaidByStudent[studentName] = [];
+      juneUnpaidByStudent[studentName].push(b);
+    }
+  });
+
+  const juneUnpaidEstimatedValues = {};
+  Object.keys(juneUnpaidByStudent).forEach(studentName => {
+    const bookings = juneUnpaidByStudent[studentName];
+    const slots = {};
+    bookings.forEach(b => {
+      const dateObj = new Date(b.booking_date + 'T00:00:00');
+      const dayOfWeek = dateObj.getDay();
+      const startTime = b.start_time || '00:00';
+      const pricingInfo = getBasePriceForBooking(b);
+      const slotKey = `${dayOfWeek}_${startTime}_${pricingInfo.category}`;
+      if (!slots[slotKey]) slots[slotKey] = { dayOfWeek, startTime, pricingInfo, bookings: [] };
+      slots[slotKey].bookings.push(b);
+    });
+
+    const uniqueSlotsList = Object.values(slots);
+    const frequency = uniqueSlotsList.length;
+    let freqDiscountRate = 0;
+    if (frequency === 2) freqDiscountRate = 0.05;
+    else if (frequency >= 3) freqDiscountRate = 0.07;
+
+    uniqueSlotsList.forEach(slot => {
+      const pricing = slot.pricingInfo;
+      const nBookings = slot.bookings.length;
+      const isOffPeak = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5 && 
+                        (parseInt(slot.startTime.split(':')[0], 10) >= 10 && parseInt(slot.startTime.split(':')[0], 10) <= 15);
+      
+      let slotProRataValue = 0;
+      if (pricing.isMonthly) {
+        const nTotal = getWeekdayOccurrencesInMonth(year, month, slot.dayOfWeek);
+        slotProRataValue = (nBookings / nTotal) * pricing.price;
+      } else {
+        slotProRataValue = nBookings * pricing.price;
+      }
+      
+      let slotFinalValue = 0;
+      if (isOffPeak) slotFinalValue = slotProRataValue * 0.88;
+      else slotFinalValue = slotProRataValue * (1 - freqDiscountRate);
+      
+      const perBookingValue = slotFinalValue / nBookings;
+      slot.bookings.forEach(b => {
+        juneUnpaidEstimatedValues[b.booking_id] = perBookingValue;
+      });
+    });
+  });
+
+  // Calculate actual starting cash balance
+  const selMonthInitial = (monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].initial) || 7280.98;
+  let runningBalance = selMonthInitial;
+
+  const todayStr = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
+
+  allProcfyData.forEach(tx => {
+    if (!tx.paid) return;
+    if (!tx.due_date || !tx.due_date.startsWith(baseMonthPrefix)) return;
+    if (tx.due_date >= todayStr) return;
+
+    const amount = parseFloat(tx.amount) || 0.0;
+    if (tx.transaction_type === 'revenue') {
+      runningBalance += amount;
+    } else {
+      runningBalance -= amount;
+    }
+  });
+
+  allInterData.forEach(tx => {
+    const desc = (tx.descricao || '').toLowerCase();
+    const title = (tx.titulo || '').toLowerCase();
+    const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
+    if (isResgate && tx.data_movimento && tx.data_movimento.startsWith(baseMonthPrefix) && tx.data_movimento < todayStr) {
+      runningBalance += Math.abs(parseFloat(tx.valor_com_sinal)) || 0;
+    }
+  });
+
+  // 2. Identify Overdue Outflows
+  const overdueProcfyList = allProcfyData.filter(tx => {
+    return !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && tx.due_date < todayStr;
+  });
+
+  let overdueOpsTotal = 0.0;
+  let overdueInvTotal = 0.0;
+
+  overdueProcfyList.forEach(tx => {
+    const amt = parseFloat(tx.amount) || 0.0;
+    if (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos') {
+      overdueInvTotal += amt;
+    } else {
+      overdueOpsTotal += amt;
+    }
+  });
+
+  // 3. Identify Upcoming Scheduled Outflows
+  const upcomingProcfyList = allProcfyData.filter(tx => {
+    return !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && tx.due_date >= todayStr && tx.due_date.startsWith(baseMonthPrefix);
+  });
+
+  // 4. Calculate Expected Commissions (Período 1 e 2)
+  const bookingsP1 = juneBookings.filter(b => {
+    const day = parseInt(b.booking_date.substring(8, 10), 10);
+    return day <= 20;
+  });
+  const expectedCommP1 = bookingsP1.reduce((sum, b) => {
+    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0);
+    return sum + val * commissionRate;
+  }, 0.0);
+
+  const bookingsP2 = juneBookings.filter(b => {
+    const day = parseInt(b.booking_date.substring(8, 10), 10);
+    return day > 20;
+  });
+  const expectedCommP2 = bookingsP2.reduce((sum, b) => {
+    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0);
+    return sum + val * commissionRate;
+  }, 0.0);
+
+  const allGlobalPayouts = allGlobalPayoutsData || [];
+  let payoutsP1 = 0.0;
+  let payoutsP2 = 0.0;
+  
+  allGlobalPayouts.forEach(p => {
+    const amt = parseFloat(p.amount) || 0.0;
+    const period = p.payout_period;
+    const pDate = p.payout_date;
+    
+    if (period === 'ate_dia_20') {
+      payoutsP1 += amt;
+    } else if (period === 'apos_dia_20') {
+      payoutsP2 += amt;
+    } else {
+      const day = pDate ? parseInt(pDate.substring(8, 10), 10) : 0;
+      if (day <= 20) {
+        payoutsP1 += amt;
+      } else {
+        payoutsP2 += amt;
+      }
+    }
+  });
+
+  const remainingCommP1 = Math.max(0.0, expectedCommP1 - payoutsP1);
+  const remainingCommP2 = Math.max(0.0, expectedCommP2 - payoutsP2);
+
+  // Baselines for variable revenues
+  const baseMonthPrefixHistorical = `${year}-${month}`;
+  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefixHistorical))
+                                     .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
+  const junePaidTuition = juneBookings.filter(b => b.is_paid)
+                                      .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
+  const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
+  const projectedVarRevenue = round2(juneVariableRevenueBaseline * (1 + growthRate));
+
+  // Loop day-by-day
+  const dailyProjection = [];
+  
+  for (let d = startDay; d <= daysInMonth; d++) {
+    const dayStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
+    
+    const bookingsOnDay = juneBookings.filter(b => !b.is_paid && b.booking_date === dayStr);
+    const tuitionD0 = bookingsOnDay.reduce((sum, b) => {
+      const val = juneUnpaidEstimatedValues[b.booking_id] || 0.0;
+      return sum + val * baseD0Ratio;
+    }, 0.0);
+
+    const prevMonthDate = get30DaysBefore(dayStr);
+    const prevMonthBookings = allCommData.filter(b => b.booking_date === prevMonthDate);
+    const tuitionD30 = prevMonthBookings.reduce((sum, b) => {
+      const val = parseFloat(b.booking_value) || 0.0;
+      return sum + val * baseD30Ratio;
+    }, 0.0);
+
+    const varD0 = (projectedVarRevenue * baseD0Ratio) / 30;
+    const varD30 = (juneVariableRevenueBaseline * baseD30Ratio) / 30;
+
+    const totalInflowDay = round2(tuitionD0 + tuitionD30 + varD0 + varD30);
+
+    let outflowOps = 0.0;
+    let outflowInv = 0.0;
+
+    allProcfyData.forEach(tx => {
+      if (tx.paid) return;
+      if (tx.transaction_type === 'revenue') return;
+      if (tx.due_date === dayStr) {
+        const amt = parseFloat(tx.amount) || 0.0;
+        if (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos') {
+          outflowInv += amt;
+        } else {
+          outflowOps += amt;
+        }
+      }
+    });
+
+    if (d === startDay) {
+      outflowOps += overdueOpsTotal;
+      outflowInv += overdueInvTotal;
+      if (startDay > 20) {
+        outflowOps += remainingCommP1;
+      }
+    }
+
+    if (d === 20 && startDay <= 20) {
+      outflowOps += remainingCommP1;
+    }
+    if (d === 30) {
+      outflowOps += remainingCommP2;
+    }
+
+    const dayInitialBalance = runningBalance;
+    const netFlowOpsDay = round2(totalInflowDay - outflowOps);
+    const netFlowDay = round2(netFlowOpsDay - outflowInv);
+    const dayFinalBalance = round2(dayInitialBalance + netFlowDay);
+
+    dailyProjection.push({
+      day: d,
+      dateLabel: `${String(d).padStart(2, '0')}/${month}`,
+      initialBalance: dayInitialBalance,
+      inflow: totalInflowDay,
+      outflowOps: outflowOps,
+      netFlowOps: netFlowOpsDay,
+      outflowInv: outflowInv,
+      netFlow: netFlowDay,
+      finalBalance: dayFinalBalance
+    });
+
+    runningBalance = dayFinalBalance;
+  }
+
+  // Render Table
+  let html = '';
+  if (dailyProjection.length === 0) {
+    html = `<tr><td colspan="8" class="empty-state">Sem projeção pendente para este mês. Todas as contas foram realizadas ou o mês selecionado está no passado.</td></tr>`;
+  } else {
+    html = dailyProjection.map(r => {
+      const signedOutflowOps = r.outflowOps > 0 ? `-${formatCurrency(r.outflowOps)}` : formatCurrency(0);
+      const signedOutflowInv = r.outflowInv > 0 ? `-${formatCurrency(r.outflowInv)}` : formatCurrency(0);
+      
+      const opsClass = r.outflowOps > 0 ? 'text-outflow' : '';
+      const invClass = r.outflowInv > 0 ? 'text-outflow' : '';
+      
+      const netOpsClass = r.netFlowOps > 0 ? 'text-inflow' : (r.netFlowOps < 0 ? 'text-outflow' : '');
+      const netClass = r.netFlow > 0 ? 'text-inflow' : (r.netFlow < 0 ? 'text-outflow' : '');
+      
+      const valInitial = formatCurrency(r.initialBalance);
+      const valInflow = formatCurrency(r.inflow);
+      const valNetOps = r.netFlowOps < 0 ? `-${formatCurrency(Math.abs(r.netFlowOps))}` : formatCurrency(r.netFlowOps);
+      const valNet = r.netFlow < 0 ? `-${formatCurrency(Math.abs(r.netFlow))}` : formatCurrency(r.netFlow);
+      const valFinal = formatCurrency(r.finalBalance);
+
+      const rowClass = r.day === startDay && isCurrentRealMonth ? 'style="background: rgba(192, 81, 49, 0.08); font-weight: 600;"' : '';
+      const todayBadge = r.day === startDay && isCurrentRealMonth ? ' <span class="period-badge" style="font-size: 0.55rem; padding: 1px 4px; vertical-align: middle; margin-left: 4px;">Hoje</span>' : '';
+
+      return `
+        <tr ${rowClass}>
+          <td><strong>${r.dateLabel}</strong>${todayBadge}</td>
+          <td class="text-right">${valInitial}</td>
+          <td class="text-right text-inflow">${valInflow}</td>
+          <td class="text-right ${opsClass}">${signedOutflowOps}</td>
+          <td class="text-right ${netOpsClass}" style="font-weight: 600;">${valNetOps}</td>
+          <td class="text-right ${invClass}">${signedOutflowInv}</td>
+          <td class="text-right ${netClass}" style="font-weight: 600;">${valNet}</td>
+          <td class="text-right" style="font-weight: 700;">${valFinal}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+  
+  const tbody = document.getElementById('fin-proj-current-body');
+  if (tbody) {
+    tbody.innerHTML = html;
+  }
+
+  // Render Overdue details
+  const overdueTbody = document.getElementById('fin-proj-current-overdue-rows');
+  if (overdueTbody) {
+    let overdueHtml = '';
+    const overdueCommissions = (startDay > 20) ? remainingCommP1 : 0.0;
+    
+    if (overdueProcfyList.length === 0 && overdueCommissions === 0) {
+      overdueHtml = `<tr><td colspan="4" class="empty-state">Nenhuma conta vencida.</td></tr>`;
+    } else {
+      overdueHtml += overdueProcfyList.map(tx => {
+        const flow = tx.cost_center_descricao || tx.cost_center_name || 'Operação';
+        return `
+          <tr>
+            <td>${formatDateBR(tx.due_date)}</td>
+            <td>${tx.name || 'Despesa'}</td>
+            <td>${flow}</td>
+            <td class="text-right text-outflow">-${formatCurrency(parseFloat(tx.amount) || 0.0)}</td>
+          </tr>
+        `;
+      }).join('');
+      
+      if (overdueCommissions > 0) {
+        overdueHtml += `
+          <tr>
+            <td>20/${month}/${year}</td>
+            <td>Comissões de Professores (1º Período)</td>
+            <td>Operação</td>
+            <td class="text-right text-outflow">-${formatCurrency(overdueCommissions)}</td>
+          </tr>
+        `;
+      }
+    }
+    overdueTbody.innerHTML = overdueHtml;
+  }
+
+  // Render Upcoming details
+  const upcomingTbody = document.getElementById('fin-proj-current-upcoming-rows');
+  if (upcomingTbody) {
+    let upcomingHtml = '';
+    const hasCommP1 = (startDay <= 20) && remainingCommP1 > 0;
+    const hasCommP2 = remainingCommP2 > 0;
+    
+    if (upcomingProcfyList.length === 0 && !hasCommP1 && !hasCommP2) {
+      upcomingHtml = `<tr><td colspan="4" class="empty-state">Nenhum lançamento agendado.</td></tr>`;
+    } else {
+      const sortedUpcoming = [...upcomingProcfyList].sort((a, b) => a.due_date.localeCompare(b.due_date));
+      let commP1Added = false;
+      let commP2Added = false;
+      const rows = [];
+      
+      sortedUpcoming.forEach(tx => {
+        const flow = tx.cost_center_descricao || tx.cost_center_name || 'Operação';
+        const dateStr = tx.due_date;
+        const day = parseInt(dateStr.substring(8, 10), 10);
+        
+        if (hasCommP1 && day >= 20 && !commP1Added) {
+          rows.push({
+            date: `${year}-${month}-20`,
+            name: 'Comissões de Professores (1º Período)',
+            flow: 'Operação',
+            amount: remainingCommP1
+          });
+          commP1Added = true;
+        }
+        
+        if (hasCommP2 && day >= 30 && !commP2Added) {
+          rows.push({
+            date: `${year}-${month}-30`,
+            name: 'Comissões de Professores (2º Período)',
+            flow: 'Operação',
+            amount: remainingCommP2
+          });
+          commP2Added = true;
+        }
+        
+        rows.push({
+          date: tx.due_date,
+          name: tx.name || 'Despesa',
+          flow: flow,
+          amount: parseFloat(tx.amount) || 0.0
+        });
+      });
+      
+      if (hasCommP1 && !commP1Added) {
+        rows.push({
+          date: `${year}-${month}-20`,
+          name: 'Comissões de Professores (1º Período)',
+          flow: 'Operação',
+          amount: remainingCommP1
+        });
+      }
+      if (hasCommP2 && !commP2Added) {
+        rows.push({
+          date: `${year}-${month}-30`,
+          name: 'Comissões de Professores (2º Período)',
+          flow: 'Operação',
+          amount: remainingCommP2
+        });
+      }
+      
+      rows.sort((a, b) => a.date.localeCompare(b.date));
+      
+      upcomingHtml = rows.map(r => `
+        <tr>
+          <td>${formatDateBR(r.date)}</td>
+          <td>${r.name}</td>
+          <td>${r.flow}</td>
+          <td class="text-right text-outflow">-${formatCurrency(r.amount)}</td>
+        </tr>
+      `).join('');
+    }
+    upcomingTbody.innerHTML = upcomingHtml;
+  }
 }
 
