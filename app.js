@@ -3583,33 +3583,50 @@ function calculateAndRenderCurrentMonthProjection() {
     });
   });
 
+  // Get the latest bank account balance from the Procfy data
+  let currentActualCashBalance = 17430.92; // Default fallback if no data
+  if (allProcfyData && allProcfyData.length > 0) {
+    const sortedBySync = [...allProcfyData].sort((a, b) => {
+      const dateA = a.synced_at || '';
+      const dateB = b.synced_at || '';
+      return dateB.localeCompare(dateA);
+    });
+    if (sortedBySync[0] && sortedBySync[0].bank_account_balance_cents !== undefined) {
+      currentActualCashBalance = sortedBySync[0].bank_account_balance_cents / 100;
+    }
+  }
+
   // Calculate actual starting cash balance
   const selMonthInitial = (monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].initial) || 7280.98;
   let runningBalance = selMonthInitial;
 
   const todayStr = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
 
-  allProcfyData.forEach(tx => {
-    if (!tx.paid) return;
-    if (!tx.due_date || !tx.due_date.startsWith(baseMonthPrefix)) return;
-    if (tx.due_date >= todayStr) return;
+  if (isCurrentRealMonth) {
+    runningBalance = currentActualCashBalance;
+  } else {
+    allProcfyData.forEach(tx => {
+      if (!tx.paid) return;
+      if (!tx.due_date || !tx.due_date.startsWith(baseMonthPrefix)) return;
+      if (tx.due_date >= todayStr) return;
 
-    const amount = parseFloat(tx.amount) || 0.0;
-    if (tx.transaction_type === 'revenue') {
-      runningBalance += amount;
-    } else {
-      runningBalance -= amount;
-    }
-  });
+      const amount = parseFloat(tx.amount) || 0.0;
+      if (tx.transaction_type === 'revenue') {
+        runningBalance += amount;
+      } else {
+        runningBalance -= amount;
+      }
+    });
 
-  allInterData.forEach(tx => {
-    const desc = (tx.descricao || '').toLowerCase();
-    const title = (tx.titulo || '').toLowerCase();
-    const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
-    if (isResgate && tx.data_movimento && tx.data_movimento.startsWith(baseMonthPrefix) && tx.data_movimento < todayStr) {
-      runningBalance += Math.abs(parseFloat(tx.valor_com_sinal)) || 0;
-    }
-  });
+    allInterData.forEach(tx => {
+      const desc = (tx.descricao || '').toLowerCase();
+      const title = (tx.titulo || '').toLowerCase();
+      const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
+      if (isResgate && tx.data_movimento && tx.data_movimento.startsWith(baseMonthPrefix) && tx.data_movimento < todayStr) {
+        runningBalance += Math.abs(parseFloat(tx.valor_com_sinal)) || 0;
+      }
+    });
+  }
 
   // 2. Identify Overdue Outflows
   const overdueProcfyList = allProcfyData.filter(tx => {
