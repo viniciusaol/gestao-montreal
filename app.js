@@ -3009,9 +3009,9 @@ function calculateAndRenderProjection() {
     return d.toISOString().split('T')[0].substring(0, 8) + '01';
   })();
 
-  // Filter payments in the base month
-  const basePayments = allPaymentMethodsData.filter(p => p.payment_date && p.payment_date >= monthStart && p.payment_date < nextMonthStart);
-  const baseMp = allMpPaymentsData.filter(p => p.date_approved && p.date_approved >= monthStart && p.date_approved < nextMonthStart);
+  // Use all retrieved historical data (6-month window) to compute the payment method ratios dynamically
+  const basePayments = allPaymentMethodsData;
+  const baseMp = allMpPaymentsData;
 
   // Calculate the online credit card ratio in the base month using baseMp
   let mpPix = 0;
@@ -3491,8 +3491,9 @@ function calculateAndRenderCurrentMonthProjection() {
     return d.toISOString().split('T')[0].substring(0, 8) + '01';
   })();
 
-  const basePayments = allPaymentMethodsData.filter(p => p.payment_date && p.payment_date >= monthStart && p.payment_date < nextMonthStart);
-  const baseMp = allMpPaymentsData.filter(p => p.date_approved && p.date_approved >= monthStart && p.date_approved < nextMonthStart);
+  // Use all retrieved historical data (6-month window) to compute the payment method ratios dynamically
+  const basePayments = allPaymentMethodsData;
+  const baseMp = allMpPaymentsData;
 
   let mpPix = 0, mpCredit = 0, mpSaldo = 0, mpOther = 0;
   baseMp.forEach(p => {
@@ -3704,11 +3705,45 @@ function calculateAndRenderCurrentMonthProjection() {
   const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
   const projectedVarRevenue = round2(juneVariableRevenueBaseline * (1 + growthRate));
 
+  // Calculate day-of-week weights from the 6-month historical sales data (allSalesData)
+  const salesByDayOfWeek = [0, 0, 0, 0, 0, 0, 0];
+  allSalesData.forEach(s => {
+    if (!s.pay_date) return;
+    const dateObj = new Date(s.pay_date + 'T00:00:00');
+    const dow = dateObj.getDay(); // 0 = Sunday, 1 = Monday, ...
+    const amt = parseFloat(s.valor_faturamento) || 0.0;
+    salesByDayOfWeek[dow] += amt;
+  });
+
+  const totalSalesAllTime = salesByDayOfWeek.reduce((a, b) => a + b, 0);
+  const dowWeights = [1, 1, 1, 1, 1, 1, 1];
+  if (totalSalesAllTime > 0) {
+    for (let i = 0; i < 7; i++) {
+      dowWeights[i] = salesByDayOfWeek[i] / totalSalesAllTime;
+    }
+  } else {
+    for (let i = 0; i < 7; i++) {
+      dowWeights[i] = 1 / 7;
+    }
+  }
+
+  // Normalize by summing the day weights for every day of the selected month
+  let totalMonthWeight = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
+    const dateObj = new Date(dayStr + 'T00:00:00');
+    const dow = dateObj.getDay();
+    totalMonthWeight += dowWeights[dow];
+  }
+
   // Loop day-by-day
   const dailyProjection = [];
   
   for (let d = startDay; d <= daysInMonth; d++) {
     const dayStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
+    const dateObj = new Date(dayStr + 'T00:00:00');
+    const dow = dateObj.getDay();
+    const dayWeight = dowWeights[dow];
     
     const bookingsOnDay = juneBookings.filter(b => !b.is_paid && b.booking_date === dayStr);
     const tuitionD0 = bookingsOnDay.reduce((sum, b) => {
@@ -3723,8 +3758,8 @@ function calculateAndRenderCurrentMonthProjection() {
       return sum + val * baseD30Ratio;
     }, 0.0);
 
-    const varD0 = (projectedVarRevenue * baseD0Ratio) / 30;
-    const varD30 = (juneVariableRevenueBaseline * baseD30Ratio) / 30;
+    const varD0 = (projectedVarRevenue * baseD0Ratio) * (dayWeight / totalMonthWeight);
+    const varD30 = (juneVariableRevenueBaseline * baseD30Ratio) * (dayWeight / totalMonthWeight);
 
     const totalInflowDay = round2(tuitionD0 + tuitionD30 + varD0 + varD30);
 
