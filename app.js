@@ -3237,20 +3237,29 @@ function calculateAndRenderProjection() {
     prevD30Tuition = tuitionD30;
     prevD30Variable = varD30;
 
-    const procfyScheduled = allProcfyData.filter(tx => {
+    const procfyScheduledTxList = allProcfyData.filter(tx => {
       const dateStr = tx.due_date;
       return dateStr && dateStr.startsWith(mKey) && !tx.paid && tx.transaction_type !== 'revenue';
-    }).reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+    });
 
-    const procfyScheduledRounded = round2(procfyScheduled);
+    const procfyScheduledOps = procfyScheduledTxList
+      .filter(tx => tx.cost_center_name !== 'Investimentos' && tx.cost_center_descricao !== 'Investimentos')
+      .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+
+    const procfyScheduledInv = procfyScheduledTxList
+      .filter(tx => tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos')
+      .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+
+    const procfyScheduledOpsRounded = round2(procfyScheduledOps);
+    const procfyScheduledInvRounded = round2(procfyScheduledInv);
 
     const avgFixedExpenses = rollingFixedExpenses.reduce((s, v) => s + v, 0) / rollingFixedExpenses.length;
     
-    const baseProvision = Math.max(0.0, avgFixedExpenses - procfyScheduledRounded);
-    const safetyProvision = (procfyScheduledRounded + baseProvision) * safetyRate;
+    const baseProvision = Math.max(0.0, avgFixedExpenses - procfyScheduledOpsRounded);
+    const safetyProvision = (procfyScheduledOpsRounded + baseProvision) * safetyRate;
     const totalFixedProvision = round2(baseProvision + safetyProvision);
 
-    const totalMonthFixedExpenses = procfyScheduledRounded + totalFixedProvision;
+    const totalMonthFixedExpenses = procfyScheduledOpsRounded + totalFixedProvision;
     rollingFixedExpenses.push(totalMonthFixedExpenses);
 
     const commissionPaid = round2(tuitionGenerated * commissionRate);
@@ -3274,9 +3283,10 @@ function calculateAndRenderProjection() {
 
     const totalFees = round2(tuitionFees + variableFees);
 
-    const totalOutflow = round2(procfyScheduledRounded + totalFixedProvision + commissionPaid + totalFees);
+    const totalOutflowOps = round2(procfyScheduledOpsRounded + totalFixedProvision + commissionPaid + totalFees);
+    const netFlowOps = round2(totalInflow - totalOutflowOps);
 
-    const netFlow = round2(totalInflow - totalOutflow);
+    const netFlow = round2(netFlowOps - procfyScheduledInvRounded);
     const finalBalance = round2(prevMonthFinalBalance + netFlow);
 
     projectionResults[mKey] = {
@@ -3286,11 +3296,13 @@ function calculateAndRenderProjection() {
       variableReceivedD0,
       variableReceivedD30,
       totalInflow,
-      procfyScheduled: procfyScheduledRounded,
+      procfyScheduledOps: procfyScheduledOpsRounded,
+      procfyScheduledInv: procfyScheduledInvRounded,
       fixedProvision: totalFixedProvision,
       commissionPaid,
       processingFees: totalFees,
-      totalOutflow,
+      totalOutflowOps,
+      netFlowOps,
       netFlow,
       finalBalance
     };
@@ -3323,28 +3335,50 @@ function calculateAndRenderProjection() {
   let html = '';
   html += makeProjRowHtml('Saldo Inicial (Caixa)', ['dfc-balance-row'], r => r.initialBalance);
   
-  html += `<tr class="flow-header-row collapsed"><td><span class="arrow-indicator">▼</span>(+) Entradas de Caixa</td>` + 
+  html += `<tr class="flow-header-row" data-target="proj-entradas-child-row"><td><span class="arrow-indicator">▼</span>(+) Entradas de Caixa</td>` + 
           targetMonths.map(m => `<td class="text-right text-inflow">${formatCurrency(projectionResults[m.key].totalInflow)}</td>`).join('') + `</tr>`;
   
-  html += makeProjRowHtml('Mensalidades (Recebimento D-0)', ['fco-child-row'], r => r.tuitionReceivedD0);
-  html += makeProjRowHtml('Mensalidades (Recebimento D-30)', ['fco-child-row'], r => r.tuitionReceivedD30);
-  html += makeProjRowHtml('Locações e Outros (Recebimento D-0)', ['fco-child-row'], r => r.variableReceivedD0);
-  html += makeProjRowHtml('Locações e Outros (Recebimento D-30)', ['fco-child-row'], r => r.variableReceivedD30);
+  html += makeProjRowHtml('Mensalidades (Recebimento D-0)', ['proj-entradas-child-row', 'fco-child-row'], r => r.tuitionReceivedD0);
+  html += makeProjRowHtml('Mensalidades (Recebimento D-30)', ['proj-entradas-child-row', 'fco-child-row'], r => r.tuitionReceivedD30);
+  html += makeProjRowHtml('Locações e Outros (Recebimento D-0)', ['proj-entradas-child-row', 'fco-child-row'], r => r.variableReceivedD0);
+  html += makeProjRowHtml('Locações e Outros (Recebimento D-30)', ['proj-entradas-child-row', 'fco-child-row'], r => r.variableReceivedD30);
 
-  html += `<tr class="flow-header-row collapsed"><td><span class="arrow-indicator">▼</span>(-) Saídas de Caixa</td>` + 
-          targetMonths.map(m => `<td class="text-right text-outflow">-${formatCurrency(projectionResults[m.key].totalOutflow)}</td>`).join('') + `</tr>`;
+  html += `<tr class="flow-header-row" data-target="proj-saidas-ops-child-row"><td><span class="arrow-indicator">▼</span>(-) Saídas Operacionais</td>` + 
+          targetMonths.map(m => `<td class="text-right text-outflow">-${formatCurrency(projectionResults[m.key].totalOutflowOps)}</td>`).join('') + `</tr>`;
   
-  html += makeProjRowHtml('Despesas Agendadas (Procfy)', ['fco-child-row'], r => -r.procfyScheduled, true);
-  html += makeProjRowHtml('Provisão de Custos Recorrentes', ['fco-child-row'], r => -r.fixedProvision, true);
-  html += makeProjRowHtml('Comissões de Professores', ['fco-child-row'], r => -r.commissionPaid, true);
-  html += makeProjRowHtml('Taxas de Processamento', ['fco-child-row'], r => -r.processingFees, true);
+  html += makeProjRowHtml('Despesas Agendadas (Procfy)', ['proj-saidas-ops-child-row', 'fco-child-row'], r => -r.procfyScheduledOps, true);
+  html += makeProjRowHtml('Provisão de Custos Recorrentes', ['proj-saidas-ops-child-row', 'fco-child-row'], r => -r.fixedProvision, true);
+  html += makeProjRowHtml('Comissões de Professores', ['proj-saidas-ops-child-row', 'fco-child-row'], r => -r.commissionPaid, true);
+  html += makeProjRowHtml('Taxas de Processamento', ['proj-saidas-ops-child-row', 'fco-child-row'], r => -r.processingFees, true);
 
-  html += makeProjRowHtml('(=) Fluxo Líquido do Mês', ['dfc-balance-row'], r => r.netFlow, false, true);
+  html += makeProjRowHtml('(=) Geração de Caixa Operacional', ['dfc-balance-row'], r => r.netFlowOps, true, true);
+
+  html += `<tr class="flow-header-row fci-header" data-target="proj-saidas-inv-child-row"><td><span class="arrow-indicator">▼</span>(-) Saídas de Investimento</td>` + 
+          targetMonths.map(m => `<td class="text-right text-outflow">-${formatCurrency(projectionResults[m.key].procfyScheduledInv)}</td>`).join('') + `</tr>`;
+
+  html += makeProjRowHtml('Investimentos Agendados (Procfy)', ['proj-saidas-inv-child-row', 'fco-child-row'], r => -r.procfyScheduledInv, true);
+
+  html += makeProjRowHtml('(=) Fluxo Líquido do Mês', ['dfc-balance-row'], r => r.netFlow, true, true);
   html += makeProjRowHtml('Saldo Final (Caixa)', ['dfc-balance-row'], r => r.finalBalance);
 
   const tbody = document.getElementById('fin-projection-body');
   if (tbody) {
     tbody.innerHTML = html;
   }
+
+  // Register collapse event handlers for Projection Table
+  document.querySelectorAll('#fin-projection-table .flow-header-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const targetClass = row.getAttribute('data-target');
+      const isCollapsed = row.classList.toggle('collapsed');
+      document.querySelectorAll('#fin-projection-table .' + targetClass).forEach(child => {
+        child.style.display = isCollapsed ? 'none' : '';
+      });
+      const arrow = row.querySelector('.arrow-indicator');
+      if (arrow) {
+        arrow.innerText = isCollapsed ? '▶' : '▼';
+      }
+    });
+  });
 }
 
