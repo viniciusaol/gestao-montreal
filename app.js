@@ -768,6 +768,11 @@ function renderStudentBreakdown() {
       totalClasses += s.classesCount;
       totalBilled += s.totalBilled;
       totalCommission += studentComm;
+      const showBaseBruto = s.totalCommissionBase > s.totalBilled + 0.01;
+      const baseBrutoHtml = showBaseBruto ? `
+            <span class="bruto-subtext" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 2px;">
+              (Base Repasse Bruto: ${formatCurrency(s.totalCommissionBase)})
+            </span>` : '';
       return `
         <tr class="socio-highlight-row" style="background: rgba(16, 185, 129, 0.015);">
           <td>
@@ -779,9 +784,7 @@ function renderStudentBreakdown() {
           <td class="text-center">${s.classesCount}</td>
           <td class="text-right">
             ${formatCurrency(s.totalBilled)}
-            <span class="bruto-subtext" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 2px;">
-              (Base Repasse Bruto: ${formatCurrency(s.totalCommissionBase)})
-            </span>
+            ${baseBrutoHtml}
           </td>
           <td class="text-right text-saibro font-semibold">${formatCurrency(studentComm)}</td>
         </tr>
