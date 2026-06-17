@@ -409,29 +409,41 @@ function calculateAndRenderDashboardData() {
   const pendingBookingsByStudent = {};
   const paidAgg = {};
   let totalPaidFaturamento = 0;
+  let totalCommissionBase = 0;
   let period1PagoVal = 0;
   let period2PagoVal = 0;
+  let period1CommissionBase = 0;
+  let period2CommissionBase = 0;
 
   classesData.forEach(row => {
     const studentName = row.participant_name || 'Desconhecido';
     if (row.is_paid) {
       const val = parseFloat(row.booking_value) || 0;
+      const commBase = parseFloat(row.booking_commission_base) || val;
+      const isSocio = row.is_socio_benefit || false;
       if (val > 0) {
         totalPaidFaturamento += val;
+        totalCommissionBase += commBase;
         if (row.pay_date) {
           const datePart = row.pay_date.split(' ')[0];
           const day = parseInt(datePart.split('-')[2], 10);
           if (day <= 20) {
             period1PagoVal += val;
+            period1CommissionBase += commBase;
           } else {
             period2PagoVal += val;
+            period2CommissionBase += commBase;
           }
         }
         if (!paidAgg[studentName]) {
-          paidAgg[studentName] = { name: studentName, classesCount: 0, totalBilled: 0 };
+          paidAgg[studentName] = { name: studentName, classesCount: 0, totalBilled: 0, totalCommissionBase: 0, isSocio: false };
         }
         paidAgg[studentName].classesCount += 1;
         paidAgg[studentName].totalBilled += val;
+        paidAgg[studentName].totalCommissionBase += commBase;
+        if (isSocio) {
+          paidAgg[studentName].isSocio = true;
+        }
       }
     } else {
       // Unpaid / Pending
@@ -448,6 +460,8 @@ function calculateAndRenderDashboardData() {
   let totalPendingFaturamento = 0;
   let period1PendingVal = 0;
   let period2PendingVal = 0;
+  let period1PendingCommissionBase = 0;
+  let period2PendingCommissionBase = 0;
   studentsPending = [];
 
   Object.keys(pendingBookingsByStudent).forEach(studentName => {
@@ -512,10 +526,13 @@ function calculateAndRenderDashboardData() {
       slot.bookings.forEach(b => {
         b.estimated_value = perBookingValue;
         const day = parseInt(b.booking_date.split('-')[2], 10);
+        const commBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? perBookingValue * 2 : perBookingValue);
         if (day <= 20) {
           period1PendingVal += perBookingValue;
+          period1PendingCommissionBase += commBase;
         } else {
           period2PendingVal += perBookingValue;
+          period2PendingCommissionBase += commBase;
         }
       });
 
@@ -523,20 +540,40 @@ function calculateAndRenderDashboardData() {
     });
 
     totalPendingFaturamento += studentTotalBilled;
+
+    let studentCommissionBase = 0;
+    let isSocio = false;
+    bookings.forEach(b => {
+      if (b.is_socio_benefit) isSocio = true;
+      const commBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? (b.estimated_value * 2) : (b.estimated_value || 0));
+      studentCommissionBase += commBase;
+    });
+
+    if (studentCommissionBase === 0) {
+      studentCommissionBase = studentTotalBilled;
+    }
+
     studentsPending.push({
       name: studentName,
       classesCount: bookings.length,
-      totalBilled: studentTotalBilled
+      totalBilled: studentTotalBilled,
+      totalCommissionBase: studentCommissionBase,
+      isSocio: isSocio
     });
   });
 
-  const commissionGeneratedVal = totalPaidFaturamento * (currentCommissionRate / 100);
-  const period1ComissaoVal = period1PagoVal * (currentCommissionRate / 100);
-  const period2ComissaoVal = period2PagoVal * (currentCommissionRate / 100);
+  let totalPendingCommissionBase = 0;
+  studentsPending.forEach(s => {
+    totalPendingCommissionBase += s.totalCommissionBase;
+  });
 
-  const pendingCommissionVal = totalPendingFaturamento * (currentCommissionRate / 100);
-  const period1PendingComissaoVal = period1PendingVal * (currentCommissionRate / 100);
-  const period2PendingComissaoVal = period2PendingVal * (currentCommissionRate / 100);
+  const commissionGeneratedVal = totalCommissionBase * (currentCommissionRate / 100);
+  const period1ComissaoVal = period1CommissionBase * (currentCommissionRate / 100);
+  const period2ComissaoVal = period2CommissionBase * (currentCommissionRate / 100);
+
+  const pendingCommissionVal = totalPendingCommissionBase * (currentCommissionRate / 100);
+  const period1PendingComissaoVal = period1PendingCommissionBase * (currentCommissionRate / 100);
+  const period2PendingComissaoVal = period2PendingCommissionBase * (currentCommissionRate / 100);
 
   let totalRepassePagoVal = 0;
   payoutsData.forEach(p => {
@@ -688,20 +725,69 @@ function renderStudentBreakdown() {
   let totalBilled = 0;
   let totalCommission = 0;
 
-  let rowsHtml = students.map(s => {
-    const studentComm = s.totalBilled * (currentCommissionRate / 100);
-    totalClasses += s.classesCount;
-    totalBilled += s.totalBilled;
-    totalCommission += studentComm;
-    return `
-      <tr>
-        <td>${s.name}</td>
-        <td class="text-center">${s.classesCount}</td>
-        <td class="text-right">${formatCurrency(s.totalBilled)}</td>
-        <td class="text-right text-saibro font-semibold">${formatCurrency(studentComm)}</td>
+  const normalStudents = students.filter(s => !s.isSocio);
+  const socioStudents = students.filter(s => s.isSocio);
+  let rowsHtml = '';
+
+  if (normalStudents.length > 0) {
+    if (socioStudents.length > 0) {
+      rowsHtml += `
+        <tr class="table-section-header print-section-header">
+          <td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--color-creme); padding: 8px 12px; border-bottom: 1px solid var(--border);">
+            Alunos Regulares (Repasse sobre Valor Líquido)
+          </td>
+        </tr>
+      `;
+    }
+    rowsHtml += normalStudents.map(s => {
+      const studentComm = s.totalCommissionBase * (currentCommissionRate / 100);
+      totalClasses += s.classesCount;
+      totalBilled += s.totalBilled;
+      totalCommission += studentComm;
+      return `
+        <tr>
+          <td>${s.name}</td>
+          <td class="text-center">${s.classesCount}</td>
+          <td class="text-right">${formatCurrency(s.totalBilled)}</td>
+          <td class="text-right text-saibro font-semibold">${formatCurrency(studentComm)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  if (socioStudents.length > 0) {
+    rowsHtml += `
+      <tr class="table-section-header print-section-header">
+        <td colspan="4" style="background: rgba(16, 185, 129, 0.04); font-weight: 700; color: var(--color-receita); padding: 8px 12px; border-bottom: 1px solid rgba(16, 185, 129, 0.2); border-top: 1px solid var(--border);">
+          Sócios Arena (Benefício 50% - Repasse sobre Valor Bruto)
+        </td>
       </tr>
     `;
-  }).join('');
+    rowsHtml += socioStudents.map(s => {
+      const studentComm = s.totalCommissionBase * (currentCommissionRate / 100);
+      totalClasses += s.classesCount;
+      totalBilled += s.totalBilled;
+      totalCommission += studentComm;
+      return `
+        <tr class="socio-highlight-row" style="background: rgba(16, 185, 129, 0.015);">
+          <td>
+            ${s.name} 
+            <span style="font-size: 0.65rem; background: rgba(16, 185, 129, 0.15); color: var(--color-receita); padding: 1px 6px; border-radius: 4px; font-weight: 800; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.03em; vertical-align: middle;">
+              Sócio
+            </span>
+          </td>
+          <td class="text-center">${s.classesCount}</td>
+          <td class="text-right">
+            ${formatCurrency(s.totalBilled)}
+            <span class="bruto-subtext" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 2px;">
+              (Base Repasse Bruto: ${formatCurrency(s.totalCommissionBase)})
+            </span>
+          </td>
+          <td class="text-right text-saibro font-semibold">${formatCurrency(studentComm)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
 
   rowsHtml += `
     <tr style="border-top: 2px solid var(--color-creme-claro); font-weight: 800;">
@@ -1843,7 +1929,7 @@ async function loadFinancialReports() {
     const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${projectionEnd}`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
     const salesParams = `select=valor_faturamento,pay_date&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
-    const commParams = `select=booking_value,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
+    const commParams = `select=booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
@@ -2111,8 +2197,8 @@ async function loadFinancialReports() {
       const monthKey = row.booking_date ? row.booking_date.substring(0, 7) : '';
       if (!dreData[monthKey]) return;
       
-      const val = parseFloat(row.booking_value) || 0.0;
-      dreData[monthKey].comissao += val * (currentCommissionRate / 100);
+      const commBase = parseFloat(row.booking_commission_base) || (row.is_socio_benefit ? (parseFloat(row.booking_value) * 2) : (parseFloat(row.booking_value) || 0.0));
+      dreData[monthKey].comissao += commBase * (currentCommissionRate / 100);
     });
 
     // Populate DRE Expenses (Operation cost center)
@@ -3657,8 +3743,10 @@ function calculateAndRenderCurrentMonthProjection() {
     return day <= 20;
   });
   const expectedCommP1 = bookingsP1.reduce((sum, b) => {
-    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0);
-    return sum + val * commissionRate;
+    const commBase = b.is_paid 
+      ? (parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? parseFloat(b.booking_value) * 2 : parseFloat(b.booking_value) || 0.0))
+      : (parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? (juneUnpaidEstimatedValues[b.booking_id] * 2) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0)));
+    return sum + commBase * commissionRate;
   }, 0.0);
 
   const bookingsP2 = juneBookings.filter(b => {
@@ -3666,8 +3754,10 @@ function calculateAndRenderCurrentMonthProjection() {
     return day > 20;
   });
   const expectedCommP2 = bookingsP2.reduce((sum, b) => {
-    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0);
-    return sum + val * commissionRate;
+    const commBase = b.is_paid 
+      ? (parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? parseFloat(b.booking_value) * 2 : parseFloat(b.booking_value) || 0.0))
+      : (parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? (juneUnpaidEstimatedValues[b.booking_id] * 2) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0)));
+    return sum + commBase * commissionRate;
   }, 0.0);
 
   const allGlobalPayouts = allGlobalPayoutsData || [];

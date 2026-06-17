@@ -1253,9 +1253,34 @@ input:focus, select:focus, textarea:focus {
   }
 
   .text-saibro {
-    color: #C05131 !important;
-    font-weight: 700 !important;
-  }
+  color: #C05131 !important;
+  font-weight: 700 !important;
+}
+
+/* Custom styles for printed tables with partner highlights */
+.data-table tr.table-section-header td {
+  background: #f0fdf4 !important;
+  color: #166534 !important;
+  font-weight: 700 !important;
+  border-top: 1px solid #bbf7d0 !important;
+  border-bottom: 2px solid #bbf7d0 !important;
+  font-size: 0.85rem !important;
+}
+.data-table tr.socio-highlight-row td {
+  background: #f8fafc !important;
+}
+.data-table tr.socio-highlight-row td span.bruto-subtext {
+  color: #475569 !important;
+  font-size: 0.7rem !important;
+}
+.data-table tr.socio-highlight-row td span:not(.bruto-subtext) {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+  border: 1px solid #bbf7d0 !important;
+  padding: 1px 4px !important;
+  border-radius: 4px !important;
+  font-size: 0.6rem !important;
+}
 }
 
 /* ==========================================================================
