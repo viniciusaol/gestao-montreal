@@ -3002,12 +3002,7 @@ if (btnSync) {
     
     try {
       debugLog("Chamando webhook de sincronização no n8n...");
-      const response = await fetch("https://workflows.vxautomation.com.br/webhook/sync-montreal", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        }
-      });
+      const response = await fetch("https://workflows.vxautomation.com.br/webhook/sync-montreal");
       
       if (!response.ok) {
         throw new Error(`N8N respondeu com código de erro ${response.status}`);
