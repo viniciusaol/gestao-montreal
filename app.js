@@ -2969,6 +2969,191 @@ async function handleFilterChange() {
   }
 }
 
+// ---- Data Synchronization (n8n Webhook & Supabase Status Polling) ----
+const btnSync = document.getElementById('btn-sync');
+const syncOverlay = document.getElementById('sync-overlay');
+const syncSpinner = document.getElementById('sync-spinner');
+const syncSuccessIcon = document.getElementById('sync-success-icon');
+const syncErrorIcon = document.getElementById('sync-error-icon');
+const syncStatusTitle = document.getElementById('sync-status-title');
+const syncStatusDesc = document.getElementById('sync-status-desc');
+const syncProgressBar = document.getElementById('sync-progress-bar');
+const btnCloseSyncError = document.getElementById('btn-close-sync-error');
+
+let syncPollInterval = null;
+
+if (btnSync) {
+  btnSync.addEventListener('click', async () => {
+    // 1. Show overlay and reset UI state
+    syncOverlay.style.display = 'flex';
+    // Trigger CSS opacity and scale animations via Reflow
+    syncOverlay.getBoundingClientRect(); 
+    syncOverlay.classList.add('active');
+    
+    syncSpinner.style.display = 'block';
+    syncSuccessIcon.style.display = 'none';
+    syncErrorIcon.style.display = 'none';
+    btnCloseSyncError.style.display = 'none';
+    
+    syncStatusTitle.innerText = "Sincronizando Dados";
+    syncStatusDesc.innerText = "Iniciando a comunicação com a API do n8n...";
+    syncProgressBar.className = "sync-progress-bar";
+    syncProgressBar.style.width = "10%";
+    
+    try {
+      debugLog("Chamando webhook de sincronização no n8n...");
+      const response = await fetch("https://workflows.vxautomation.com.br/webhook/sync-montreal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`N8N respondeu com código de erro ${response.status}`);
+      }
+      
+      syncProgressBar.style.width = "20%";
+      syncStatusDesc.innerText = "Conectado ao n8n! Aguardando o início dos sub-workflows...";
+      
+      // 3. Start Polling the Supabase Table
+      startSyncPolling();
+      
+    } catch (err) {
+      debugError("Erro ao iniciar a sincronização no n8n", err);
+      showSyncError(`Não foi possível estabelecer contato com o servidor n8n: ${err.message}`);
+    }
+  });
+}
+
+if (btnCloseSyncError) {
+  btnCloseSyncError.addEventListener('click', () => {
+    syncOverlay.classList.remove('active');
+    setTimeout(() => {
+      syncOverlay.style.display = 'none';
+    }, 300);
+  });
+}
+
+function showSyncError(msg) {
+  if (syncPollInterval) {
+    clearInterval(syncPollInterval);
+    syncPollInterval = null;
+  }
+  syncSpinner.style.display = 'none';
+  syncSuccessIcon.style.display = 'none';
+  syncErrorIcon.style.display = 'block';
+  btnCloseSyncError.style.display = 'block';
+  
+  syncStatusTitle.innerText = "Falha na Sincronização";
+  syncStatusDesc.innerText = msg;
+  syncProgressBar.className = "sync-progress-bar error";
+  syncProgressBar.style.width = "100%";
+}
+
+function startSyncPolling() {
+  if (syncPollInterval) clearInterval(syncPollInterval);
+  
+  // Poll every 2 seconds
+  syncPollInterval = setInterval(async () => {
+    try {
+      // Query the first row of mt_sync_status
+      const token = getUserToken() || SUPABASE_KEY;
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/mt_sync_status?id=eq.1`, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Erro ao consultar status do Supabase: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      if (!data || data.length === 0) {
+        throw new Error("Tabela de status vazia no Supabase.");
+      }
+      
+      const syncStatus = data[0];
+      const status = syncStatus.status;
+      const errorMessage = syncStatus.error_message;
+      
+      debugLog(`[Sync Poll] Status atual: "${status}"`);
+      
+      if (status === 'idle') {
+        // SUCCESS!
+        clearInterval(syncPollInterval);
+        syncPollInterval = null;
+        
+        syncSpinner.style.display = 'none';
+        syncErrorIcon.style.display = 'none';
+        syncSuccessIcon.style.display = 'block';
+        
+        syncStatusTitle.innerText = "Sincronização Concluída!";
+        syncProgressBar.className = "sync-progress-bar success";
+        syncProgressBar.style.width = "100%";
+        
+        const lastSyncDate = syncStatus.last_sync_at ? new Date(syncStatus.last_sync_at).toLocaleTimeString('pt-BR') : new Date().toLocaleTimeString('pt-BR');
+        syncStatusDesc.innerText = `Todos os dados foram atualizados com sucesso às ${lastSyncDate}! Recarregando o painel...`;
+        
+        // Reload dashboard after 2 seconds
+        setTimeout(async () => {
+          syncOverlay.classList.remove('active');
+          setTimeout(() => {
+            syncOverlay.style.display = 'none';
+          }, 300);
+          
+          // Reload the entire dashboard data
+          await loadDashboard();
+          // Also clear financials cache to force reload DRE/DFC if user is on those tabs
+          cachedFinancialData = null;
+          const activeMainTab = document.querySelector('.main-tab-btn.active');
+          if (activeMainTab && activeMainTab.id === 'main-tab-financial') {
+            await loadFinancialReports();
+          } else if (activeMainTab && activeMainTab.id === 'main-tab-operational') {
+            await loadOperationalReports();
+          }
+        }, 2500);
+        
+      } else if (status === 'error') {
+        // FAILED!
+        showSyncError(errorMessage || "Erro desconhecido durante a execução das etapas no n8n.");
+        
+      } else if (status.startsWith('running:')) {
+        // PROGRESS UPDATE!
+        const stepName = status.replace('running:', '').trim();
+        let progressPercent = 30;
+        let descriptionText = "Processando etapas...";
+        
+        if (stepName === "Extrato Mercado Pago") {
+          progressPercent = 30;
+          descriptionText = "Etapa 1/5: Importando extratos recentes do Mercado Pago...";
+        } else if (stepName === "Procfy no Supabase") {
+          progressPercent = 45;
+          descriptionText = "Etapa 2/5: Sincronizando lançamentos financeiros do Procfy...";
+        } else if (stepName === "Atualizar Bookings") {
+          progressPercent = 60;
+          descriptionText = "Etapa 3/5: Sincronizando agendamentos e presenças no MatchPoint...";
+        } else if (stepName === "Atualiza Clientes") {
+          progressPercent = 75;
+          descriptionText = "Etapa 4/5: Atualizando base cadastral de clientes ativos...";
+        } else if (stepName === "Relatório de Vendas") {
+          progressPercent = 90;
+          descriptionText = "Etapa 5/5: Consolidando relatórios gerais de faturamento e vendas...";
+        }
+        
+        syncProgressBar.style.width = `${progressPercent}%`;
+        syncStatusDesc.innerText = descriptionText;
+      }
+      
+    } catch (err) {
+      debugError("Erro ao consultar status no loop de polling", err);
+      // We don't fail immediately on single fetch errors to prevent network glitches from breaking the UI
+    }
+  }, 2000);
+}
+
 // ---- Event Listeners ----
 selectProf.addEventListener('change', handleFilterChange);
 selectYear.addEventListener('change', handleFilterChange);

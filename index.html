@@ -76,6 +76,10 @@
               <span id="commission-display">47%</span>
             </div>
           </div>
+          <button id="btn-sync" class="btn btn-outline btn-icon no-print">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            Atualizar Dados
+          </button>
           <button id="btn-print" class="btn btn-primary btn-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
             Exportar PDF
@@ -755,6 +759,27 @@
       </footer>
 
     </main>
+  </div>
+
+  <!-- Sync Loading Overlay -->
+  <div id="sync-overlay" class="sync-overlay">
+    <div class="sync-card">
+      <div class="spinner-container">
+        <div class="sync-spinner" id="sync-spinner"></div>
+        <div class="sync-success-icon" id="sync-success-icon" style="display: none; color: #2ec4b6;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        </div>
+        <div class="sync-error-icon" id="sync-error-icon" style="display: none; color: #e63946;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </div>
+      </div>
+      <h3 id="sync-status-title">Sincronizando Dados</h3>
+      <p id="sync-status-desc">Iniciando a integração com a API do n8n...</p>
+      <div class="sync-progress-bar-container" id="sync-progress-bar-container">
+        <div id="sync-progress-bar" class="sync-progress-bar" style="width: 0%;"></div>
+      </div>
+      <button id="btn-close-sync-error" class="btn btn-outline" style="display: none; margin-top: 1rem; width: 100%;">Fechar</button>
+    </div>
   </div>
 
   <!-- Login Screen Overlay -->
