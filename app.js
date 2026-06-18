@@ -3461,11 +3461,30 @@ function calculateAndRenderProjection() {
 
   const junePaidFinal = (monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].final) || 7280.98;
 
+  // ---- Get real current bank balance (same source as daily projection) ----
+  let currentActualCashBalance3M = junePaidFinal; // fallback to DFC if no real data
+  if (allProcfyData && allProcfyData.length > 0) {
+    const sortedBySync = [...allProcfyData].sort((a, b) => {
+      const dateA = a.synced_at || '';
+      const dateB = b.synced_at || '';
+      return dateB.localeCompare(dateA);
+    });
+    if (sortedBySync[0] && sortedBySync[0].bank_account_balance_cents !== undefined) {
+      currentActualCashBalance3M = sortedBySync[0].bank_account_balance_cents / 100;
+    }
+  }
+
+  // Today's date string for filtering only FUTURE unpaid transactions
+  const todayDateFor3M = new Date();
+  const todayStrFor3M = `${year}-${month}-${String(todayDateFor3M.getDate()).padStart(2, '0')}`;
+
+  // Only count unpaid inflows/outflows from today onwards (already in bank balance for past days)
   let juneRemainingUnpaidInflowsD0 = 0.0;
-  let juneRemainingUnpaidInflowsD30 = 0.0; 
-  
+  let juneRemainingUnpaidInflowsD30 = 0.0;
+
   juneBookings.forEach(b => {
     if (b.is_paid) return;
+    if (b.booking_date && b.booking_date < todayStrFor3M) return; // skip past unpaid
     let val = juneUnpaidEstimatedValues[b.booking_id] || 0.0;
     juneRemainingUnpaidInflowsD0 += val * baseD0Ratio;
     juneRemainingUnpaidInflowsD30 += val * baseD30Ratio;
@@ -3473,12 +3492,13 @@ function calculateAndRenderProjection() {
 
   let juneRemainingUnpaidOutflows = 0.0;
   let juneRemainingUnpaidInflowsProcfy = 0.0;
-  
+
   allProcfyData.forEach(tx => {
     const dateStr = tx.due_date;
     if (!dateStr || !dateStr.startsWith(baseMonthPrefix)) return;
     if (tx.paid) return;
-    
+    if (dateStr < todayStrFor3M) return; // skip past unpaid (already reflected in real balance)
+
     const amount = parseFloat(tx.amount) || 0.0;
     if (tx.transaction_type === 'revenue') {
       juneRemainingUnpaidInflowsProcfy += amount;
@@ -3487,7 +3507,9 @@ function calculateAndRenderProjection() {
     }
   });
 
-  const julyOpeningBalance = junePaidFinal + juneRemainingUnpaidInflowsD0 + juneRemainingUnpaidInflowsProcfy - juneRemainingUnpaidOutflows;
+  // July opening = real bank balance today + future June inflows - future June outflows
+  // This is consistent with what the daily projection shows at June 30
+  const julyOpeningBalance = currentActualCashBalance3M + juneRemainingUnpaidInflowsD0 + juneRemainingUnpaidInflowsProcfy - juneRemainingUnpaidOutflows;
   
   const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix))
                                      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
