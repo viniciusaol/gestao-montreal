@@ -184,6 +184,8 @@ let metricsPending = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period
 let currentClassesData = [];
 let currentPayoutsData = [];
 let cachedFinancialData = null;
+let cachedMonthEndProjectionBalance = null; // final balance from daily projection → used as July opening in 3-month projection
+
 
 // Set default date
 payoutDate.value = new Date().toISOString().split('T')[0];
@@ -2462,9 +2464,10 @@ async function loadFinancialReports() {
       dreData
     };
 
-    // Calculate and render projection
-    calculateAndRenderProjection();
+    // Calculate daily projection first — it stores the June 30 balance in cachedMonthEndProjectionBalance
+    // Then the 3-month projection reads that value as the July opening balance
     calculateAndRenderCurrentMonthProjection();
+    calculateAndRenderProjection();
 
   } catch (err) {
     debugError('Erro ao carregar relatórios financeiros', err);
@@ -2945,16 +2948,16 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
   const projCommission = document.getElementById('proj-input-commission');
   const projSafety = document.getElementById('proj-input-safety');
   if (projGrowth) {
-    projGrowth.addEventListener('input', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
-    projGrowth.addEventListener('change', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
+    projGrowth.addEventListener('input', () => { calculateAndRenderCurrentMonthProjection(); calculateAndRenderProjection(); });
+    projGrowth.addEventListener('change', () => { calculateAndRenderCurrentMonthProjection(); calculateAndRenderProjection(); });
   }
   if (projCommission) {
-    projCommission.addEventListener('input', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
-    projCommission.addEventListener('change', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
+    projCommission.addEventListener('input', () => { calculateAndRenderCurrentMonthProjection(); calculateAndRenderProjection(); });
+    projCommission.addEventListener('change', () => { calculateAndRenderCurrentMonthProjection(); calculateAndRenderProjection(); });
   }
   if (projSafety) {
-    projSafety.addEventListener('input', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
-    projSafety.addEventListener('change', () => { calculateAndRenderProjection(); calculateAndRenderCurrentMonthProjection(); });
+    projSafety.addEventListener('input', () => { calculateAndRenderCurrentMonthProjection(); calculateAndRenderProjection(); });
+    projSafety.addEventListener('change', () => { calculateAndRenderCurrentMonthProjection(); calculateAndRenderProjection(); });
   }
 }
 
@@ -3507,9 +3510,12 @@ function calculateAndRenderProjection() {
     }
   });
 
-  // July opening = real bank balance today + future June inflows - future June outflows
-  // This is consistent with what the daily projection shows at June 30
-  const julyOpeningBalance = currentActualCashBalance3M + juneRemainingUnpaidInflowsD0 + juneRemainingUnpaidInflowsProcfy - juneRemainingUnpaidOutflows;
+  // July opening balance = the final balance from the daily (current month) projection
+  // That projection already accounts for all real-bank-balance + future inflows - future outflows + commissions
+  // It is computed in calculateAndRenderCurrentMonthProjection() which runs first
+  const julyOpeningBalance = (typeof cachedMonthEndProjectionBalance === 'number' && !isNaN(cachedMonthEndProjectionBalance))
+    ? cachedMonthEndProjectionBalance
+    : ((monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].final) || 7280.98);
   
   const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix))
                                      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
@@ -4108,6 +4114,9 @@ function calculateAndRenderCurrentMonthProjection() {
 
     runningBalance = dayFinalBalance;
   }
+
+  // Store the month-end balance so the 3-month projection can use it as July opening balance
+  cachedMonthEndProjectionBalance = runningBalance;
 
   // Render Table
   let html = '';
