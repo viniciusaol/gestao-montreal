@@ -657,7 +657,14 @@
         <!-- Projection Current Month -->
         <section id="fin-projection-current-card" class="detailed-section printable-section" style="margin-top: 0.5rem; margin-bottom: 2rem; display: none;">
           <div class="card">
-            <h3 class="card-title">Projeção de Caixa — Mês Atual (A partir de Hoje)</h3>
+            <h3 class="card-title" style="margin-bottom: 0.5rem;">Projeção de Caixa — Mês Atual (A partir de Hoje)</h3>
+            
+            <div class="no-print" style="margin-bottom: 1.25rem; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-include-inflows" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--color-saibro);">
+              <label for="chk-include-inflows" style="font-size: 0.88rem; color: var(--text-main); font-weight: 500; cursor: pointer; user-select: none;">
+                Incluir Entradas Projetadas (Mensalidades/Avulsas e Variáveis estimadas)
+              </label>
+            </div>
             
             <div class="table-container" style="max-height: 500px; overflow-y: auto;">
               <table class="data-table" id="fin-proj-current-table" style="min-width: 900px; border-collapse: collapse;">

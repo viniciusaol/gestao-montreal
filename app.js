@@ -2959,6 +2959,14 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
     projSafety.addEventListener('input', () => { calculateAndRenderCurrentMonthProjection(); calculateAndRenderProjection(); });
     projSafety.addEventListener('change', () => { calculateAndRenderCurrentMonthProjection(); calculateAndRenderProjection(); });
   }
+  
+  const chkIncludeInflows = document.getElementById('chk-include-inflows');
+  if (chkIncludeInflows) {
+    chkIncludeInflows.addEventListener('change', () => {
+      calculateAndRenderCurrentMonthProjection();
+      calculateAndRenderProjection();
+    });
+  }
 }
 
 // ---- Combined Filter Change Handler ----
@@ -4062,7 +4070,9 @@ function calculateAndRenderCurrentMonthProjection() {
     const varD0 = (projectedVarRevenue * baseD0Ratio) * (dayWeight / totalMonthWeight);
     const varD30 = (juneVariableRevenueBaseline * baseD30Ratio) * (dayWeight / totalMonthWeight);
 
-    const totalInflowDay = round2(tuitionD0 + tuitionD30 + varD0 + varD30);
+    const chkIncludeInflows = document.getElementById('chk-include-inflows');
+    const includeInflows = chkIncludeInflows ? chkIncludeInflows.checked : true;
+    const totalInflowDay = includeInflows ? round2(tuitionD0 + tuitionD30 + varD0 + varD30) : 0.0;
 
     let outflowOps = 0.0;
     let outflowInv = 0.0;
