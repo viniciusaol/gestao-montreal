@@ -4277,3 +4277,109 @@ function calculateAndRenderCurrentMonthProjection() {
   }
 }
 
+// ---- Print Layout Customizations (Only for PDF Export) ----
+let originalPrintState = null;
+
+// Helper to parse currency string (like R$ 2.406,53)
+function parseCurrency(str) {
+  if (!str) return 0;
+  const cleaned = str.replace(/R\$\s?/g, '').replace(/\./g, '').replace(',', '.').trim();
+  const val = parseFloat(cleaned);
+  return isNaN(val) ? 0 : val;
+}
+
+window.addEventListener('beforeprint', () => {
+  const printCommRate = document.getElementById('print-commission-rate');
+  const lblPrintTotalPago = document.getElementById('lbl-print-total-pago');
+  const printValTotalPago = document.getElementById('print-val-total-pago');
+  const printValComissao = document.getElementById('print-val-comissao');
+  
+  const commHeader = document.querySelector('#students-table th:nth-child(4)');
+  const valHeader = document.querySelector('#students-table th:nth-child(3)');
+  
+  // Save original state to restore on afterprint
+  originalPrintState = {
+    printCommRateText: printCommRate ? printCommRate.innerText : '',
+    lblPrintTotalPagoText: lblPrintTotalPago ? lblPrintTotalPago.innerText : '',
+    printValTotalPagoText: printValTotalPago ? printValTotalPago.innerText : '',
+    commHeaderHTML: commHeader ? commHeader.innerHTML : '',
+    valHeaderHTML: valHeader ? valHeader.innerHTML : '',
+    rows: []
+  };
+  
+  // 1. Update print metadata to show 50%
+  if (printCommRate) printCommRate.innerText = '50%';
+  
+  // 2. Update print summary faturamento description and value (Comissao * 2)
+  if (lblPrintTotalPago) {
+    const isPaid = (typeof currentTab !== 'undefined' ? currentTab : 'paid') === 'paid';
+    lblPrintTotalPago.innerText = isPaid ? 'Valor Faturado Líquido (Total Pago)' : 'Valor Previsto Líquido (Estimativa)';
+  }
+  
+  if (printValTotalPago && printValComissao) {
+    const comissaoVal = parseCurrency(printValComissao.innerText);
+    printValTotalPago.innerText = formatCurrency(comissaoVal * 2);
+  }
+  
+  // 3. Update table headers to 50% and Líquido
+  if (commHeader) {
+    const isPaid = (typeof currentTab !== 'undefined' ? currentTab : 'paid') === 'paid';
+    commHeader.innerHTML = isPaid ? 'Comissão (50%)' : 'Comissão Prevista (50%)';
+  }
+  
+  if (valHeader) {
+    const isPaid = (typeof currentTab !== 'undefined' ? currentTab : 'paid') === 'paid';
+    valHeader.innerText = isPaid ? 'Valor Pago Líquido (Rateado)' : 'Valor Estimado Líquido (Rateado)';
+  }
+  
+  // 4. Update table rows (faturamento = comissao * 2)
+  const rows = document.querySelectorAll('#students-table-rows tr');
+  rows.forEach((row, index) => {
+    const cells = row.querySelectorAll('td');
+    if (cells.length >= 4) {
+      const faturamentoCell = cells[2];
+      const comissaoCell = cells[3];
+      
+      originalPrintState.rows.push({
+        index: index,
+        faturamentoHTML: faturamentoCell.innerHTML
+      });
+      
+      const comissaoVal = parseCurrency(comissaoCell.innerText);
+      faturamentoCell.innerText = formatCurrency(comissaoVal * 2);
+    }
+  });
+});
+
+window.addEventListener('afterprint', () => {
+  if (!originalPrintState) return;
+  
+  const printCommRate = document.getElementById('print-commission-rate');
+  const lblPrintTotalPago = document.getElementById('lbl-print-total-pago');
+  const printValTotalPago = document.getElementById('print-val-total-pago');
+  
+  const commHeader = document.querySelector('#students-table th:nth-child(4)');
+  const valHeader = document.querySelector('#students-table th:nth-child(3)');
+  
+  if (printCommRate) printCommRate.innerText = originalPrintState.printCommRateText;
+  if (lblPrintTotalPago) lblPrintTotalPago.innerText = originalPrintState.lblPrintTotalPagoText;
+  if (printValTotalPago) printValTotalPago.innerText = originalPrintState.printValTotalPagoText;
+  
+  if (commHeader) commHeader.innerHTML = originalPrintState.commHeaderHTML;
+  if (valHeader) valHeader.innerHTML = originalPrintState.valHeaderHTML;
+  
+  const rows = document.querySelectorAll('#students-table-rows tr');
+  originalPrintState.rows.forEach(r => {
+    const row = rows[r.index];
+    if (row) {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 3) {
+        cells[2].innerHTML = r.faturamentoHTML;
+      }
+    }
+  });
+  
+  originalPrintState = null;
+});
+
+
