@@ -407,6 +407,40 @@ function calculateAndRenderDashboardData() {
   const year = selectYear.value;
   const month = selectMonth.value;
 
+  // 1. Calculate total payouts made to the professor for the month
+  let totalPayouts = 0.0;
+  payoutsData.forEach(p => {
+    totalPayouts += parseFloat(p.amount) || 0.0;
+  });
+
+  // 2. Extract paid bookings and sort them chronologically by pay_date
+  const paidBookingsForAllocation = classesData.filter(row => row.is_paid && (parseFloat(row.booking_value) || 0) > 0);
+  paidBookingsForAllocation.sort((a, b) => {
+    const dateA = a.pay_date || a.booking_date || '';
+    const dateB = b.pay_date || b.booking_date || '';
+    return dateA.localeCompare(dateB);
+  });
+
+  // 3. Allocate payouts sequentially (FIFO) to paid bookings
+  let remainingPayout = totalPayouts;
+  const bookingRepasseStatus = {}; // { booking_id: { paidComm, pendingComm } }
+
+  paidBookingsForAllocation.forEach(row => {
+    const val = parseFloat(row.booking_value) || 0;
+    const commBase = parseFloat(row.booking_commission_base) || val;
+    const comm = commBase * (currentCommissionRate / 100);
+
+    if (remainingPayout >= comm) {
+      bookingRepasseStatus[row.booking_id] = { paidComm: comm, pendingComm: 0.0 };
+      remainingPayout -= comm;
+    } else if (remainingPayout > 0) {
+      bookingRepasseStatus[row.booking_id] = { paidComm: remainingPayout, pendingComm: comm - remainingPayout };
+      remainingPayout = 0.0;
+    } else {
+      bookingRepasseStatus[row.booking_id] = { paidComm: 0.0, pendingComm: comm };
+    }
+  });
+
   // Group bookings by student for pending calculations
   const pendingBookingsByStudent = {};
   const paidAgg = {};
@@ -438,7 +472,15 @@ function calculateAndRenderDashboardData() {
           }
         }
         if (!paidAgg[studentName]) {
-          paidAgg[studentName] = { name: studentName, classesCount: 0, totalBilled: 0, totalCommissionBase: 0, isSocio: false };
+          paidAgg[studentName] = { 
+            name: studentName, 
+            classesCount: 0, 
+            totalBilled: 0, 
+            totalCommissionBase: 0, 
+            isSocio: false,
+            repassePaid: 0.0,
+            repassePending: 0.0
+          };
         }
         paidAgg[studentName].classesCount += 1;
         paidAgg[studentName].totalBilled += val;
@@ -446,6 +488,12 @@ function calculateAndRenderDashboardData() {
         if (isSocio) {
           paidAgg[studentName].isSocio = true;
         }
+
+        // Add allocated repasse values
+        const comm = commBase * (currentCommissionRate / 100);
+        const repStatus = bookingRepasseStatus[row.booking_id] || { paidComm: 0.0, pendingComm: comm };
+        paidAgg[studentName].repassePaid += repStatus.paidComm;
+        paidAgg[studentName].repassePending += repStatus.pendingComm;
       }
     } else {
       // Unpaid / Pending
@@ -560,7 +608,9 @@ function calculateAndRenderDashboardData() {
       classesCount: bookings.length,
       totalBilled: studentTotalBilled,
       totalCommissionBase: studentCommissionBase,
-      isSocio: isSocio
+      isSocio: isSocio,
+      repassePaid: 0.0,
+      repassePending: studentCommissionBase * (currentCommissionRate / 100)
     });
   });
 
@@ -692,6 +742,24 @@ function renderDashboardUI() {
 }
 
 // ---- Render Student Table ----
+function getRepasseBadgeHtml(repassePaid, repassePending) {
+  let badgeStyle = '';
+  let badgeLabel = '';
+  
+  if (repassePending < 0.01) {
+    badgeStyle = 'background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.25);';
+    badgeLabel = 'Pago';
+  } else if (repassePaid < 0.01) {
+    badgeStyle = 'background: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.25);';
+    badgeLabel = 'Pendente';
+  } else {
+    badgeStyle = 'background: rgba(59, 130, 246, 0.12); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.25);';
+    badgeLabel = 'Parcial';
+  }
+  
+  return `<span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; text-align: center; text-transform: uppercase; letter-spacing: 0.03em; ${badgeStyle}">${badgeLabel}</span>`;
+}
+
 function renderStudentBreakdown() {
   const students = currentTab === 'paid' ? studentsPaid : studentsPending;
   const emptyMsg = currentTab === 'paid' 
@@ -716,7 +784,7 @@ function renderStudentBreakdown() {
   }
 
   if (students.length === 0) {
-    studentsTableRows.innerHTML = `<tr><td colspan="4" class="empty-state">${emptyMsg}</td></tr>`;
+    studentsTableRows.innerHTML = `<tr><td colspan="5" class="empty-state">${emptyMsg}</td></tr>`;
     return;
   }
   
@@ -735,7 +803,7 @@ function renderStudentBreakdown() {
     if (socioStudents.length > 0) {
       rowsHtml += `
         <tr class="table-section-header print-section-header">
-          <td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--color-creme); padding: 8px 12px; border-bottom: 1px solid var(--border);">
+          <td colspan="5" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--color-creme); padding: 8px 12px; border-bottom: 1px solid var(--border);">
             Alunos Regulares (Repasse sobre Valor Líquido)
           </td>
         </tr>
@@ -746,12 +814,14 @@ function renderStudentBreakdown() {
       totalClasses += s.classesCount;
       totalBilled += s.totalBilled;
       totalCommission += studentComm;
+      const statusHtml = getRepasseBadgeHtml(s.repassePaid || 0, s.repassePending || 0);
       return `
         <tr>
           <td>${s.name}</td>
           <td class="text-center">${s.classesCount}</td>
           <td class="text-right">${formatCurrency(s.totalBilled)}</td>
           <td class="text-right text-saibro font-semibold">${formatCurrency(studentComm)}</td>
+          <td class="text-center">${statusHtml}</td>
         </tr>
       `;
     }).join('');
@@ -760,7 +830,7 @@ function renderStudentBreakdown() {
   if (socioStudents.length > 0) {
     rowsHtml += `
       <tr class="table-section-header print-section-header">
-        <td colspan="4" style="background: rgba(16, 185, 129, 0.04); font-weight: 700; color: var(--color-receita); padding: 8px 12px; border-bottom: 1px solid rgba(16, 185, 129, 0.2); border-top: 1px solid var(--border);">
+        <td colspan="5" style="background: rgba(16, 185, 129, 0.04); font-weight: 700; color: var(--color-receita); padding: 8px 12px; border-bottom: 1px solid rgba(16, 185, 129, 0.2); border-top: 1px solid var(--border);">
           Sócios Arena (Benefício 50% - Repasse sobre Valor Bruto)
         </td>
       </tr>
@@ -775,6 +845,7 @@ function renderStudentBreakdown() {
             <span class="bruto-subtext" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 2px;">
               (Base Repasse Bruto: ${formatCurrency(s.totalCommissionBase)})
             </span>` : '';
+      const statusHtml = getRepasseBadgeHtml(s.repassePaid || 0, s.repassePending || 0);
       return `
         <tr class="socio-highlight-row" style="background: rgba(16, 185, 129, 0.015);">
           <td>
@@ -789,6 +860,7 @@ function renderStudentBreakdown() {
             ${baseBrutoHtml}
           </td>
           <td class="text-right text-saibro font-semibold">${formatCurrency(studentComm)}</td>
+          <td class="text-center">${statusHtml}</td>
         </tr>
       `;
     }).join('');
@@ -800,6 +872,7 @@ function renderStudentBreakdown() {
       <td class="text-center">${totalClasses}</td>
       <td class="text-right">${formatCurrency(totalBilled)}</td>
       <td class="text-right text-saibro">${formatCurrency(totalCommission)}</td>
+      <td class="text-center">-</td>
     </tr>
   `;
   studentsTableRows.innerHTML = rowsHtml;
@@ -947,7 +1020,7 @@ if (btnLogout) {
     valRepassePago.innerText = 'R$ 0,00';
     valSaldoRestante.innerText = 'R$ 0,00';
     payoutsHistoryRows.innerHTML = `<tr><td colspan="4" class="empty-state">Efetue login para visualizar o histórico.</td></tr>`;
-    studentsTableRows.innerHTML = `<tr><td colspan="4" class="empty-state">Efetue login para visualizar os alunos.</td></tr>`;
+    studentsTableRows.innerHTML = `<tr><td colspan="5" class="empty-state">Efetue login para visualizar os alunos.</td></tr>`;
 
     // Clear operational data
     const opFaturamento = document.getElementById('op-val-faturamento');
