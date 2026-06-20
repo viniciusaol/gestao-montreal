@@ -2291,6 +2291,12 @@ async function loadFinancialReports() {
       const amount = parseFloat(tx.amount) || 0.0;
       const category = tx.category_name || 'Outras Despesas';
 
+      // Exclude teacher commissions from operational expenses to prevent duplication,
+      // as commissions are already calculated from allCommData below Net Revenue
+      if (category.toLowerCase().includes('comissão') || category.toLowerCase().includes('comissao')) {
+        return;
+      }
+
       if (category === 'Energia Elétrica') {
         dreData[monthKey].energia += amount;
       } else {
