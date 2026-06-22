@@ -2007,7 +2007,7 @@ async function loadFinancialReports() {
     const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${projectionEnd}`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
     const salesParams = `select=valor_faturamento,pay_date&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
-    const commParams = `select=booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
+    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
@@ -3507,7 +3507,10 @@ function calculateAndRenderProjection() {
   const activeJuneSlots = [];
   const slotGroups = {};
   
-  juneBookings.forEach(b => {
+  // Filter out clase_suelta (avulsas) from the recurring monthly slot mapping
+  const monthlyJuneBookings = juneBookings.filter(b => b.booking_type !== 'clase_suelta');
+
+  monthlyJuneBookings.forEach(b => {
     const studentName = b.participant_name || 'Desconhecido';
     const dateObj = new Date(b.booking_date + 'T00:00:00');
     const dayOfWeek = dateObj.getDay();
@@ -3528,7 +3531,7 @@ function calculateAndRenderProjection() {
         dayOfWeek,
         startTime,
         values: [],
-        isPaid: b.is_paid
+        booking: b
       };
     }
     if (val > 0) {
@@ -3539,12 +3542,34 @@ function calculateAndRenderProjection() {
   Object.values(slotGroups).forEach(g => {
     const avgVal = g.values.length > 0 ? g.values.reduce((s, v) => s + v, 0) / g.values.length : 0.0;
     if (avgVal > 0) {
+      // Calculate flat monthly price for this slot
+      const pricingInfo = getBasePriceForBooking(g.booking);
+      const isOffPeak = g.dayOfWeek >= 1 && g.dayOfWeek <= 5 && 
+                        (parseInt(g.startTime.split(':')[0], 10) >= 10 && parseInt(g.startTime.split(':')[0], 10) <= 15);
+      
+      let basePrice = pricingInfo.price;
+      const desc = (g.booking.description || '').toUpperCase();
+      let discountRate = 0;
+      
+      if (desc.includes('SÓCIO') || desc.includes('SOCIO') || g.booking.is_socio_benefit) {
+        discountRate = 0.50;
+      } else if (desc.includes('HORA LIGHT') || isOffPeak) {
+        discountRate = 0.12;
+      } else if (desc.includes('DESCONTO FREQUENCIA +3') || desc.includes('FREQUENCIA +3')) {
+        discountRate = 0.07;
+      } else if (desc.includes('DESCONTO FREQUENCIA +2') || desc.includes('FREQUENCIA +2') || desc.includes('FAMÍLIA') || desc.includes('FAMILIA')) {
+        discountRate = 0.05;
+      }
+      
+      const flatMonthlyPrice = basePrice * (1 - discountRate);
+
       activeJuneSlots.push({
         studentName: g.studentName,
         customerCode: g.customerCode,
         dayOfWeek: g.dayOfWeek,
         startTime: g.startTime,
-        unitPrice: avgVal
+        unitPrice: avgVal,
+        monthlyPrice: flatMonthlyPrice
       });
     }
   });
@@ -3636,8 +3661,7 @@ function calculateAndRenderProjection() {
     let tuitionGenerated = 0.0;
 
     activeJuneSlots.forEach(slot => {
-      const occurrences = getWeekdayOccurrencesInMonth(curYearStr, curMonthStr, slot.dayOfWeek);
-      const slotVal = occurrences * slot.unitPrice;
+      const slotVal = slot.monthlyPrice;
       tuitionGenerated += slotVal;
     });
 
@@ -3694,8 +3718,7 @@ function calculateAndRenderProjection() {
     tuitionFees += tuitionReceivedD30 * 0.025; // Adjusted to 2.5% (Mercado Pago / Card Credit)
 
     activeJuneSlots.forEach(slot => {
-      const occurrences = getWeekdayOccurrencesInMonth(curYearStr, curMonthStr, slot.dayOfWeek);
-      const slotVal = round2(occurrences * slot.unitPrice * (1 + growthRate));
+      const slotVal = round2(slot.monthlyPrice * (1 + growthRate));
       
       const payments = allPaymentMethodsData.filter(p => p.customer_code === slot.customerCode);
       const isDebit = payments.some(p => (p.pay_method || '').toLowerCase() === 'cartão débito');
