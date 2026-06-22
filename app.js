@@ -3753,7 +3753,10 @@ function calculateAndRenderProjection() {
       totalOutflowOps,
       netFlowOps,
       netFlow,
-      finalBalance
+      finalBalance,
+      tuitionGenerated,
+      projectedVarRevenue,
+      totalBilling: round2(tuitionGenerated + projectedVarRevenue)
     };
 
     prevMonthFinalBalance = finalBalance;
@@ -3813,6 +3816,28 @@ function calculateAndRenderProjection() {
   const tbody = document.getElementById('fin-projection-body');
   if (tbody) {
     tbody.innerHTML = html;
+  }
+
+  // Render projected billing summary cards
+  const billingGrid = document.getElementById('proj-billing-grid');
+  if (billingGrid) {
+    billingGrid.innerHTML = targetMonths.map(m => {
+      const res = projectionResults[m.key];
+      return `
+        <div class="billing-card" style="flex: 1; min-width: 240px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.25rem; box-shadow: var(--shadow-sm);">
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">${m.label}</div>
+          <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.75rem;">${formatCurrency(res.totalBilling)}</div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.35rem;">
+            <span>Mensalidades (Competência):</span>
+            <span style="font-weight: 600; color: var(--text-main);">${formatCurrency(res.tuitionGenerated)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.88rem; color: var(--text-muted);">
+            <span>Locações e Outros (Média):</span>
+            <span style="font-weight: 600; color: var(--text-main);">${formatCurrency(res.projectedVarRevenue)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
   }
 
   // Register collapse event handlers for Projection Table
