@@ -183,6 +183,7 @@ let metricsPaid = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period1Pa
 let metricsPending = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period1Pago: 0, period1Comissao: 0, period2Pago: 0, period2Comissao: 0 };
 let currentClassesData = [];
 let currentPayoutsData = [];
+let currentAllocationsData = [];
 let cachedFinancialData = null;
 let cachedMonthEndProjectionBalance = null; // final balance from daily projection → used as July opening in 3-month projection
 
@@ -387,9 +388,16 @@ async function loadDashboard() {
     const payoutsData = await supabaseSelect('mt_pagamentos_professores', payoutsParams);
     debugLog(`Repasses carregados: ${payoutsData.length} linhas.`);
 
+    // 3. Fetch allocations
+    debugLog('Buscando alocações de repasses via REST API...');
+    const allocationsParams = `select=*,mt_pagamentos_professores!inner(payout_id)&mt_pagamentos_professores.professor=eq.${profEncoded}&mt_pagamentos_professores.reference_period=eq.${monthStart}`;
+    const allocationsData = await supabaseSelect('mt_pagamentos_professores_alocacoes', allocationsParams);
+    debugLog(`Alocações carregadas: ${allocationsData.length} linhas.`);
+
     // Store in global cache for local recalculation
     currentClassesData = classesData;
     currentPayoutsData = payoutsData;
+    currentAllocationsData = allocationsData;
 
     // Perform calculations and rendering locally
     calculateAndRenderDashboardData();
@@ -407,39 +415,65 @@ function calculateAndRenderDashboardData() {
   const year = selectYear.value;
   const month = selectMonth.value;
 
-  // 1. Calculate total payouts made to the professor for the month
-  let totalPayouts = 0.0;
-  payoutsData.forEach(p => {
-    totalPayouts += parseFloat(p.amount) || 0.0;
-  });
+  const allocationsData = currentAllocationsData || [];
+  const bookingRepasseStatus = {}; // { "booking_id_customer_code": { paidComm, pendingComm } }
 
-  // 2. Extract paid bookings and sort them chronologically by pay_date
-  const paidBookingsForAllocation = classesData.filter(row => row.is_paid && (parseFloat(row.booking_value) || 0) > 0);
-  paidBookingsForAllocation.sort((a, b) => {
-    const dateA = a.pay_date || a.booking_date || '';
-    const dateB = b.pay_date || b.booking_date || '';
-    return dateA.localeCompare(dateB);
-  });
+  if (allocationsData.length > 0) {
+    // 1. Group saved allocations by unique booking participant
+    const allocationMap = {}; // { "booking_id_customer_code": totalAllocated }
+    allocationsData.forEach(alloc => {
+      const key = `${alloc.booking_id}_${alloc.customer_code}`;
+      allocationMap[key] = (allocationMap[key] || 0) + (parseFloat(alloc.allocated_amount) || 0);
+    });
 
-  // 3. Allocate payouts sequentially (FIFO) to paid bookings
-  let remainingPayout = totalPayouts;
-  const bookingRepasseStatus = {}; // { booking_id: { paidComm, pendingComm } }
+    // 2. Set status for each booking participant based on saved allocations
+    classesData.forEach(row => {
+      if (row.is_paid) {
+        const val = parseFloat(row.booking_value) || 0;
+        const commBase = parseFloat(row.booking_commission_base) || val;
+        const comm = commBase * (currentCommissionRate / 100);
+        const key = `${row.booking_id}_${row.customer_code}`;
 
-  paidBookingsForAllocation.forEach(row => {
-    const val = parseFloat(row.booking_value) || 0;
-    const commBase = parseFloat(row.booking_commission_base) || val;
-    const comm = commBase * (currentCommissionRate / 100);
+        const paidAlloc = allocationMap[key] || 0.0;
+        bookingRepasseStatus[key] = {
+          paidComm: paidAlloc,
+          pendingComm: Math.max(0.0, comm - paidAlloc)
+        };
+      }
+    });
+  } else {
+    // Fallback: Calculate FIFO allocations dynamically on the fly,
+    // but corrected to use "booking_id_customer_code" to prevent key collisions!
+    let totalPayouts = 0.0;
+    payoutsData.forEach(p => {
+      totalPayouts += parseFloat(p.amount) || 0.0;
+    });
 
-    if (remainingPayout >= comm) {
-      bookingRepasseStatus[row.booking_id] = { paidComm: comm, pendingComm: 0.0 };
-      remainingPayout -= comm;
-    } else if (remainingPayout > 0) {
-      bookingRepasseStatus[row.booking_id] = { paidComm: remainingPayout, pendingComm: comm - remainingPayout };
-      remainingPayout = 0.0;
-    } else {
-      bookingRepasseStatus[row.booking_id] = { paidComm: 0.0, pendingComm: comm };
-    }
-  });
+    const paidBookingsForAllocation = classesData.filter(row => row.is_paid && (parseFloat(row.booking_value) || 0) > 0);
+    paidBookingsForAllocation.sort((a, b) => {
+      const dateA = a.pay_date || a.booking_date || '';
+      const dateB = b.pay_date || b.booking_date || '';
+      return dateA.localeCompare(dateB);
+    });
+
+    let remainingPayout = totalPayouts;
+    paidBookingsForAllocation.forEach(row => {
+      const val = parseFloat(row.booking_value) || 0;
+      const commBase = parseFloat(row.booking_commission_base) || val;
+      const comm = commBase * (currentCommissionRate / 100);
+      const key = `${row.booking_id}_${row.customer_code}`;
+
+      if (remainingPayout >= comm) {
+        bookingRepasseStatus[key] = { paidComm: comm, pendingComm: 0.0 };
+        remainingPayout -= comm;
+      } else if (remainingPayout > 0) {
+        bookingRepasseStatus[key] = { paidComm: remainingPayout, pendingComm: comm - remainingPayout };
+        remainingPayout = 0.0;
+      } else {
+        bookingRepasseStatus[key] = { paidComm: 0.0, pendingComm: comm };
+      }
+    });
+  }
 
   // Group bookings by student for pending calculations
   const pendingBookingsByStudent = {};
@@ -491,7 +525,8 @@ function calculateAndRenderDashboardData() {
 
         // Add allocated repasse values
         const comm = commBase * (currentCommissionRate / 100);
-        const repStatus = bookingRepasseStatus[row.booking_id] || { paidComm: 0.0, pendingComm: comm };
+        const key = `${row.booking_id}_${row.customer_code}`;
+        const repStatus = bookingRepasseStatus[key] || { paidComm: 0.0, pendingComm: comm };
         paidAgg[studentName].repassePaid += repStatus.paidComm;
         paidAgg[studentName].repassePending += repStatus.pendingComm;
       }
@@ -900,7 +935,57 @@ formPayout.addEventListener('submit', async (e) => {
   }
 
   try {
-    await supabaseInsert('mt_pagamentos_professores', {
+    // 1. Build a map of already paid commissions from current database allocations
+    const currentAllocations = currentAllocationsData || [];
+    const savedAllocationMap = {}; // { "booking_id_customer_code": totalAllocated }
+    currentAllocations.forEach(alloc => {
+      const key = `${alloc.booking_id}_${alloc.customer_code}`;
+      savedAllocationMap[key] = (savedAllocationMap[key] || 0) + (parseFloat(alloc.allocated_amount) || 0);
+    });
+
+    // 2. Fetch paid classes for this teacher in the month to run FIFO allocation
+    const paidBookingsForAllocation = currentClassesData.filter(row => row.is_paid && (parseFloat(row.booking_value) || 0) > 0);
+    paidBookingsForAllocation.sort((a, b) => {
+      const dateA = a.pay_date || a.booking_date || '';
+      const dateB = b.pay_date || b.booking_date || '';
+      return dateA.localeCompare(dateB);
+    });
+
+    // 3. Compute allocations for this specific payout
+    let remainingPayout = amount;
+    const allocationsToInsert = [];
+
+    paidBookingsForAllocation.forEach(row => {
+      if (remainingPayout <= 0) return;
+
+      const val = parseFloat(row.booking_value) || 0;
+      const commBase = parseFloat(row.booking_commission_base) || val;
+      const totalComm = commBase * (currentCommissionRate / 100);
+      const key = `${row.booking_id}_${row.customer_code}`;
+
+      const alreadyPaid = savedAllocationMap[key] || 0.0;
+      const needed = Math.max(0.0, totalComm - alreadyPaid);
+
+      if (needed > 0.01) {
+        let allocated = 0.0;
+        if (remainingPayout >= needed) {
+          allocated = needed;
+          remainingPayout -= needed;
+        } else {
+          allocated = remainingPayout;
+          remainingPayout = 0.0;
+        }
+
+        allocationsToInsert.push({
+          booking_id: row.booking_id,
+          customer_code: row.customer_code,
+          allocated_amount: allocated
+        });
+      }
+    });
+
+    // 4. Save payout parent row
+    const payoutRes = await supabaseInsert('mt_pagamentos_professores', {
       professor: professor,
       amount: amount,
       payout_date: date,
@@ -908,6 +993,19 @@ formPayout.addEventListener('submit', async (e) => {
       period_type: periodType,
       notes: notes
     });
+
+    // 5. Save payout allocations (child rows) if any
+    const payoutId = Array.isArray(payoutRes) ? payoutRes[0].payout_id : payoutRes.payout_id;
+    if (allocationsToInsert.length > 0 && payoutId) {
+      const allocationsWithPayoutId = allocationsToInsert.map(alloc => ({
+        payout_id: payoutId,
+        booking_id: alloc.booking_id,
+        customer_code: alloc.customer_code,
+        allocated_amount: alloc.allocated_amount
+      }));
+      await supabaseInsert('mt_pagamentos_professores_alocacoes', allocationsWithPayoutId);
+    }
+
     payoutAmount.value = '';
     payoutNotes.value = '';
     payoutDate.value = new Date().toISOString().split('T')[0];
