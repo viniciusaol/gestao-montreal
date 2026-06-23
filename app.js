@@ -388,10 +388,14 @@ async function loadDashboard() {
     const payoutsData = await supabaseSelect('mt_pagamentos_professores', payoutsParams);
     debugLog(`Repasses carregados: ${payoutsData.length} linhas.`);
 
-    // 3. Fetch allocations
+    // 3. Fetch allocations using the payout_ids already loaded (simpler and more reliable than join syntax)
     debugLog('Buscando alocações de repasses via REST API...');
-    const allocationsParams = `select=*,mt_pagamentos_professores!inner(payout_id)&mt_pagamentos_professores.professor=eq.${profEncoded}&mt_pagamentos_professores.reference_period=eq.${monthStart}`;
-    const allocationsData = await supabaseSelect('mt_pagamentos_professores_alocacoes', allocationsParams);
+    let allocationsData = [];
+    if (payoutsData.length > 0) {
+      const payoutIds = payoutsData.map(p => p.payout_id);
+      const allocationsParams = `select=*&payout_id=in.(${payoutIds.join(',')})`;
+      allocationsData = await supabaseSelect('mt_pagamentos_professores_alocacoes', allocationsParams);
+    }
     debugLog(`Alocações carregadas: ${allocationsData.length} linhas.`);
 
     // Store in global cache for local recalculation
