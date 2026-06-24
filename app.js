@@ -1455,36 +1455,37 @@ async function loadOperationalReports() {
       historicMonths.push({ label: `${monthsBR[m - 1]}/${y}`, monthStart: `${y}-${mStr}-01` });
     }
 
-    // Fetch subcategory data (faturamento) and frequency data (alunos) for the 6-month window
+    // Fetch revenue subcategory + paying clients for the 6-month window in one pass
     const firstMonth = historicMonths[0].monthStart;
     const lastMonth = historicMonths[historicMonths.length - 1].monthStart;
 
-    const [histSubData, histFreqData] = await Promise.all([
+    const [histSubData, histPaidVendasData] = await Promise.all([
       supabaseSelect('vw_mt_ticket_medio_subcategoria_pago_mes', `select=mes,valor_liquido_total&mes=gte.${firstMonth}&mes=lte.${lastMonth}`),
-      supabaseSelect('vw_mt_frequencia_clientes_mes', `select=mes,customer_code&mes=gte.${firstMonth}&mes=lte.${lastMonth}`)
+      supabaseSelect('mt_faturamento_vendas', `select=customer_code,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&tipo=neq.refund`)
     ]);
 
-    // Aggregate into maps keyed by month
+    // Aggregate revenue by month
     const revenueByMonth = {};
     histSubData.forEach(row => {
       const k = row.mes ? row.mes.split('T')[0].substring(0, 7) : null;
       if (k) revenueByMonth[k] = (revenueByMonth[k] || 0) + (parseFloat(row.valor_liquido_total) || 0);
     });
 
-    const clientsByMonth = {};
-    histFreqData.forEach(row => {
-      const k = row.mes ? row.mes.split('T')[0].substring(0, 7) : null;
-      if (k) {
-        if (!clientsByMonth[k]) clientsByMonth[k] = new Set();
-        clientsByMonth[k].add(row.customer_code);
-      }
+    // Aggregate distinct paying clients by month (anyone who generated revenue, not just students)
+    const payingClientsByMonth = {};
+    histPaidVendasData.forEach(row => {
+      if (!row.pay_date) return;
+      const k = row.pay_date.substring(0, 7);
+      if (!payingClientsByMonth[k]) payingClientsByMonth[k] = new Set();
+      if (row.customer_code) payingClientsByMonth[k].add(row.customer_code);
     });
 
     historicMonths.forEach(({ label, monthStart: ms }) => {
       const key = ms.substring(0, 7); // e.g. "2026-06"
       monthsLabels.push(label);
       historicalRevenue.push(revenueByMonth[key] || 0);
-      historicalStudents.push(clientsByMonth[key] ? clientsByMonth[key].size : 0);
+      // Use paying clients (distinct customers who generated any revenue that month)
+      historicalStudents.push(payingClientsByMonth[key] ? payingClientsByMonth[key].size : 0);
     });
 
     // 5. Occupancy History: fetch productive court hours for the same 6-month window
@@ -1520,22 +1521,7 @@ async function loadOperationalReports() {
       return avail > 0 ? parseFloat((prodH / avail * 100).toFixed(1)) : 0;
     });
 
-    // 6. Ticket Médio History: paying clients per month over the same 6-month window
-    const histPaidVendasData = await supabaseSelect(
-      'mt_faturamento_vendas',
-      `select=customer_code,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&tipo=neq.refund`
-    );
-
-    // Group distinct paying customers by month (YYYY-MM key)
-    const payingClientsByMonth = {};
-    histPaidVendasData.forEach(row => {
-      if (!row.pay_date) return;
-      const k = row.pay_date.substring(0, 7); // "2026-06"
-      if (!payingClientsByMonth[k]) payingClientsByMonth[k] = new Set();
-      if (row.customer_code) payingClientsByMonth[k].add(row.customer_code);
-    });
-
-    // Ticket médio per month = revenue / paying clients
+    // Ticket médio per month = revenue / paying clients (reuse payingClientsByMonth built above)
     const ticketMedioHistory = historicMonths.map(({ monthStart: ms }) => {
       const key = ms.substring(0, 7);
       const rev = revenueByMonth[key] || 0;
@@ -1691,7 +1677,7 @@ function renderChartRevenueHistory(labels, revenues, students) {
           order: 2
         },
         {
-          label: 'Alunos Ativos',
+          label: 'Clientes Ativos',
           data: students,
           type: 'line',
           borderColor: '#f1f4e0',
