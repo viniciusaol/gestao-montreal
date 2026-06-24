@@ -1337,18 +1337,16 @@ async function loadOperationalReports() {
     const opClientesLabel = opClientes ? opClientes.closest('.metric-info')?.querySelector('h3') : null;
     if (opClientesLabel) opClientesLabel.innerText = 'Clientes Faturados';
 
-    // Fetch unique active students from the selected month onwards (including future starts)
-    const activeStudentsParams = `select=customer_code,qtd_aulas_adulto,qtd_aulas_kids,qtd_aulas_avulsas_particulares&mes=gte.${monthStart}`;
-    const activeStudentsData = await supabaseSelect('vw_mt_frequencia_clientes_mes', activeStudentsParams);
+    // Fetch unique active students: all students with class bookings from the selected month onwards
+    // Uses vw_mt_alunos_ativos_por_mes (based directly on mt_bookings + mt_booking_participantes),
+    // which is NOT coupled to payments — so it correctly counts students even if payment hasn't been
+    // matched yet. This gives the true active student base (current + future confirmed starts).
+    const activeStudentsParams = `select=customer_code&mes=gte.${monthStart}`;
+    const activeStudentsData = await supabaseSelect('vw_mt_alunos_ativos_por_mes', activeStudentsParams);
 
     const activeStudentsSet = new Set();
     activeStudentsData.forEach(row => {
-      const isStudent = (parseInt(row.qtd_aulas_adulto) || 0) > 0 || 
-                        (parseInt(row.qtd_aulas_kids) || 0) > 0 || 
-                        (parseInt(row.qtd_aulas_avulsas_particulares) || 0) > 0;
-      if (isStudent && row.customer_code) {
-        activeStudentsSet.add(row.customer_code);
-      }
+      if (row.customer_code) activeStudentsSet.add(row.customer_code);
     });
     const totalActiveStudents = activeStudentsSet.size;
 
