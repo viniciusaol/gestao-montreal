@@ -747,6 +747,17 @@ function renderDashboardUI() {
   period2Pago.innerText = formatCurrency(metricsPaid.period2Pago);
   period2Comissao.innerText = formatCurrency(metricsPaid.period2Comissao);
 
+  // 3b. Populate reconciliation card
+  const recComissao = document.getElementById('rec-comissao-total');
+  const recRepasse  = document.getElementById('rec-repasse-pago');
+  const recSaldo    = document.getElementById('rec-saldo-restante');
+  if (recComissao) recComissao.innerText = formatCurrency(metricsPaid.comissao);
+  if (recRepasse)  recRepasse.innerText  = formatCurrency(metricsPaid.repasse);
+  if (recSaldo) {
+    recSaldo.innerText = formatCurrency(metricsPaid.saldo);
+    recSaldo.classList.toggle('zero', metricsPaid.saldo < 0.01);
+  }
+
   // 4. Update print-only summary labels and values based on the active tab (Paid or Pending)
   const lblPrintTotalPago = document.getElementById('lbl-print-total-pago');
   const lblPrintComissao = document.getElementById('lbl-print-comissao');

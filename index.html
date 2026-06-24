@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -160,7 +160,8 @@
 
       <!-- Period Breakdown -->
       <section class="periods-section no-print">
-        <h2 class="section-title">Distribuição por Período de Pagamento</h2>
+        <h2 class="section-title">Distribuição do Faturamento por Período</h2>
+        <p class="section-subtitle" style="font-size: 0.78rem; color: var(--text-muted); margin: -0.5rem 0 1rem; font-style: italic;">Valores abaixo representam o que os alunos pagaram ao clube em cada período — não o repasse ao professor.</p>
         <div class="periods-grid">
           <div class="card period-card">
             <div class="period-header">
@@ -169,16 +170,16 @@
             </div>
             <div class="period-body">
               <div class="period-val">
-                <span class="label">Valor Pago:</span>
+                <span class="label">Faturado pelo Clube:</span>
                 <span id="period-1-pago" class="val">R$ 0,00</span>
               </div>
               <div class="period-val text-saibro">
-                <span class="label">Comissão:</span>
+                <span class="label">Comissão Gerada:</span>
                 <span id="period-1-comissao" class="val font-semibold">R$ 0,00</span>
               </div>
             </div>
             <div class="period-footer">
-              <small>Mensalidades e avulsas compensadas até o dia 20.</small>
+              <small>Pagamentos de alunos recebidos até o dia 20.</small>
             </div>
           </div>
           <div class="card period-card">
@@ -188,16 +189,35 @@
             </div>
             <div class="period-body">
               <div class="period-val">
-                <span class="label">Valor Pago:</span>
+                <span class="label">Faturado pelo Clube:</span>
                 <span id="period-2-pago" class="val">R$ 0,00</span>
               </div>
               <div class="period-val text-saibro">
-                <span class="label">Comissão:</span>
+                <span class="label">Comissão Gerada:</span>
                 <span id="period-2-comissao" class="val font-semibold">R$ 0,00</span>
               </div>
             </div>
             <div class="period-footer">
-              <small>Mensalidades e avulsas compensadas após o dia 20.</small>
+              <small>Pagamentos de alunos recebidos após o dia 20.</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reconciliation summary -->
+        <div class="card reconciliation-card no-print" id="reconciliation-card">
+          <div class="reconciliation-title">Resumo de Liquidação</div>
+          <div class="reconciliation-grid">
+            <div class="rec-row">
+              <span class="rec-label">Comissão Total Gerada</span>
+              <span class="rec-value" id="rec-comissao-total">R$ 0,00</span>
+            </div>
+            <div class="rec-row rec-minus">
+              <span class="rec-label">( − ) Repasse Já Efetuado</span>
+              <span class="rec-value rec-paid" id="rec-repasse-pago">R$ 0,00</span>
+            </div>
+            <div class="rec-row rec-result">
+              <span class="rec-label">( = ) Saldo a Repassar</span>
+              <span class="rec-value rec-saldo" id="rec-saldo-restante">R$ 0,00</span>
             </div>
           </div>
         </div>
@@ -927,6 +947,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
