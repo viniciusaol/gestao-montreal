@@ -220,6 +220,9 @@
               <span class="rec-value rec-saldo" id="rec-saldo-restante">R$ 0,00</span>
             </div>
           </div>
+          <div class="reconciliation-details" id="reconciliation-details" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed rgba(255,255,255,0.1); font-size: 0.85rem; display: none;">
+            <!-- Will be populated dynamically -->
+          </div>
         </div>
       </section>
 
@@ -315,8 +318,10 @@
                   <th>Aluno</th>
                   <th class="text-center">Aulas Pagas</th>
                   <th class="text-right">Valor Pago (Rateado)</th>
-                  <th class="text-right text-saibro">Comissão (<span class="comm-col-display">47%</span>)</th>
-                  <th class="text-center" style="width: 130px;">Status Repasse</th>
+                  <th class="text-right text-saibro">Comissão Gerada</th>
+                  <th class="text-right" style="color: #10b981;">Repasse Pago</th>
+                  <th class="text-right" style="color: #f59e0b;">Saldo a Pagar</th>
+                  <th class="text-center" style="width: 110px;">Status</th>
                 </tr>
               </thead>
               <tbody id="students-table-rows">
@@ -947,6 +952,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

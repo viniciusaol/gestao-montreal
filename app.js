@@ -447,12 +447,7 @@ function calculateAndRenderDashboardData() {
     });
   } else {
     // Fallback: Calculate FIFO allocations dynamically on the fly,
-    // but corrected to use "booking_id_customer_code" to prevent key collisions!
-    let totalPayouts = 0.0;
-    payoutsData.forEach(p => {
-      totalPayouts += parseFloat(p.amount) || 0.0;
-    });
-
+    // distributing each payout in order and respecting the period constraints, rolling forward surplus chronologically!
     const paidBookingsForAllocation = classesData.filter(row => row.is_paid && (parseFloat(row.booking_value) || 0) > 0);
     paidBookingsForAllocation.sort((a, b) => {
       const dateA = a.pay_date || a.booking_date || '';
@@ -460,21 +455,123 @@ function calculateAndRenderDashboardData() {
       return dateA.localeCompare(dateB);
     });
 
-    let remainingPayout = totalPayouts;
+    // Initialize all as completely pending first
     paidBookingsForAllocation.forEach(row => {
       const val = parseFloat(row.booking_value) || 0;
       const commBase = parseFloat(row.booking_commission_base) || val;
       const comm = commBase * (currentCommissionRate / 100);
       const key = `${row.booking_id}_${row.customer_code}`;
+      bookingRepasseStatus[key] = { paidComm: 0.0, pendingComm: comm };
+    });
 
-      if (remainingPayout >= comm) {
-        bookingRepasseStatus[key] = { paidComm: comm, pendingComm: 0.0 };
-        remainingPayout -= comm;
-      } else if (remainingPayout > 0) {
-        bookingRepasseStatus[key] = { paidComm: remainingPayout, pendingComm: comm - remainingPayout };
-        remainingPayout = 0.0;
-      } else {
-        bookingRepasseStatus[key] = { paidComm: 0.0, pendingComm: comm };
+    // Sort payouts by date asc to allocate in FIFO order
+    const sortedPayouts = [...payoutsData].sort((a, b) => a.payout_date.localeCompare(b.payout_date));
+
+    sortedPayouts.forEach(payout => {
+      let remainingPayout = parseFloat(payout.amount) || 0.0;
+      
+      // Pass 1: Allocate to classes paid on or before the payout date (respecting period constraints)
+      paidBookingsForAllocation.forEach(row => {
+        if (remainingPayout <= 0) return;
+
+        // Rule 1: Student payment date must be <= payout date
+        const classPayDate = row.pay_date ? row.pay_date.substring(0, 10) : (row.booking_date || '');
+        if (classPayDate > payout.payout_date) {
+          return; // Skip for now
+        }
+
+        // Rule 2: 1st period payouts skip drop-in classes (avulsas)
+        if (payout.period_type === 'ate_dia_20' && row.is_avulsa) {
+          return; // Skip
+        }
+
+        const val = parseFloat(row.booking_value) || 0;
+        const commBase = parseFloat(row.booking_commission_base) || val;
+        const comm = commBase * (currentCommissionRate / 100);
+        const key = `${row.booking_id}_${row.customer_code}`;
+
+        const currentStatus = bookingRepasseStatus[key];
+        const needed = comm - currentStatus.paidComm;
+
+        if (needed > 0.01) {
+          let allocated = 0.0;
+          if (remainingPayout >= needed) {
+            allocated = needed;
+            remainingPayout -= needed;
+          } else {
+            allocated = remainingPayout;
+            remainingPayout = 0.0;
+          }
+          currentStatus.paidComm += allocated;
+          currentStatus.pendingComm = Math.max(0.0, comm - currentStatus.paidComm);
+        }
+      });
+
+      // Pass 2: Roll forward any remaining surplus to cover subsequent monthly classes paid after the payout date (still respecting period constraints)
+      if (remainingPayout > 0.01) {
+        paidBookingsForAllocation.forEach(row => {
+          if (remainingPayout <= 0) return;
+
+          const classPayDate = row.pay_date ? row.pay_date.substring(0, 10) : (row.booking_date || '');
+          // Only process classes paid AFTER the payout date
+          if (classPayDate <= payout.payout_date) {
+            return;
+          }
+
+          // Still respect period constraints for avulsas
+          if (payout.period_type === 'ate_dia_20' && row.is_avulsa) {
+            return;
+          }
+
+          const val = parseFloat(row.booking_value) || 0;
+          const commBase = parseFloat(row.booking_commission_base) || val;
+          const comm = commBase * (currentCommissionRate / 100);
+          const key = `${row.booking_id}_${row.customer_code}`;
+
+          const currentStatus = bookingRepasseStatus[key];
+          const needed = comm - currentStatus.paidComm;
+
+          if (needed > 0.01) {
+            let allocated = 0.0;
+            if (remainingPayout >= needed) {
+              allocated = needed;
+              remainingPayout -= needed;
+            } else {
+              allocated = remainingPayout;
+              remainingPayout = 0.0;
+            }
+            currentStatus.paidComm += allocated;
+            currentStatus.pendingComm = Math.max(0.0, comm - currentStatus.paidComm);
+          }
+        });
+      }
+
+      // Pass 3: If there is STILL a surplus, allocate it to any remaining classes (including avulsas, in FIFO order)
+      if (remainingPayout > 0.01) {
+        paidBookingsForAllocation.forEach(row => {
+          if (remainingPayout <= 0) return;
+
+          const val = parseFloat(row.booking_value) || 0;
+          const commBase = parseFloat(row.booking_commission_base) || val;
+          const comm = commBase * (currentCommissionRate / 100);
+          const key = `${row.booking_id}_${row.customer_code}`;
+
+          const currentStatus = bookingRepasseStatus[key];
+          const needed = comm - currentStatus.paidComm;
+
+          if (needed > 0.01) {
+            let allocated = 0.0;
+            if (remainingPayout >= needed) {
+              allocated = needed;
+              remainingPayout -= needed;
+            } else {
+              allocated = remainingPayout;
+              remainingPayout = 0.0;
+            }
+            currentStatus.paidComm += allocated;
+            currentStatus.pendingComm = Math.max(0.0, comm - currentStatus.paidComm);
+          }
+        });
       }
     });
   }
@@ -750,7 +847,7 @@ function renderDashboardUI() {
   period2Pago.innerText = formatCurrency(metricsPaid.period2Pago);
   period2Comissao.innerText = formatCurrency(metricsPaid.period2Comissao);
 
-  // 3b. Populate reconciliation card
+  // 3b. Populate reconciliation card and details
   const recComissao = document.getElementById('rec-comissao-total');
   const recRepasse  = document.getElementById('rec-repasse-pago');
   const recSaldo    = document.getElementById('rec-saldo-restante');
@@ -759,6 +856,34 @@ function renderDashboardUI() {
   if (recSaldo) {
     recSaldo.innerText = formatCurrency(metricsPaid.saldo);
     recSaldo.classList.toggle('zero', metricsPaid.saldo < 0.01);
+  }
+
+  // Calculate pending in table and unallocated payout (surplus credit)
+  const totalPendingInTable = studentsPaid.reduce((sum, s) => sum + (s.repassePending || 0), 0);
+  const totalAllocated = studentsPaid.reduce((sum, s) => sum + (s.repassePaid || 0), 0);
+  const unallocatedPayout = Math.max(0, metricsPaid.repasse - totalAllocated);
+
+  const recDetails = document.getElementById('reconciliation-details');
+  if (recDetails) {
+    if (unallocatedPayout > 0.01) {
+      recDetails.innerHTML = `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: rgba(241,244,224,0.45);">
+          <span>Aulas Pendentes/Parciais no Detalhamento:</span>
+          <span style="font-weight: 600; color: var(--color-creme-claro);">${formatCurrency(totalPendingInTable)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: rgba(241,244,224,0.45);">
+          <span>( − ) Sobra de Repasse (Crédito):</span>
+          <span style="font-weight: 600; color: #10b981;">${formatCurrency(unallocatedPayout)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-weight: 700; color: var(--color-saibro); border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 5px; margin-top: 5px;">
+          <span>( = ) Saldo Líquido Restante a Pagar:</span>
+          <span>${formatCurrency(metricsPaid.saldo)}</span>
+        </div>
+      `;
+      recDetails.style.display = 'block';
+    } else {
+      recDetails.style.display = 'none';
+    }
   }
 
   // 4. Update print-only summary labels and values based on the active tab (Paid or Pending)
@@ -832,12 +957,12 @@ function renderStudentBreakdown() {
   }
   if (commHeader) {
     commHeader.innerHTML = currentTab === 'paid' 
-      ? `Comissão (<span class="comm-col-display">${currentCommissionRate}%</span>)` 
-      : `Comissão Prevista (<span class="comm-col-display">${currentCommissionRate}%</span>)`;
+      ? `Comissão Gerada` 
+      : `Comissão Prevista`;
   }
 
   if (students.length === 0) {
-    studentsTableRows.innerHTML = `<tr><td colspan="5" class="empty-state">${emptyMsg}</td></tr>`;
+    studentsTableRows.innerHTML = `<tr><td colspan="7" class="empty-state">${emptyMsg}</td></tr>`;
     return;
   }
   
@@ -847,6 +972,8 @@ function renderStudentBreakdown() {
   let totalClasses = 0;
   let totalBilled = 0;
   let totalCommission = 0;
+  let totalRepassePaid = 0;
+  let totalRepassePending = 0;
 
   const normalStudents = students.filter(s => !s.isSocio);
   const socioStudents = students.filter(s => s.isSocio);
@@ -856,7 +983,7 @@ function renderStudentBreakdown() {
     if (socioStudents.length > 0) {
       rowsHtml += `
         <tr class="table-section-header print-section-header">
-          <td colspan="5" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--color-creme); padding: 8px 12px; border-bottom: 1px solid var(--border);">
+          <td colspan="7" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--color-creme); padding: 8px 12px; border-bottom: 1px solid var(--border);">
             Alunos Regulares (Repasse sobre Valor Líquido)
           </td>
         </tr>
@@ -867,6 +994,8 @@ function renderStudentBreakdown() {
       totalClasses += s.classesCount;
       totalBilled += s.totalBilled;
       totalCommission += studentComm;
+      totalRepassePaid += s.repassePaid || 0;
+      totalRepassePending += s.repassePending || 0;
       const statusHtml = getRepasseBadgeHtml(s.repassePaid || 0, s.repassePending || 0);
       return `
         <tr>
@@ -874,6 +1003,8 @@ function renderStudentBreakdown() {
           <td class="text-center">${s.classesCount}</td>
           <td class="text-right">${formatCurrency(s.totalBilled)}</td>
           <td class="text-right text-saibro font-semibold">${formatCurrency(studentComm)}</td>
+          <td class="text-right" style="color: #10b981;">${formatCurrency(s.repassePaid || 0)}</td>
+          <td class="text-right" style="color: #f59e0b; font-weight: 600;">${formatCurrency(s.repassePending || 0)}</td>
           <td class="text-center">${statusHtml}</td>
         </tr>
       `;
@@ -883,7 +1014,7 @@ function renderStudentBreakdown() {
   if (socioStudents.length > 0) {
     rowsHtml += `
       <tr class="table-section-header print-section-header">
-        <td colspan="5" style="background: rgba(16, 185, 129, 0.04); font-weight: 700; color: var(--color-receita); padding: 8px 12px; border-bottom: 1px solid rgba(16, 185, 129, 0.2); border-top: 1px solid var(--border);">
+        <td colspan="7" style="background: rgba(16, 185, 129, 0.04); font-weight: 700; color: var(--color-receita); padding: 8px 12px; border-bottom: 1px solid rgba(16, 185, 129, 0.2); border-top: 1px solid var(--border);">
           Sócios Arena (Benefício 50% - Repasse sobre Valor Bruto)
         </td>
       </tr>
@@ -893,6 +1024,8 @@ function renderStudentBreakdown() {
       totalClasses += s.classesCount;
       totalBilled += s.totalBilled;
       totalCommission += studentComm;
+      totalRepassePaid += s.repassePaid || 0;
+      totalRepassePending += s.repassePending || 0;
       const showBaseBruto = s.totalCommissionBase > s.totalBilled + 0.01;
       const baseBrutoHtml = showBaseBruto ? `
             <span class="bruto-subtext" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 2px;">
@@ -913,6 +1046,8 @@ function renderStudentBreakdown() {
             ${baseBrutoHtml}
           </td>
           <td class="text-right text-saibro font-semibold">${formatCurrency(studentComm)}</td>
+          <td class="text-right" style="color: #10b981;">${formatCurrency(s.repassePaid || 0)}</td>
+          <td class="text-right" style="color: #f59e0b; font-weight: 600;">${formatCurrency(s.repassePending || 0)}</td>
           <td class="text-center">${statusHtml}</td>
         </tr>
       `;
@@ -925,6 +1060,8 @@ function renderStudentBreakdown() {
       <td class="text-center">${totalClasses}</td>
       <td class="text-right">${formatCurrency(totalBilled)}</td>
       <td class="text-right text-saibro">${formatCurrency(totalCommission)}</td>
+      <td class="text-right" style="color: #10b981;">${formatCurrency(totalRepassePaid)}</td>
+      <td class="text-right" style="color: #f59e0b;">${formatCurrency(totalRepassePending)}</td>
       <td class="text-center">-</td>
     </tr>
   `;
@@ -969,19 +1106,30 @@ formPayout.addEventListener('submit', async (e) => {
       return dateA.localeCompare(dateB);
     });
 
-    // 3. Compute allocations for this specific payout
+    // 3. Compute allocations for this specific payout using the three-pass chronological FIFO logic
     let remainingPayout = amount;
     const allocationsToInsert = [];
+    const tempAllocatedMap = { ...savedAllocationMap }; // Track allocations in this transaction
 
+    // Pass 1: Allocate to classes paid on or before the payout date (respecting period constraints)
     paidBookingsForAllocation.forEach(row => {
       if (remainingPayout <= 0) return;
+
+      const classPayDate = row.pay_date ? row.pay_date.substring(0, 10) : (row.booking_date || '');
+      if (classPayDate > date) {
+        return; // Skip for now
+      }
+
+      if (periodType === 'ate_dia_20' && row.is_avulsa) {
+        return; // Skip
+      }
 
       const val = parseFloat(row.booking_value) || 0;
       const commBase = parseFloat(row.booking_commission_base) || val;
       const totalComm = commBase * (currentCommissionRate / 100);
       const key = `${row.booking_id}_${row.customer_code}`;
 
-      const alreadyPaid = savedAllocationMap[key] || 0.0;
+      const alreadyPaid = tempAllocatedMap[key] || 0.0;
       const needed = Math.max(0.0, totalComm - alreadyPaid);
 
       if (needed > 0.01) {
@@ -994,6 +1142,7 @@ formPayout.addEventListener('submit', async (e) => {
           remainingPayout = 0.0;
         }
 
+        tempAllocatedMap[key] = (tempAllocatedMap[key] || 0) + allocated;
         allocationsToInsert.push({
           booking_id: row.booking_id,
           customer_code: row.customer_code,
@@ -1001,6 +1150,81 @@ formPayout.addEventListener('submit', async (e) => {
         });
       }
     });
+
+    // Pass 2: Roll forward any remaining surplus to cover subsequent monthly classes paid after the payout date (still respecting period constraints)
+    if (remainingPayout > 0.01) {
+      paidBookingsForAllocation.forEach(row => {
+        if (remainingPayout <= 0) return;
+
+        const classPayDate = row.pay_date ? row.pay_date.substring(0, 10) : (row.booking_date || '');
+        if (classPayDate <= date) {
+          return; // Skip (already processed in Pass 1)
+        }
+
+        if (periodType === 'ate_dia_20' && row.is_avulsa) {
+          return; // Skip
+        }
+
+        const val = parseFloat(row.booking_value) || 0;
+        const commBase = parseFloat(row.booking_commission_base) || val;
+        const totalComm = commBase * (currentCommissionRate / 100);
+        const key = `${row.booking_id}_${row.customer_code}`;
+
+        const alreadyPaid = tempAllocatedMap[key] || 0.0;
+        const needed = Math.max(0.0, totalComm - alreadyPaid);
+
+        if (needed > 0.01) {
+          let allocated = 0.0;
+          if (remainingPayout >= needed) {
+            allocated = needed;
+            remainingPayout -= needed;
+          } else {
+            allocated = remainingPayout;
+            remainingPayout = 0.0;
+          }
+
+          tempAllocatedMap[key] = (tempAllocatedMap[key] || 0) + allocated;
+          allocationsToInsert.push({
+            booking_id: row.booking_id,
+            customer_code: row.customer_code,
+            allocated_amount: allocated
+          });
+        }
+      });
+    }
+
+    // Pass 3: If there is STILL a surplus, allocate it to any remaining classes (including avulsas, in FIFO order)
+    if (remainingPayout > 0.01) {
+      paidBookingsForAllocation.forEach(row => {
+        if (remainingPayout <= 0) return;
+
+        const val = parseFloat(row.booking_value) || 0;
+        const commBase = parseFloat(row.booking_commission_base) || val;
+        const totalComm = commBase * (currentCommissionRate / 100);
+        const key = `${row.booking_id}_${row.customer_code}`;
+
+        const alreadyPaid = tempAllocatedMap[key] || 0.0;
+        const needed = Math.max(0.0, totalComm - alreadyPaid);
+
+        if (needed > 0.01) {
+          let allocated = 0.0;
+          if (remainingPayout >= needed) {
+            allocated = needed;
+            remainingPayout -= needed;
+          } else {
+            allocated = remainingPayout;
+            remainingPayout = 0.0;
+          }
+
+          tempAllocatedMap[key] = (tempAllocatedMap[key] || 0) + allocated;
+          allocationsToInsert.push({
+            booking_id: row.booking_id,
+            customer_code: row.customer_code,
+            allocated_amount: allocated
+          });
+        }
+      });
+    }
 
     // 4. Save payout parent row
     const payoutRes = await supabaseInsert('mt_pagamentos_professores', {
