@@ -465,8 +465,6 @@ function calculateAndRenderDashboardData() {
     });
 
     // Sort payouts by date asc to allocate in FIFO order
-    const sortedPayouts = [...payoutsData].sort((a, b) => a.payout_date.localeCompare(b.payout_date));
-
     sortedPayouts.forEach(payout => {
       let remainingPayout = parseFloat(payout.amount) || 0.0;
       
@@ -480,8 +478,8 @@ function calculateAndRenderDashboardData() {
           return; // Skip for now
         }
 
-        // Rule 2: 1st period payouts skip drop-in classes (avulsas)
-        if (payout.period_type === 'ate_dia_20' && row.is_avulsa) {
+        // Rule 2: 1st period payouts skip group drop-in classes (is_avulsa_grupo_fixo)
+        if (payout.period_type === 'ate_dia_20' && row.is_avulsa_grupo_fixo) {
           return; // Skip
         }
 
@@ -506,73 +504,6 @@ function calculateAndRenderDashboardData() {
           currentStatus.pendingComm = Math.max(0.0, comm - currentStatus.paidComm);
         }
       });
-
-      // Pass 2: Roll forward any remaining surplus to cover subsequent monthly classes paid after the payout date (still respecting period constraints)
-      if (remainingPayout > 0.01) {
-        paidBookingsForAllocation.forEach(row => {
-          if (remainingPayout <= 0) return;
-
-          const classPayDate = row.pay_date ? row.pay_date.substring(0, 10) : (row.booking_date || '');
-          // Only process classes paid AFTER the payout date
-          if (classPayDate <= payout.payout_date) {
-            return;
-          }
-
-          // Still respect period constraints for avulsas
-          if (payout.period_type === 'ate_dia_20' && row.is_avulsa) {
-            return;
-          }
-
-          const val = parseFloat(row.booking_value) || 0;
-          const commBase = parseFloat(row.booking_commission_base) || val;
-          const comm = commBase * (currentCommissionRate / 100);
-          const key = `${row.booking_id}_${row.customer_code}`;
-
-          const currentStatus = bookingRepasseStatus[key];
-          const needed = comm - currentStatus.paidComm;
-
-          if (needed > 0.01) {
-            let allocated = 0.0;
-            if (remainingPayout >= needed) {
-              allocated = needed;
-              remainingPayout -= needed;
-            } else {
-              allocated = remainingPayout;
-              remainingPayout = 0.0;
-            }
-            currentStatus.paidComm += allocated;
-            currentStatus.pendingComm = Math.max(0.0, comm - currentStatus.paidComm);
-          }
-        });
-      }
-
-      // Pass 3: If there is STILL a surplus, allocate it to any remaining classes (including avulsas, in FIFO order)
-      if (remainingPayout > 0.01) {
-        paidBookingsForAllocation.forEach(row => {
-          if (remainingPayout <= 0) return;
-
-          const val = parseFloat(row.booking_value) || 0;
-          const commBase = parseFloat(row.booking_commission_base) || val;
-          const comm = commBase * (currentCommissionRate / 100);
-          const key = `${row.booking_id}_${row.customer_code}`;
-
-          const currentStatus = bookingRepasseStatus[key];
-          const needed = comm - currentStatus.paidComm;
-
-          if (needed > 0.01) {
-            let allocated = 0.0;
-            if (remainingPayout >= needed) {
-              allocated = needed;
-              remainingPayout -= needed;
-            } else {
-              allocated = remainingPayout;
-              remainingPayout = 0.0;
-            }
-            currentStatus.paidComm += allocated;
-            currentStatus.pendingComm = Math.max(0.0, comm - currentStatus.paidComm);
-          }
-        });
-      }
     });
   }
 
@@ -1117,11 +1048,11 @@ formPayout.addEventListener('submit', async (e) => {
 
       const classPayDate = row.pay_date ? row.pay_date.substring(0, 10) : (row.booking_date || '');
       if (classPayDate > date) {
-        return; // Skip for now
+        return; // Skip (it belongs to a future period/payment)
       }
 
-      if (periodType === 'ate_dia_20' && row.is_avulsa) {
-        return; // Skip
+      if (periodType === 'ate_dia_20' && row.is_avulsa_grupo_fixo) {
+        return; // Skip group drop-in classes
       }
 
       const val = parseFloat(row.booking_value) || 0;
@@ -1150,81 +1081,6 @@ formPayout.addEventListener('submit', async (e) => {
         });
       }
     });
-
-    // Pass 2: Roll forward any remaining surplus to cover subsequent monthly classes paid after the payout date (still respecting period constraints)
-    if (remainingPayout > 0.01) {
-      paidBookingsForAllocation.forEach(row => {
-        if (remainingPayout <= 0) return;
-
-        const classPayDate = row.pay_date ? row.pay_date.substring(0, 10) : (row.booking_date || '');
-        if (classPayDate <= date) {
-          return; // Skip (already processed in Pass 1)
-        }
-
-        if (periodType === 'ate_dia_20' && row.is_avulsa) {
-          return; // Skip
-        }
-
-        const val = parseFloat(row.booking_value) || 0;
-        const commBase = parseFloat(row.booking_commission_base) || val;
-        const totalComm = commBase * (currentCommissionRate / 100);
-        const key = `${row.booking_id}_${row.customer_code}`;
-
-        const alreadyPaid = tempAllocatedMap[key] || 0.0;
-        const needed = Math.max(0.0, totalComm - alreadyPaid);
-
-        if (needed > 0.01) {
-          let allocated = 0.0;
-          if (remainingPayout >= needed) {
-            allocated = needed;
-            remainingPayout -= needed;
-          } else {
-            allocated = remainingPayout;
-            remainingPayout = 0.0;
-          }
-
-          tempAllocatedMap[key] = (tempAllocatedMap[key] || 0) + allocated;
-          allocationsToInsert.push({
-            booking_id: row.booking_id,
-            customer_code: row.customer_code,
-            allocated_amount: allocated
-          });
-        }
-      });
-    }
-
-    // Pass 3: If there is STILL a surplus, allocate it to any remaining classes (including avulsas, in FIFO order)
-    if (remainingPayout > 0.01) {
-      paidBookingsForAllocation.forEach(row => {
-        if (remainingPayout <= 0) return;
-
-        const val = parseFloat(row.booking_value) || 0;
-        const commBase = parseFloat(row.booking_commission_base) || val;
-        const totalComm = commBase * (currentCommissionRate / 100);
-        const key = `${row.booking_id}_${row.customer_code}`;
-
-        const alreadyPaid = tempAllocatedMap[key] || 0.0;
-        const needed = Math.max(0.0, totalComm - alreadyPaid);
-
-        if (needed > 0.01) {
-          let allocated = 0.0;
-          if (remainingPayout >= needed) {
-            allocated = needed;
-            remainingPayout -= needed;
-          } else {
-            allocated = remainingPayout;
-            remainingPayout = 0.0;
-          }
-
-          tempAllocatedMap[key] = (tempAllocatedMap[key] || 0) + allocated;
-          allocationsToInsert.push({
-            booking_id: row.booking_id,
-            customer_code: row.customer_code,
-            allocated_amount: allocated
-          });
-        }
-      });
-    }
 
     // 4. Save payout parent row
     const payoutRes = await supabaseInsert('mt_pagamentos_professores', {
