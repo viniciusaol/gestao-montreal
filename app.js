@@ -478,18 +478,21 @@ function calculateAndRenderDashboardData() {
           return; // Skip for now
         }
 
-        // Rule 2: 1st period payouts skip group drop-in classes (is_avulsa_grupo_fixo)
+        const val = parseFloat(row.booking_value) || 0;
+        const commBaseTotal = parseFloat(row.booking_commission_base) || val;
+        const commBaseMonthly = parseFloat(row.booking_commission_base_monthly) || 0;
+
+        let eligibleCommBase = commBaseTotal;
         if (payout.period_type === 'ate_dia_20' && row.is_avulsa_grupo_fixo) {
-          return; // Skip
+          eligibleCommBase = commBaseMonthly;
         }
 
-        const val = parseFloat(row.booking_value) || 0;
-        const commBase = parseFloat(row.booking_commission_base) || val;
-        const comm = commBase * (currentCommissionRate / 100);
+        const totalComm = commBaseTotal * (currentCommissionRate / 100);
+        const eligibleComm = eligibleCommBase * (currentCommissionRate / 100);
         const key = `${row.booking_id}_${row.customer_code}`;
 
         const currentStatus = bookingRepasseStatus[key];
-        const needed = comm - currentStatus.paidComm;
+        const needed = eligibleComm - currentStatus.paidComm;
 
         if (needed > 0.01) {
           let allocated = 0.0;
@@ -501,7 +504,7 @@ function calculateAndRenderDashboardData() {
             remainingPayout = 0.0;
           }
           currentStatus.paidComm += allocated;
-          currentStatus.pendingComm = Math.max(0.0, comm - currentStatus.paidComm);
+          currentStatus.pendingComm = Math.max(0.0, totalComm - currentStatus.paidComm);
         }
       });
     });
@@ -1051,17 +1054,21 @@ formPayout.addEventListener('submit', async (e) => {
         return; // Skip (it belongs to a future period/payment)
       }
 
+      const val = parseFloat(row.booking_value) || 0;
+      const commBaseTotal = parseFloat(row.booking_commission_base) || val;
+      const commBaseMonthly = parseFloat(row.booking_commission_base_monthly) || 0;
+
+      let eligibleCommBase = commBaseTotal;
       if (periodType === 'ate_dia_20' && row.is_avulsa_grupo_fixo) {
-        return; // Skip group drop-in classes
+        // First period payout excludes the group-fixo avulsa portion
+        eligibleCommBase = commBaseMonthly;
       }
 
-      const val = parseFloat(row.booking_value) || 0;
-      const commBase = parseFloat(row.booking_commission_base) || val;
-      const totalComm = commBase * (currentCommissionRate / 100);
+      const eligibleComm = eligibleCommBase * (currentCommissionRate / 100);
       const key = `${row.booking_id}_${row.customer_code}`;
 
       const alreadyPaid = tempAllocatedMap[key] || 0.0;
-      const needed = Math.max(0.0, totalComm - alreadyPaid);
+      const needed = Math.max(0.0, eligibleComm - alreadyPaid);
 
       if (needed > 0.01) {
         let allocated = 0.0;
