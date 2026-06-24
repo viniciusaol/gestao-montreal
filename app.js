@@ -498,9 +498,11 @@ function calculateAndRenderDashboardData() {
       if (val > 0) {
         totalPaidFaturamento += val;
         totalCommissionBase += commBase;
-        if (row.pay_date) {
-          const datePart = row.pay_date.split(' ')[0];
-          const day = parseInt(datePart.split('-')[2], 10);
+        
+        // Split periods by booking_date (when the class happened), not pay_date (when student paid)
+        // This ensures 1st Period = commission on classes days 1-20, 2nd Period = days 21-30
+        if (row.booking_date) {
+          const day = parseInt(row.booking_date.split('-')[2], 10);
           if (day <= 20) {
             period1PagoVal += val;
             period1CommissionBase += commBase;
@@ -509,6 +511,7 @@ function calculateAndRenderDashboardData() {
             period2CommissionBase += commBase;
           }
         }
+        
         if (!paidAgg[studentName]) {
           paidAgg[studentName] = { 
             name: studentName, 
