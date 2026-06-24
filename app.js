@@ -1194,6 +1194,10 @@ async function loadOperationalReports() {
       `select=customer_code&paid=eq.true&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&is_canceled=eq.false&tipo=neq.refund`
     );
 
+    // Fetch all paid items for the selected month to run detailed goals calculations
+    const itemsParams = `select=categoria,subcategoria,customer_code,valor_liquido,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    const itemsData = await supabaseSelect('vw_mt_faturamento_itens_pago', itemsParams);
+
     // Fetch Mercado Pago payments
     const mpParams = `select=payment_type_id,payment_method_id,transaction_amount&date_approved=gte.${monthStart}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
     let mpData = [];
@@ -1319,6 +1323,9 @@ async function loadOperationalReports() {
     const opClientesLabel = opClientes ? opClientes.closest('.metric-info')?.querySelector('h3') : null;
     if (opClientesLabel) opClientesLabel.innerText = 'Clientes Faturados';
 
+    // Render Acompanhamento de Metas Widget
+    renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month);
+
 
     // 3. Render Detalhamento Tables
     // Table 1: Eficiência
@@ -1338,18 +1345,65 @@ async function loadOperationalReports() {
       }
     }
 
+    // Rebuild subcategory dataset on the client side using the smart classification from itemsData
+    const groupedSubcategories = {
+      'Aulas - Regular': { name: 'Aulas - Regular', clients: new Set(), total: 0 },
+      'Aulas - Avulsas': { name: 'Aulas - Avulsas', clients: new Set(), total: 0 },
+      'Locação - Quadra Avulsa': { name: 'Locação - Quadra Avulsa', clients: new Set(), total: 0 },
+      'Locação - Reserva Mensal': { name: 'Locação - Reserva Mensal', clients: new Set(), total: 0 },
+      'Lanchonete': { name: 'Lanchonete', clients: new Set(), total: 0 }
+    };
+
+    itemsData.forEach(item => {
+      const desc = (item.item_description || '').toLowerCase();
+      const cat = (item.categoria || '').toLowerCase();
+      const prod = (item.produto_padronizado || '').toLowerCase();
+      const val = parseFloat(item.valor_liquido) || 0;
+      const client = item.customer_code;
+
+      const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
+      const isRental = cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva');
+
+      if (isLesson) {
+        const isAvulsa = desc.includes('avulsa');
+        const subKey = isAvulsa ? 'Aulas - Avulsas' : 'Aulas - Regular';
+        groupedSubcategories[subKey].total += val;
+        if (client) groupedSubcategories[subKey].clients.add(client);
+      } else if (isRental) {
+        const isReserva = desc.includes('reserva') || prod.includes('reserva') || cat.includes('reserva') || (item.subcategoria || '').toLowerCase().includes('reserva');
+        const subKey = isReserva ? 'Locação - Reserva Mensal' : 'Locação - Quadra Avulsa';
+        groupedSubcategories[subKey].total += val;
+        if (client) groupedSubcategories[subKey].clients.add(client);
+      } else {
+        groupedSubcategories['Lanchonete'].total += val;
+        if (client) groupedSubcategories['Lanchonete'].clients.add(client);
+      }
+    });
+
+    const processedSubData = Object.values(groupedSubcategories)
+      .filter(sub => sub.total > 0.01)
+      .map(sub => ({
+        subcategoria: sub.name,
+        qtd_clientes: sub.clients.size,
+        valor_liquido_total: sub.total,
+        ticket_medio_por_cliente: sub.clients.size > 0 ? (sub.total / sub.clients.size) : 0
+      }));
+
+    // Sort by total faturamento desc
+    processedSubData.sort((a, b) => b.valor_liquido_total - a.valor_liquido_total);
+
     // Table 2: Subcategoria
     const subcategoryRows = document.getElementById('op-table-subcategory-rows');
     if (subcategoryRows) {
-      if (subData.length === 0) {
+      if (processedSubData.length === 0) {
         subcategoryRows.innerHTML = `<tr><td colspan="4" class="empty-state">Sem dados de subcategoria para este mês.</td></tr>`;
       } else {
-        subcategoryRows.innerHTML = subData.map(item => `
+        subcategoryRows.innerHTML = processedSubData.map(item => `
           <tr>
-            <td>${item.subcategoria || 'Geral'}</td>
-            <td class="text-center">${item.qtd_clientes || 0}</td>
-            <td class="text-right">${formatCurrency(parseFloat(item.valor_liquido_total || 0))}</td>
-            <td class="text-right font-semibold">${formatCurrency(parseFloat(item.ticket_medio_por_cliente || 0))}</td>
+            <td>${item.subcategoria}</td>
+            <td class="text-center">${item.qtd_clientes}</td>
+            <td class="text-right">${formatCurrency(item.valor_liquido_total)}</td>
+            <td class="text-right font-semibold">${formatCurrency(item.ticket_medio_por_cliente)}</td>
           </tr>
         `).join('');
       }
@@ -1464,7 +1518,7 @@ async function loadOperationalReports() {
 
     renderChartRevenueHistory(monthsLabels, historicalRevenue, historicalStudents);
     renderChartPaymethods(payData);
-    renderChartSubcategories(subData);
+    renderChartSubcategories(processedSubData);
     renderChartCourtOccupancy(courtData, parseInt(year, 10), parseInt(month, 10));
     renderChartOccupancyHistory(monthsLabels, occupancyHistoryPct);
     renderChartTicketHistory(monthsLabels, ticketMedioHistory);
@@ -4620,5 +4674,138 @@ window.addEventListener('afterprint', () => {
   
   originalPrintState = null;
 });
+
+// ---- Render Goals Dashboard (Acompanhamento de Metas) ----
+function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month) {
+  const targetStudents = 300;
+  const targetRentals = 15000;
+  const targetSnack = 10000;
+  const targetTicket = 550;
+  const targetOccupancy = 50;
+
+  // 1. Group and calculate values from itemsData
+  const studentsSet = new Set();
+  let locacaoRevenue = 0;
+  let aulasRevenue = 0;
+  let totalRevenue = 0;
+
+  itemsData.forEach(item => {
+    const desc = (item.item_description || '').toLowerCase();
+    const cat = (item.categoria || '').toLowerCase();
+    const prod = (item.produto_padronizado || '').toLowerCase();
+    const val = parseFloat(item.valor_liquido) || 0;
+    
+    const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
+    const isRental = cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva');
+
+    if (isLesson) {
+      aulasRevenue += val;
+      if (item.customer_code) {
+        studentsSet.add(item.customer_code);
+      }
+    } else if (isRental) {
+      locacaoRevenue += val;
+    }
+    
+    totalRevenue += val;
+  });
+
+  const activeStudentsCount = studentsSet.size;
+  const lanchoneteRevenue = totalRevenue - (aulasRevenue + locacaoRevenue);
+  const ticketMedioAulas = activeStudentsCount > 0 ? (aulasRevenue / activeStudentsCount) : 0;
+
+  // 2. Calculate Occupancy Geral
+  const numCourts = Math.max(new Set(courtData.map(d => d.resource_name).filter(Boolean)).size, 4);
+  const totalAvailHours = calcTotalAvailableHoursForMonth(parseInt(year, 10), parseInt(month, 10)) * numCourts;
+  const occupancyRate = totalAvailHours > 0 ? (totalHoursOcupadas / totalAvailHours) * 100 : 0;
+
+  // Helper for rendering cards
+  function updateGoalCard(cardId, currentVal, targetVal, formatFn, isAchieved) {
+    const card = document.getElementById(cardId);
+    if (!card) return;
+
+    const valCurrentEl = card.querySelector('.goal-current');
+    const badgeEl = card.querySelector('.goal-badge');
+    const fillEl = card.querySelector('.goal-progress-bar-fill');
+    const pctEl = card.querySelector('.goal-pct');
+    const footerEl = card.querySelector('.goal-footer-text');
+
+    if (valCurrentEl) valCurrentEl.innerText = formatFn(currentVal);
+
+    const pct = targetVal > 0 ? (currentVal / targetVal) * 100 : 0;
+    if (pctEl) pctEl.innerText = pct.toFixed(1).replace('.', ',') + '%';
+
+    if (fillEl) fillEl.style.width = Math.min(pct, 100) + '%';
+
+    if (isAchieved) {
+      card.classList.add('achieved');
+      if (badgeEl) {
+        badgeEl.innerText = 'Atingido!';
+        badgeEl.className = 'goal-badge success';
+      }
+    } else {
+      card.classList.remove('achieved');
+      if (badgeEl) {
+        badgeEl.innerText = 'Pendente';
+        badgeEl.className = 'goal-badge pending';
+      }
+    }
+
+    if (footerEl) {
+      if (isAchieved) {
+        const exceeded = currentVal - targetVal;
+        if (exceeded > 0.01) {
+          footerEl.innerHTML = `Meta superada por <strong style="color:#2ec4b6;">${formatFn(exceeded)}</strong>`;
+        } else {
+          footerEl.innerHTML = `<strong style="color:#2ec4b6;">Meta alcançada!</strong>`;
+        }
+      } else {
+        const remaining = targetVal - currentVal;
+        footerEl.innerHTML = `Faltam <strong>${formatFn(remaining)}</strong> para a meta`;
+      }
+    }
+  }
+
+  // 3. Update all 5 cards
+  updateGoalCard(
+    'goal-card-students',
+    activeStudentsCount,
+    targetStudents,
+    v => Math.round(v) + (v === 1 ? ' aluno' : ' alunos'),
+    activeStudentsCount >= targetStudents
+  );
+
+  updateGoalCard(
+    'goal-card-rentals',
+    locacaoRevenue,
+    targetRentals,
+    formatCurrency,
+    locacaoRevenue >= targetRentals
+  );
+
+  updateGoalCard(
+    'goal-card-snack',
+    lanchoneteRevenue,
+    targetSnack,
+    formatCurrency,
+    lanchoneteRevenue >= targetSnack
+  );
+
+  updateGoalCard(
+    'goal-card-ticket',
+    ticketMedioAulas,
+    targetTicket,
+    formatCurrency,
+    ticketMedioAulas >= targetTicket
+  );
+
+  updateGoalCard(
+    'goal-card-occupancy',
+    occupancyRate,
+    targetOccupancy,
+    v => v.toFixed(1).replace('.', ',') + '%',
+    occupancyRate >= targetOccupancy
+  );
+}
 
 
