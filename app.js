@@ -1323,8 +1323,23 @@ async function loadOperationalReports() {
     const opClientesLabel = opClientes ? opClientes.closest('.metric-info')?.querySelector('h3') : null;
     if (opClientesLabel) opClientesLabel.innerText = 'Clientes Faturados';
 
+    // Fetch unique active students from the selected month onwards (including future starts)
+    const activeStudentsParams = `select=customer_code,qtd_aulas_adulto,qtd_aulas_kids,qtd_aulas_avulsas_particulares&mes=gte.${monthStart}`;
+    const activeStudentsData = await supabaseSelect('vw_mt_frequencia_clientes_mes', activeStudentsParams);
+
+    const activeStudentsSet = new Set();
+    activeStudentsData.forEach(row => {
+      const isStudent = (parseInt(row.qtd_aulas_adulto) || 0) > 0 || 
+                        (parseInt(row.qtd_aulas_kids) || 0) > 0 || 
+                        (parseInt(row.qtd_aulas_avulsas_particulares) || 0) > 0;
+      if (isStudent && row.customer_code) {
+        activeStudentsSet.add(row.customer_code);
+      }
+    });
+    const totalActiveStudents = activeStudentsSet.size;
+
     // Render Acompanhamento de Metas Widget
-    renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month);
+    renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month, totalActiveStudents);
 
 
     // 3. Render Detalhamento Tables
@@ -4676,7 +4691,7 @@ window.addEventListener('afterprint', () => {
 });
 
 // ---- Render Goals Dashboard (Acompanhamento de Metas) ----
-function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month) {
+function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month, totalActiveStudents) {
   const targetStudents = 300;
   const targetRentals = 15000;
   const targetSnack = 10000;
@@ -4769,10 +4784,10 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
   // 3. Update all 5 cards
   updateGoalCard(
     'goal-card-students',
-    activeStudentsCount,
+    totalActiveStudents,
     targetStudents,
     v => Math.round(v) + (v === 1 ? ' aluno' : ' alunos'),
-    activeStudentsCount >= targetStudents
+    totalActiveStudents >= targetStudents
   );
 
   updateGoalCard(
