@@ -183,6 +183,7 @@ let metricsPaid = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period1Pa
 let metricsPending = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period1Pago: 0, period1Comissao: 0, period2Pago: 0, period2Comissao: 0 };
 let currentClassesData = [];
 let currentPayoutsData = [];
+let currentSalesData = [];
 let currentAllocationsData = [];
 let cachedFinancialData = null;
 let cachedMonthEndProjectionBalance = null; // final balance from daily projection → used as July opening in 3-month projection
@@ -375,22 +376,38 @@ async function loadDashboard() {
   commColDisplays.forEach(el => el.innerText = `${currentCommissionRate}%`);
 
   try {
-    // 1. Fetch classes from the view using direct REST
-    const profEncoded = encodeURIComponent(professor);
-    const classesParams = `select=*&booking_date=gte.${monthStart}&booking_date=lte.${monthEnd}&professor=eq.${profEncoded}`;
-    debugLog('Buscando aulas via REST API...');
-    const classesData = await supabaseSelect('vw_mt_comissoes_detalhadas', classesParams);
-    debugLog(`Aulas carregadas: ${classesData.length} linhas.`);
+    // 1. Fetch classes from the view using direct REST (for the entire month)
+    const classesParams = `select=*&booking_date=gte.${monthStart}&booking_date=lte.${monthEnd}`;
+    debugLog('Buscando aulas globais via REST API...');
 
-    // 2. Fetch payouts
+    // 2. Fetch payouts (for the selected professor)
+    const profEncoded = encodeURIComponent(professor);
     const payoutsParams = `select=*&professor=eq.${profEncoded}&reference_period=eq.${monthStart}&order=payout_date.desc`;
     debugLog('Buscando repasses via REST API...');
-    const payoutsData = await supabaseSelect('mt_pagamentos_professores', payoutsParams);
+
+    // 3. Fetch global sales data for faturamento reconciliation
+    const nextMonthStart = (() => {
+      const d = new Date(monthStart + 'T00:00:00');
+      d.setMonth(d.getMonth() + 1);
+      return d.toISOString().split('T')[0].substring(0, 8) + '01';
+    })();
+    const salesParams = `select=valor_faturamento,categoria,subcategoria,item_description&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    debugLog('Buscando vendas globais para conciliação...');
+
+    const [classesData, payoutsData, salesData] = await Promise.all([
+      supabaseSelect('vw_mt_comissoes_detalhadas', classesParams),
+      supabaseSelect('mt_pagamentos_professores', payoutsParams),
+      supabaseSelect('vw_mt_faturamento_itens_pago', salesParams)
+    ]);
+
+    debugLog(`Aulas globais carregadas: ${classesData.length} linhas.`);
     debugLog(`Repasses carregados: ${payoutsData.length} linhas.`);
+    debugLog(`Vendas globais carregadas: ${salesData.length} linhas.`);
 
     // Store in global cache for local recalculation
     currentClassesData = classesData;
     currentPayoutsData = payoutsData;
+    currentSalesData = salesData; // Cache global sales
     currentAllocationsData = []; // No client-level allocations needed anymore
 
     // Perform calculations and rendering locally
@@ -404,10 +421,15 @@ async function loadDashboard() {
 
 // ---- Calculate and Render Dashboard Data Locally (No network requests) ----
 function calculateAndRenderDashboardData() {
-  const classesData = currentClassesData;
+  const allMonthlyClasses = currentClassesData;
   const payoutsData = currentPayoutsData;
+  const salesData = currentSalesData || [];
+  const professor = selectProf.value;
   const year = selectYear.value;
   const month = selectMonth.value;
+
+  // Filter classes for the selected professor for the existing commission logic
+  const classesData = allMonthlyClasses.filter(row => row.professor === professor);
 
   // Group bookings by student for pending calculations
 
@@ -712,6 +734,50 @@ function renderDashboardUI() {
       ? 'Montreal Tênis - Relatório de Comissão' 
       : 'Montreal Tênis - Relatório de Comissão Prevista (Estimativa)';
   }
+
+  // ---- Conciliação de Caixa Geral ----
+  const globalComissionableVal = currentClassesData.reduce((sum, row) => {
+    return sum + (row.is_paid ? (parseFloat(row.booking_value) || 0) : 0);
+  }, 0);
+
+  let globalTotalCaixaVal = 0;
+  let globalLocacoesVal = 0;
+  let globalLanchoneteVal = 0;
+  let globalSnacksVal = 0;
+
+  const salesData = currentSalesData || [];
+  salesData.forEach(row => {
+    const val = parseFloat(row.valor_faturamento) || 0;
+    if (val > 0) {
+      globalTotalCaixaVal += val;
+      if (row.categoria === 'Locação') {
+        globalLocacoesVal += val;
+      } else if (row.categoria === 'Lanchonete') {
+        globalLanchoneteVal += val;
+      } else if (row.categoria === 'Outros') {
+        const desc = (row.item_description || '').toUpperCase();
+        if (!desc.includes('TÊNIS') && !desc.includes('TENIS') && !desc.includes('AULA')) {
+          globalSnacksVal += val;
+        }
+      }
+    }
+  });
+
+  const globalConsumosVal = globalLanchoneteVal + globalSnacksVal;
+  const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal);
+
+  // Update DOM elements for Global Cash Reconciliation Card
+  const elGlobalComissionavel = document.getElementById('global-rec-comissionavel');
+  const elGlobalLocacoes = document.getElementById('global-rec-locacoes');
+  const elGlobalConsumos = document.getElementById('global-rec-consumos');
+  const elGlobalAjustes = document.getElementById('global-rec-ajustes');
+  const elGlobalTotalCaixa = document.getElementById('global-rec-total-caixa');
+  
+  if (elGlobalComissionavel) elGlobalComissionavel.innerText = formatCurrency(globalComissionableVal);
+  if (elGlobalLocacoes) elGlobalLocacoes.innerText = formatCurrency(globalLocacoesVal);
+  if (elGlobalConsumos) elGlobalConsumos.innerText = formatCurrency(globalConsumosVal);
+  if (elGlobalAjustes) elGlobalAjustes.innerText = formatCurrency(globalAjustesVal);
+  if (elGlobalTotalCaixa) elGlobalTotalCaixa.innerText = formatCurrency(globalTotalCaixaVal);
 
   // 6. Render the student table rows
   renderStudentBreakdown();

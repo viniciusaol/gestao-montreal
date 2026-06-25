@@ -397,8 +397,14 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ---- Reconciliation Card ---- */
-.reconciliation-card {
+.reconciliation-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
   margin-top: 1.25rem;
+}
+
+.reconciliation-card {
   padding: 1.25rem 1.5rem;
 }
 
@@ -471,7 +477,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 /* ---- Split Grid: Form + History ---- */
 .split-grid {
   display: grid;
-  grid-template-columns: 1fr 1.3fr;
+  grid-template-columns: 1fr 1fr;
   gap: 1.25rem;
   margin-bottom: 2.5rem;
 }
@@ -665,6 +671,11 @@ input:focus, select:focus, textarea:focus {
 }
 
 @media (max-width: 768px) {
+  .reconciliation-container {
+    grid-template-columns: 1fr;
+    margin-top: 1rem;
+  }
+
   .mobile-only {
     display: inline-flex !important;
   }

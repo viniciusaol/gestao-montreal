@@ -202,21 +202,55 @@
             </div>
           </div>
         </div>
-        <!-- Reconciliation summary -->
-        <div class="card reconciliation-card no-print" id="reconciliation-card">
-          <div class="reconciliation-title">Resumo de Liquidação</div>
-          <div class="reconciliation-grid">
-            <div class="rec-row">
-              <span class="rec-label">Comissão Total Gerada</span>
-              <span class="rec-value" id="rec-comissao-total">R$ 0,00</span>
+        <!-- Reconciliation container -->
+        <div class="reconciliation-container no-print">
+          <!-- Reconciliation summary -->
+          <div class="card reconciliation-card" id="reconciliation-card">
+            <div class="reconciliation-title">Resumo de Liquidação</div>
+            <div class="reconciliation-grid">
+              <div class="rec-row">
+                <span class="rec-label">Comissão Total Gerada</span>
+                <span class="rec-value" id="rec-comissao-total">R$ 0,00</span>
+              </div>
+              <div class="rec-row rec-minus">
+                <span class="rec-label">( − ) Repasse Já Efetuado</span>
+                <span class="rec-value rec-paid" id="rec-repasse-pago">R$ 0,00</span>
+              </div>
+              <div class="rec-row rec-result">
+                <span class="rec-label">( = ) Saldo a Repassar</span>
+                <span class="rec-value rec-saldo" id="rec-saldo-restante">R$ 0,00</span>
+              </div>
             </div>
-            <div class="rec-row rec-minus">
-              <span class="rec-label">( − ) Repasse Já Efetuado</span>
-              <span class="rec-value rec-paid" id="rec-repasse-pago">R$ 0,00</span>
-            </div>
-            <div class="rec-row rec-result">
-              <span class="rec-label">( = ) Saldo a Repassar</span>
-              <span class="rec-value rec-saldo" id="rec-saldo-restante">R$ 0,00</span>
+          </div>
+
+          <!-- Global Cash Reconciliation -->
+          <div class="card reconciliation-card" id="global-faturamento-card">
+            <div class="reconciliation-title">Conciliação de Caixa Geral (Mês Corrente)</div>
+            <div class="reconciliation-grid">
+              <div class="rec-row">
+                <span class="rec-label">Faturamento Comissionável (Aulas/Planos)</span>
+                <span class="rec-value" id="global-rec-comissionavel">R$ 0,00</span>
+              </div>
+              <div class="rec-row">
+                <span class="rec-label">( + ) Locações de Quadra</span>
+                <span class="rec-value" id="global-rec-locacoes">R$ 0,00</span>
+              </div>
+              <div class="rec-row">
+                <span class="rec-label">( + ) Lanchonete e Consumos</span>
+                <span class="rec-value" id="global-rec-consumos">R$ 0,00</span>
+              </div>
+              <div class="rec-row">
+                <span class="rec-label">( + ) Ajustes e Aulas de Outro Mês</span>
+                <span class="rec-value" id="global-rec-ajustes">R$ 0,00</span>
+              </div>
+              <div class="rec-row rec-result">
+                <span class="rec-label">( = ) Faturamento Recebido no Caixa</span>
+                <span class="rec-value rec-saldo" id="global-rec-total-caixa" style="color: #2ec4b6;">R$ 0,00</span>
+              </div>
+              <div class="rec-row" style="border-top: 1px dashed var(--border); padding-top: 0.5rem; margin-top: 0.25rem;">
+                <span class="rec-label" style="font-size: 0.78rem;">Status da Conciliação</span>
+                <span class="rec-value" id="global-rec-status" style="color: #10b981; font-weight: 800;">✔ Conciliado</span>
+              </div>
             </div>
           </div>
         </div>
