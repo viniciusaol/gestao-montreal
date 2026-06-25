@@ -1292,7 +1292,12 @@ async function loadOperationalReports() {
       }
 
       if (faturamentoByTipo[tipo] !== undefined) {
-        faturamentoByTipo[tipo] += parseFloat(item.valor_liquido) || 0;
+        let val = parseFloat(item.valor_liquido) || 0;
+        // Deduct teacher commission if it is a class category (Aulas - *)
+        if (tipo.startsWith('Aulas -')) {
+          val = val * (1 - currentCommissionRate / 100);
+        }
+        faturamentoByTipo[tipo] += val;
       }
     });
 
