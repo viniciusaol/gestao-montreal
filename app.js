@@ -5,6 +5,7 @@
 
 const SUPABASE_URL = 'https://ehhjnwosqcrfwonqhfoz.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4OTc4NjksImV4cCI6MjA3ODQ3Mzg2OX0.qxbGgdq3lOiOmXuY8fMok7xlNluKPQIKoC3zQroUYSQ';
+const UNPAID_RECOVERY_RATE = 0.90; // 90% recovery rate / 10% delinquency rate for unpaid bookings
 
 // ---- Debug Logger ----
 const debugLog = (msg, obj = '') => {
@@ -3763,7 +3764,7 @@ function calculateAndRenderProjection() {
   juneBookings.forEach(b => {
     if (b.is_paid) return;
     if (b.booking_date && b.booking_date < todayStrFor3M) return; // skip past unpaid
-    let val = juneUnpaidEstimatedValues[b.booking_id] || 0.0;
+    let val = (juneUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE;
     juneRemainingUnpaidInflowsD0 += val * baseD0Ratio;
     juneRemainingUnpaidInflowsD30 += val * baseD30Ratio;
   });
@@ -3807,7 +3808,7 @@ function calculateAndRenderProjection() {
   const rollingFixedExpenses = [juneFixedExpensesBaseline];
 
   const juneD30TuitionTotal = juneBookings.map(b => {
-    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0);
+    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : ((juneUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE);
     return val * baseD30Ratio;
   }).reduce((sum, val) => sum + val, 0.0);
 
@@ -4359,7 +4360,7 @@ function calculateAndRenderCurrentMonthProjection() {
     
     const bookingsOnDay = juneBookings.filter(b => !b.is_paid && b.booking_date === dayStr);
     const tuitionD0 = bookingsOnDay.reduce((sum, b) => {
-      const val = juneUnpaidEstimatedValues[b.booking_id] || 0.0;
+      const val = (juneUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE;
       return sum + val * baseD0Ratio;
     }, 0.0);
 
