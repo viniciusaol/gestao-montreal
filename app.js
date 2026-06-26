@@ -376,21 +376,23 @@ async function loadDashboard() {
   commColDisplays.forEach(el => el.innerText = `${currentCommissionRate}%`);
 
   try {
-    // 1. Fetch classes from the view using direct REST (for the entire month)
-    const classesParams = `select=*&booking_date=gte.${monthStart}&booking_date=lte.${monthEnd}`;
-    debugLog('Buscando aulas globais via REST API...');
-
-    // 2. Fetch payouts (for the selected professor)
-    const profEncoded = encodeURIComponent(professor);
-    const payoutsParams = `select=*&professor=eq.${profEncoded}&reference_period=eq.${monthStart}&order=payout_date.desc`;
-    debugLog('Buscando repasses via REST API...');
-
-    // 3. Fetch global sales data for faturamento reconciliation
+    // 1. Calculate nextMonthStart first to use in classesParams
     const nextMonthStart = (() => {
       const d = new Date(monthStart + 'T00:00:00');
       d.setMonth(d.getMonth() + 1);
       return d.toISOString().split('T')[0].substring(0, 8) + '01';
     })();
+
+    // 2. Fetch classes that occurred in the month OR were paid in the month (including pay_date in selection)
+    const classesParams = `select=*,pay_date&or=(and(booking_date.gte.${monthStart},booking_date.lte.${monthEnd}),and(pay_date.gte.${monthStart},pay_date.lt.${nextMonthStart}))`;
+    debugLog('Buscando aulas globais via REST API...');
+
+    // 3. Fetch payouts (for the selected professor)
+    const profEncoded = encodeURIComponent(professor);
+    const payoutsParams = `select=*&professor=eq.${profEncoded}&reference_period=eq.${monthStart}&order=payout_date.desc`;
+    debugLog('Buscando repasses via REST API...');
+
+    // 4. Fetch global sales data for faturamento reconciliation
     const salesParams = `select=valor_faturamento,categoria,subcategoria,item_description&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
     debugLog('Buscando vendas globais para conciliação...');
 
@@ -443,9 +445,18 @@ function calculateAndRenderDashboardData() {
   let period1CommissionBase = 0;
   let period2CommissionBase = 0;
 
+  const baseMonthPrefix = `${year}-${month}`; // e.g., "2026-06"
+
   classesData.forEach(row => {
     const studentName = row.participant_name || 'Desconhecido';
-    if (row.is_paid) {
+    
+    // Critério 1: Aula paga dentro do mês de referência do relatório
+    const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(baseMonthPrefix);
+    
+    // Critério 2: Aula agendada no mês de referência mas ainda não paga
+    const isPendingInSelectedMonth = !row.is_paid && row.booking_date && row.booking_date.startsWith(baseMonthPrefix);
+
+    if (isPaidInSelectedMonth) {
       const val = parseFloat(row.booking_value) || 0;
       const commBase = parseFloat(row.booking_commission_base) || val;
       const isSocio = row.is_socio_benefit || false;
@@ -482,7 +493,7 @@ function calculateAndRenderDashboardData() {
           paidAgg[studentName].isSocio = true;
         }
       }
-    } else {
+    } else if (isPendingInSelectedMonth) {
       // Unpaid / Pending
       if (!pendingBookingsByStudent[studentName]) {
         pendingBookingsByStudent[studentName] = [];
@@ -2132,7 +2143,7 @@ async function loadFinancialReports() {
     const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${projectionEnd}`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
     const salesParams = `select=valor_faturamento,pay_date&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
-    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code&booking_date=gte.${firstMonth}&booking_date=lte.${monthEnd}`;
+    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
@@ -2397,7 +2408,8 @@ async function loadFinancialReports() {
     // Populate DRE Commissions
     allCommData.forEach(row => {
       if (!row.is_paid) return;
-      const monthKey = row.booking_date ? row.booking_date.substring(0, 7) : '';
+      // Agrupa comissões no mês do pagamento (pay_date), usando a data da aula como fallback caso pay_date falhe
+      const monthKey = (row.pay_date && row.pay_date.substring(0, 7)) || (row.booking_date ? row.booking_date.substring(0, 7) : '');
       if (!dreData[monthKey]) return;
       
       const commBase = parseFloat(row.booking_commission_base) || (row.is_socio_benefit ? (parseFloat(row.booking_value) * 2) : (parseFloat(row.booking_value) || 0.0));
