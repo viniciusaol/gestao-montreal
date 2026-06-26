@@ -518,6 +518,19 @@ function calculateAndRenderDashboardData() {
     // Group bookings by unique weekly slot to identify F (frequency)
     const slots = {};
     bookings.forEach(b => {
+      const descUpper = (b.description || '').toUpperCase();
+      const isFree = b.booking_type === 'clase_suelta' ||
+                     descUpper.includes('REPOSIÇÃO') ||
+                     descUpper.includes('REPOSICAO') ||
+                     descUpper.includes('EXPERIMENTAL') ||
+                     descUpper.includes('CORTESIA') ||
+                     descUpper.includes('TESTE');
+      
+      if (isFree) {
+        b.estimated_value = 0.0;
+        return;
+      }
+
       const dateObj = new Date(b.booking_date + 'T00:00:00');
       const dayOfWeek = dateObj.getDay();
       const startTime = b.start_time || '00:00';
@@ -3596,6 +3609,19 @@ function calculateAndRenderProjection() {
     const bookings = juneUnpaidByStudent[studentName];
     const slots = {};
     bookings.forEach(b => {
+      const descUpper = (b.description || '').toUpperCase();
+      const isFree = b.booking_type === 'clase_suelta' ||
+                     descUpper.includes('REPOSIÇÃO') ||
+                     descUpper.includes('REPOSICAO') ||
+                     descUpper.includes('EXPERIMENTAL') ||
+                     descUpper.includes('CORTESIA') ||
+                     descUpper.includes('TESTE');
+      
+      if (isFree) {
+        juneUnpaidEstimatedValues[b.booking_id] = 0.0;
+        return;
+      }
+
       const dateObj = new Date(b.booking_date + 'T00:00:00');
       const dayOfWeek = dateObj.getDay();
       const startTime = b.start_time || '00:00';
@@ -4113,6 +4139,19 @@ function calculateAndRenderCurrentMonthProjection() {
     const bookings = juneUnpaidByStudent[studentName];
     const slots = {};
     bookings.forEach(b => {
+      const descUpper = (b.description || '').toUpperCase();
+      const isFree = b.booking_type === 'clase_suelta' ||
+                     descUpper.includes('REPOSIÇÃO') ||
+                     descUpper.includes('REPOSICAO') ||
+                     descUpper.includes('EXPERIMENTAL') ||
+                     descUpper.includes('CORTESIA') ||
+                     descUpper.includes('TESTE');
+      
+      if (isFree) {
+        juneUnpaidEstimatedValues[b.booking_id] = 0.0;
+        return;
+      }
+
       const dateObj = new Date(b.booking_date + 'T00:00:00');
       const dayOfWeek = dateObj.getDay();
       const startTime = b.start_time || '00:00';
