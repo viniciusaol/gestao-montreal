@@ -1069,6 +1069,7 @@ if (btnLogout) {
 
     // Clear operational data
     const opFaturamento = document.getElementById('op-val-faturamento');
+    const opDescontos = document.getElementById('op-val-descontos');
     const opTicket = document.getElementById('op-val-ticket-medio');
     const opClientes = document.getElementById('op-val-clientes-ativos');
     const opHoras = document.getElementById('op-val-horas-ocupadas');
@@ -1076,6 +1077,11 @@ if (btnLogout) {
     const opSubRows = document.getElementById('op-table-subcategory-rows');
 
     if (opFaturamento) opFaturamento.innerText = 'R$ 0,00';
+    if (opDescontos) {
+      opDescontos.innerText = '0,00%';
+      const subtitle = opDescontos.parentElement.querySelector('.metric-subtitle');
+      if (subtitle) subtitle.innerText = 'R$ 0,00 em descontos';
+    }
     if (opTicket) opTicket.innerText = 'R$ 0,00';
     if (opClientes) opClientes.innerText = '0';
     if (opHoras) opHoras.innerText = '0,00h';
@@ -1138,7 +1144,7 @@ async function loadOperationalReports() {
     );
 
     // Fetch all paid items for the selected month to run detailed goals calculations
-    const itemsParams = `select=categoria,subcategoria,customer_code,valor_liquido,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    const itemsParams = `select=categoria,subcategoria,customer_code,valor_liquido,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
     const itemsData = await supabaseSelect('vw_mt_faturamento_itens_pago', itemsParams);
 
     // Fetch Mercado Pago payments
@@ -1221,6 +1227,18 @@ async function loadOperationalReports() {
       totalFaturamentoLiquido += parseFloat(item.valor_liquido_total) || 0;
     });
 
+    // Calculate discounts from itemsData
+    let totalDesconto = 0;
+    let totalBruto = 0;
+    itemsData.forEach(item => {
+      totalDesconto += parseFloat(item.valor_desconto) || 0;
+      totalBruto += parseFloat(item.valor_bruto) || 0;
+    });
+    if (totalBruto <= 0) {
+      totalBruto = totalFaturamentoLiquido + totalDesconto;
+    }
+    const pctDesconto = totalBruto > 0 ? (totalDesconto / totalBruto) * 100 : 0;
+
     // Count only DISTINCT paying customers — the ones who actually generated the faturamento
     const payingClientsSet = new Set(paidVendasData.map(r => r.customer_code).filter(Boolean));
     const payingClientsCount = payingClientsSet.size;
@@ -1240,11 +1258,27 @@ async function loadOperationalReports() {
 
     // Render KPIs
     const opFaturamento = document.getElementById('op-val-faturamento');
+    const opDescontos = document.getElementById('op-val-descontos');
     const opTicket = document.getElementById('op-val-ticket-medio');
     const opClientes = document.getElementById('op-val-clientes-ativos');
     const opHoras = document.getElementById('op-val-horas-ocupadas');
 
     if (opFaturamento) opFaturamento.innerText = formatCurrency(totalFaturamentoLiquido);
+    
+    if (opDescontos) {
+      opDescontos.innerText = `${pctDesconto.toFixed(2).replace('.', ',')}%`;
+      const subtitle = opDescontos.parentElement.querySelector('.metric-subtitle');
+      if (subtitle) {
+        subtitle.innerText = `${formatCurrency(totalDesconto)} em descontos`;
+      } else {
+        const sub = document.createElement('small');
+        sub.className = 'metric-subtitle';
+        sub.style.cssText = 'display:block;color:rgba(241,244,224,0.45);font-size:0.72rem;margin-top:2px;';
+        sub.innerText = `${formatCurrency(totalDesconto)} em descontos`;
+        opDescontos.parentElement.appendChild(sub);
+      }
+    }
+
     if (opTicket) opTicket.innerText = formatCurrency(ticketMedio);
     if (opClientes) {
       opClientes.innerText = payingClientsCount;

@@ -261,6 +261,12 @@ input[type="range"]::-webkit-slider-thumb:hover {
   margin-bottom: 2.5rem;
 }
 
+@media (min-width: 1101px) {
+  .metrics-grid.five-cols {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
 .metric-card {
   display: flex;
   align-items: center;
@@ -292,6 +298,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .metric-icon.pagamentos  { background: rgba(241,244,224,0.07); color: var(--color-creme); }
 .metric-icon.saldo       { background: rgba(230,57,70,0.1);   color: #e63946; }
 .metric-icon.fin-saldo   { background: rgba(46, 196, 182, 0.12); color: #2ec4b6; }
+.metric-icon.desconto    { background: rgba(230, 57, 70, 0.1); color: #e63946; }
 
 .metric-info h3 {
   font-size: 0.7rem;
