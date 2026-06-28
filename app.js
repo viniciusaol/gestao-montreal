@@ -4295,26 +4295,26 @@ function calculateAndRenderCurrentMonthProjection() {
     return !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && tx.due_date >= todayStr && tx.due_date.startsWith(baseMonthPrefix);
   });
 
-  // 4. Calculate Expected Commissions (Período 1 e 2)
-  const bookingsP1 = juneBookings.filter(b => {
+  // 4. Calculate Expected Commissions (Período 1 e 2) - Only on paid bookings matching cash-basis regime
+  const commissionBookings = allCommData.filter(row => {
+    return row.is_paid && row.pay_date && row.pay_date.startsWith(baseMonthPrefix);
+  });
+
+  const bookingsP1 = commissionBookings.filter(b => {
     const day = parseInt(b.booking_date.substring(8, 10), 10);
     return day <= 20;
   });
   const expectedCommP1 = bookingsP1.reduce((sum, b) => {
-    const commBase = b.is_paid 
-      ? (parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? parseFloat(b.booking_value) * 2 : parseFloat(b.booking_value) || 0.0))
-      : (parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? (juneUnpaidEstimatedValues[b.booking_id] * 2) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0)));
+    const commBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? parseFloat(b.booking_value) * 2 : parseFloat(b.booking_value) || 0.0);
     return sum + commBase * commissionRate;
   }, 0.0);
 
-  const bookingsP2 = juneBookings.filter(b => {
+  const bookingsP2 = commissionBookings.filter(b => {
     const day = parseInt(b.booking_date.substring(8, 10), 10);
     return day > 20;
   });
   const expectedCommP2 = bookingsP2.reduce((sum, b) => {
-    const commBase = b.is_paid 
-      ? (parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? parseFloat(b.booking_value) * 2 : parseFloat(b.booking_value) || 0.0))
-      : (parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? (juneUnpaidEstimatedValues[b.booking_id] * 2) : (juneUnpaidEstimatedValues[b.booking_id] || 0.0)));
+    const commBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? parseFloat(b.booking_value) * 2 : parseFloat(b.booking_value) || 0.0);
     return sum + commBase * commissionRate;
   }, 0.0);
 
