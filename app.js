@@ -4342,7 +4342,7 @@ function calculateAndRenderCurrentMonthProjection() {
   });
 
   const remainingCommP1 = Math.max(0.0, expectedCommP1 - payoutsP1);
-  const remainingCommP2 = Math.max(0.0, expectedCommP2 - payoutsP2);
+  const remainingCommP2 = Math.max(0.0, (expectedCommP1 + expectedCommP2) - (payoutsP1 + payoutsP2 + remainingCommP1));
 
   // Baselines for variable revenues
   const baseMonthPrefixHistorical = `${year}-${month}`;
@@ -4432,9 +4432,6 @@ function calculateAndRenderCurrentMonthProjection() {
     if (d === startDay) {
       outflowOps += overdueOpsTotal;
       outflowInv += overdueInvTotal;
-      if (startDay > 20) {
-        outflowOps += remainingCommP1;
-      }
     }
 
     if (d === 20 && startDay <= 20) {
@@ -4442,6 +4439,9 @@ function calculateAndRenderCurrentMonthProjection() {
     }
     if (d === 30) {
       outflowOps += remainingCommP2;
+      if (startDay > 20) {
+        outflowOps += remainingCommP1;
+      }
     }
 
     const dayInitialBalance = runningBalance;
@@ -4515,7 +4515,7 @@ function calculateAndRenderCurrentMonthProjection() {
   const overdueTbody = document.getElementById('fin-proj-current-overdue-rows');
   if (overdueTbody) {
     let overdueHtml = '';
-    const overdueCommissions = (startDay > 20) ? remainingCommP1 : 0.0;
+    const overdueCommissions = 0.0; // Do not show as overdue, they are paid on the 30th!
     
     if (overdueProcfyList.length === 0 && overdueCommissions === 0) {
       overdueHtml = `<tr><td colspan="4" class="empty-state">Nenhuma conta vencida.</td></tr>`;
@@ -4551,7 +4551,7 @@ function calculateAndRenderCurrentMonthProjection() {
   if (upcomingTbody) {
     let upcomingHtml = '';
     const hasCommP1 = (startDay <= 20) && remainingCommP1 > 0;
-    const hasCommP2 = remainingCommP2 > 0;
+    const hasCommP2 = (remainingCommP2 + (startDay > 20 ? remainingCommP1 : 0.0)) > 0;
     
     if (upcomingProcfyList.length === 0 && !hasCommP1 && !hasCommP2) {
       upcomingHtml = `<tr><td colspan="4" class="empty-state">Nenhum lançamento agendado.</td></tr>`;
@@ -4581,7 +4581,7 @@ function calculateAndRenderCurrentMonthProjection() {
             date: `${year}-${month}-30`,
             name: 'Comissões de Professores (2º Período)',
             flow: 'Operação',
-            amount: remainingCommP2
+            amount: remainingCommP2 + (startDay > 20 ? remainingCommP1 : 0.0)
           });
           commP2Added = true;
         }
@@ -4607,7 +4607,7 @@ function calculateAndRenderCurrentMonthProjection() {
           date: `${year}-${month}-30`,
           name: 'Comissões de Professores (2º Período)',
           flow: 'Operação',
-          amount: remainingCommP2
+          amount: remainingCommP2 + (startDay > 20 ? remainingCommP1 : 0.0)
         });
       }
       
