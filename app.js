@@ -767,28 +767,29 @@ function renderDashboardUI() {
 
   let globalTotalCaixaVal = 0;
   let globalLocacoesVal = 0;
-  let globalLanchoneteVal = 0;
-  let globalSnacksVal = 0;
+  let globalConsumosVal = 0;
 
   const salesData = currentSalesData || [];
   salesData.forEach(row => {
     const val = parseFloat(row.valor_faturamento) || 0;
-    if (val > 0) {
-      globalTotalCaixaVal += val;
-      if (row.categoria === 'Locação') {
-        globalLocacoesVal += val;
-      } else if (row.categoria === 'Lanchonete') {
-        globalLanchoneteVal += val;
-      } else if (row.categoria === 'Outros') {
-        const desc = (row.item_description || '').toUpperCase();
-        if (!desc.includes('TÊNIS') && !desc.includes('TENIS') && !desc.includes('AULA')) {
-          globalSnacksVal += val;
-        }
-      }
+    globalTotalCaixaVal += val;
+
+    const desc = (row.item_description || '').toLowerCase();
+    const cat = (row.categoria || '').toLowerCase();
+    const prod = (row.produto_padronizado || '').toLowerCase();
+
+    const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('tenis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
+    const isRental = cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva');
+
+    if (isLesson) {
+      // Already handled by globalComissionableVal
+    } else if (isRental) {
+      globalLocacoesVal += val;
+    } else {
+      globalConsumosVal += val;
     }
   });
 
-  const globalConsumosVal = globalLanchoneteVal + globalSnacksVal;
   const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal);
 
   // Update DOM elements for Global Cash Reconciliation Card
