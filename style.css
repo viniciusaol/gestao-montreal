@@ -1452,8 +1452,13 @@ input:focus, select:focus, textarea:focus {
   display: block;
   font-size: 0.72rem;
   color: rgba(241, 244, 224, 0.45);
-  margin-top: 0.15rem;
+  margin-top: 0.02rem;
   font-weight: 500;
+}
+
+#fin-dre-table th, #fin-dre-table td,
+#fin-dfc-table th, #fin-dfc-table td {
+  padding: 0.4rem 0.8rem;
 }
 
 .dre-result-row {
