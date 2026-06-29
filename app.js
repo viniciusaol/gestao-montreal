@@ -1316,58 +1316,13 @@ async function loadOperationalReports() {
 
     // Render Acompanhamento de Metas Widget
     renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month, totalActiveStudents);
-    // Recalculate faturamento and faturamento_por_hora_ocupada for effData on the client-side
-    // to align with the smart client-side classification of itemsData
-    const faturamentoByTipo = {
-      'Aulas - Adulto': 0,
-      'Aulas - Kids': 0,
-      'Aulas - Avulsa Particular': 0,
-      'Locação - Quadra Avulsa': 0,
-      'Locação - Reserva Mensal': 0
-    };
-
-    itemsData.forEach(item => {
-      const desc = (item.item_description || '').toUpperCase();
-      const cat = (item.categoria || '').toUpperCase();
-      const sub = (item.subcategoria || '').toUpperCase();
-      
-      const isLesson = cat === 'AULAS' || desc.includes('TÊNIS') || desc.includes('TENIS') || desc.includes('AULA') || desc.includes('KIDS') || desc.includes('BABY');
-      const isRental = cat === 'LOCAÇÃO' || desc.includes('LOCAÇÃO') || desc.includes('RESERVA');
-      
-      let tipo = 'Outros';
-      if (isLesson) {
-        if (desc.includes('AVULSA') || desc.includes('AVULSO') || cat.includes('AVULSA') || sub.includes('AVULSA')) {
-          tipo = 'Aulas - Avulsa Particular';
-        } else if (desc.includes('KIDS') || desc.includes('BABY') || sub.includes('KIDS') || sub.includes('BABY')) {
-          tipo = 'Aulas - Kids';
-        } else {
-          tipo = 'Aulas - Adulto';
-        }
-      } else if (isRental) {
-        if (desc.includes('MENSAL') || cat.includes('MENSAL') || sub.includes('MENSAL')) {
-          tipo = 'Locação - Reserva Mensal';
-        } else {
-          tipo = 'Locação - Quadra Avulsa';
-        }
-      }
-
-      if (faturamentoByTipo[tipo] !== undefined) {
-        let val = parseFloat(item.valor_liquido) || 0;
-        // Deduct teacher commission if it is a class category (Aulas - *)
-        if (tipo.startsWith('Aulas -')) {
-          val = val * (1 - currentCommissionRate / 100);
-        }
-        faturamentoByTipo[tipo] += val;
-      }
-    });
-
+    // Deduct teacher commission for class categories directly from the database pre-calculated values
     effData.forEach(item => {
-      const tipo = item.tipo_operacional;
-      if (faturamentoByTipo[tipo] !== undefined) {
-        const totalFaturamento = faturamentoByTipo[tipo];
-        const hrs = parseFloat(item.horas_ocupadas) || 0;
-        item.faturamento_por_hora_ocupada = hrs > 0 ? (totalFaturamento / hrs) : 0;
+      let hourly = parseFloat(item.faturamento_por_hora_ocupada) || 0;
+      if (item.tipo_operacional.startsWith('Aulas -')) {
+        hourly = hourly * (1 - currentCommissionRate / 100);
       }
+      item.faturamento_por_hora_ocupada = hourly;
     });
 
     // 3. Render Detalhamento Tables
