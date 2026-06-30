@@ -1560,6 +1560,8 @@ function renderChartOccupancyHistory(labels, pctValues, canvasId = 'chart-occupa
       }]
     },
     options: {
+      animation: canvasId.includes('report') ? false : {},
+      animations: canvasId.includes('report') ? false : {},
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -1617,6 +1619,8 @@ function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-histo
       }]
     },
     options: {
+      animation: canvasId.includes('report') ? false : {},
+      animations: canvasId.includes('report') ? false : {},
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -1681,6 +1685,8 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
       ]
     },
     options: {
+      animation: canvasId.includes('report') ? false : {},
+      animations: canvasId.includes('report') ? false : {},
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -1824,6 +1830,8 @@ function renderChartSubcategories(data, canvasId = 'chart-subcategory', instance
       }]
     },
     options: {
+      animation: canvasId.includes('report') ? false : {},
+      animations: canvasId.includes('report') ? false : {},
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
@@ -3320,8 +3328,10 @@ async function handleFilterChange() {
     await loadDashboard();
   } else if (currentMainTab === 'operational') {
     await loadOperationalReports();
-  } else {
+  } else if (currentMainTab === 'financial') {
     await loadFinancialReports();
+  } else if (currentMainTab === 'report') {
+    await loadMonthlyReport();
   }
 }
 
@@ -4956,11 +4966,29 @@ async function loadMonthlyReport() {
   }
   
   try {
-    // 1. Load operational and financial reports for the current month in parallel to update all states
-    await Promise.all([
+    const year = selectYear.value;
+    const month = selectMonth.value;
+    const monthStart = `${year}-${month}-01`;
+    const monthEnd = getEndOfMonth(monthStart);
+    const nextMonthStart = (() => {
+      const d = new Date(monthStart + 'T00:00:00');
+      d.setMonth(d.getMonth() + 1);
+      return d.toISOString().split('T')[0].substring(0, 8) + '01';
+    })();
+
+    // Query for all paid classes and occurrence dates for commissions table in the report
+    const classesParams = `select=*,pay_date&or=(and(booking_date.gte.${monthStart},booking_date.lte.${monthEnd}),and(pay_date.gte.${monthStart},pay_date.lt.${nextMonthStart}))`;
+    debugLog('Buscando aulas para o relatório consolidado...');
+
+    // 1. Load operational, financial, and commissions data for the current month in parallel
+    const [classesData] = await Promise.all([
+      supabaseSelect('vw_mt_comissoes_detalhadas', classesParams),
       loadOperationalReports(),
       loadFinancialReports()
     ]);
+    
+    // Store in global cache so renderReportCommissions can use it
+    currentClassesData = classesData || [];
     
     // 2. Render teacher commissions summary (soma de comissões de todos os professores)
     renderReportCommissions();
