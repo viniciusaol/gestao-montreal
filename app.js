@@ -1544,6 +1544,31 @@ function renderChartOccupancyHistory(labels, pctValues, canvasId = 'chart-occupa
   const textColor = isReport ? '#191919' : 'rgba(241, 244, 224, 0.7)';
   const gridColor = isReport ? 'rgba(0, 0, 0, 0.06)' : 'rgba(241, 244, 224, 0.05)';
 
+  const plugins = [];
+  if (isReport) {
+    plugins.push({
+      id: 'reportOccupancyLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx, data } = chart;
+        chart.data.datasets.forEach((dataset, datasetIndex) => {
+          const meta = chart.getDatasetMeta(datasetIndex);
+          meta.data.forEach((element, index) => {
+            const dataValue = dataset.data[index];
+            if (dataValue === 0 || dataValue === null || dataValue === undefined) return;
+            const formattedValue = dataValue.toFixed(1).replace('.', ',') + '%';
+            ctx.save();
+            ctx.fillStyle = '#1e7268'; // Darker teal for print readability
+            ctx.font = 'bold 10px Hanken Grotesk, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(formattedValue, element.x, element.y - 8);
+            ctx.restore();
+          });
+        });
+      }
+    });
+  }
+
   chartInstances[instanceKey] = new Chart(ctx, {
     type: 'line',
     data: {
@@ -1593,7 +1618,8 @@ function renderChartOccupancyHistory(labels, pctValues, canvasId = 'chart-occupa
           }
         }
       }
-    }
+    },
+    plugins: plugins
   });
 }
 
@@ -1606,6 +1632,31 @@ function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-histo
   const isReport = canvasId.includes('report');
   const textColor = isReport ? '#191919' : 'rgba(241, 244, 224, 0.7)';
   const gridColor = isReport ? 'rgba(0, 0, 0, 0.06)' : 'rgba(241, 244, 224, 0.05)';
+
+  const plugins = [];
+  if (isReport) {
+    plugins.push({
+      id: 'reportTicketLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx, data } = chart;
+        chart.data.datasets.forEach((dataset, datasetIndex) => {
+          const meta = chart.getDatasetMeta(datasetIndex);
+          meta.data.forEach((element, index) => {
+            const dataValue = dataset.data[index];
+            if (dataValue === 0 || dataValue === null || dataValue === undefined) return;
+            const formattedValue = 'R$ ' + Math.round(dataValue).toLocaleString('pt-BR');
+            ctx.save();
+            ctx.fillStyle = '#b18e38'; // Darker gold for print readability
+            ctx.font = 'bold 10px Hanken Grotesk, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(formattedValue, element.x, element.y - 8);
+            ctx.restore();
+          });
+        });
+      }
+    });
+  }
 
   chartInstances[instanceKey] = new Chart(ctx, {
     type: 'line',
@@ -1671,6 +1722,42 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
   const gridColor = isReport ? 'rgba(0, 0, 0, 0.06)' : 'rgba(241, 244, 224, 0.05)';
   const legendColor = isReport ? '#191919' : '#f1f4e0';
 
+  const plugins = [];
+  if (isReport) {
+    plugins.push({
+      id: 'reportRevenueLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx, data } = chart;
+        chart.data.datasets.forEach((dataset, datasetIndex) => {
+          const meta = chart.getDatasetMeta(datasetIndex);
+          meta.data.forEach((element, index) => {
+            const dataValue = dataset.data[index];
+            if (dataValue === 0 || dataValue === null || dataValue === undefined) return;
+            
+            ctx.save();
+            ctx.font = 'bold 10px Hanken Grotesk, sans-serif';
+            ctx.textAlign = 'center';
+            
+            if (datasetIndex === 0) {
+              // Faturamento (Bar) - Draw inside the orange bar
+              const formattedValue = 'R$ ' + Math.round(dataValue).toLocaleString('pt-BR');
+              ctx.fillStyle = '#fff';
+              ctx.textBaseline = 'top';
+              ctx.fillText(formattedValue, element.x, element.y + 8);
+            } else {
+              // Clientes Ativos (Line) - Draw above the line point
+              const formattedValue = Math.round(dataValue) + ' cli';
+              ctx.fillStyle = '#1e7268';
+              ctx.textBaseline = 'bottom';
+              ctx.fillText(formattedValue, element.x, element.y - 8);
+            }
+            ctx.restore();
+          });
+        });
+      }
+    });
+  }
+
   chartInstances[instanceKey] = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -1720,10 +1807,11 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
           display: true,
           position: 'right',
           grid: { drawOnChartArea: false },
-          ticks: { color: 'rgba(241, 244, 224, 0.7)', font: { family: 'Hanken Grotesk' }, stepSize: 5 }
+          ticks: { color: textColor, font: { family: 'Hanken Grotesk' }, stepSize: 5 }
         }
       }
-    }
+    },
+    plugins: plugins
   });
 }
 
