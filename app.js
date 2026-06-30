@@ -1540,6 +1540,10 @@ function renderChartOccupancyHistory(labels, pctValues, canvasId = 'chart-occupa
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
+  const isReport = canvasId.includes('report');
+  const textColor = isReport ? '#191919' : 'rgba(241, 244, 224, 0.7)';
+  const gridColor = isReport ? 'rgba(0, 0, 0, 0.06)' : 'rgba(241, 244, 224, 0.05)';
+
   chartInstances[instanceKey] = new Chart(ctx, {
     type: 'line',
     data: {
@@ -1548,13 +1552,13 @@ function renderChartOccupancyHistory(labels, pctValues, canvasId = 'chart-occupa
         label: 'Ocupação Produtiva (%)',
         data: pctValues,
         borderColor: '#2a9d8f',
-        backgroundColor: 'rgba(42, 157, 143, 0.12)',
+        backgroundColor: isReport ? 'rgba(42, 157, 143, 0.06)' : 'rgba(42, 157, 143, 0.12)',
         borderWidth: 2.5,
         tension: 0.35,
         fill: true,
         pointRadius: 5,
         pointBackgroundColor: '#2a9d8f',
-        pointBorderColor: '#1c1c1c',
+        pointBorderColor: isReport ? '#fff' : '#1c1c1c',
         pointBorderWidth: 2,
         pointHoverRadius: 7
       }]
@@ -1575,15 +1579,15 @@ function renderChartOccupancyHistory(labels, pctValues, canvasId = 'chart-occupa
       },
       scales: {
         x: {
-          grid: { color: 'rgba(241, 244, 224, 0.05)' },
-          ticks: { color: 'rgba(241, 244, 224, 0.7)', font: { family: 'Hanken Grotesk' } }
+          grid: { color: gridColor },
+          ticks: { color: textColor, font: { family: 'Hanken Grotesk' } }
         },
         y: {
           min: 0,
           max: 100,
-          grid: { color: 'rgba(241, 244, 224, 0.05)' },
+          grid: { color: gridColor },
           ticks: {
-            color: 'rgba(241, 244, 224, 0.7)',
+            color: textColor,
             font: { family: 'Hanken Grotesk' },
             callback: v => v + '%'
           }
@@ -1599,6 +1603,10 @@ function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-histo
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
+  const isReport = canvasId.includes('report');
+  const textColor = isReport ? '#191919' : 'rgba(241, 244, 224, 0.7)';
+  const gridColor = isReport ? 'rgba(0, 0, 0, 0.06)' : 'rgba(241, 244, 224, 0.05)';
+
   chartInstances[instanceKey] = new Chart(ctx, {
     type: 'line',
     data: {
@@ -1607,13 +1615,13 @@ function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-histo
         label: 'Ticket Médio (R$)',
         data: values,
         borderColor: '#e9c46a',
-        backgroundColor: 'rgba(233, 196, 106, 0.12)',
+        backgroundColor: isReport ? 'rgba(233, 196, 106, 0.06)' : 'rgba(233, 196, 106, 0.12)',
         borderWidth: 2.5,
         tension: 0.35,
         fill: true,
         pointRadius: 5,
         pointBackgroundColor: '#e9c46a',
-        pointBorderColor: '#1c1c1c',
+        pointBorderColor: isReport ? '#fff' : '#1c1c1c',
         pointBorderWidth: 2,
         pointHoverRadius: 7
       }]
@@ -1633,14 +1641,14 @@ function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-histo
       },
       scales: {
         x: {
-          grid: { color: 'rgba(241, 244, 224, 0.05)' },
-          ticks: { color: 'rgba(241, 244, 224, 0.7)', font: { family: 'Hanken Grotesk' } }
+          grid: { color: gridColor },
+          ticks: { color: textColor, font: { family: 'Hanken Grotesk' } }
         },
         y: {
           min: 0,
-          grid: { color: 'rgba(241, 244, 224, 0.05)' },
+          grid: { color: gridColor },
           ticks: {
-            color: 'rgba(241, 244, 224, 0.7)',
+            color: textColor,
             font: { family: 'Hanken Grotesk' },
             callback: v => 'R$ ' + v.toLocaleString('pt-BR')
           }
@@ -1657,6 +1665,12 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
+
+  const isReport = canvasId.includes('report');
+  const textColor = isReport ? '#191919' : 'rgba(241, 244, 224, 0.7)';
+  const gridColor = isReport ? 'rgba(0, 0, 0, 0.06)' : 'rgba(241, 244, 224, 0.05)';
+  const legendColor = isReport ? '#191919' : '#f1f4e0';
+
   chartInstances[instanceKey] = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -1675,8 +1689,8 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
           label: 'Clientes Ativos',
           data: students,
           type: 'line',
-          borderColor: '#f1f4e0',
-          backgroundColor: '#f1f4e0',
+          borderColor: isReport ? '#2a9d8f' : '#f1f4e0',
+          backgroundColor: isReport ? '#2a9d8f' : '#f1f4e0',
           borderWidth: 3,
           tension: 0.3,
           yAxisID: 'y1',
@@ -1690,16 +1704,16 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: '#f1f4e0', font: { family: 'Hanken Grotesk' } } }
+        legend: { labels: { color: legendColor, font: { family: 'Hanken Grotesk' } } }
       },
       scales: {
-        x: { grid: { color: 'rgba(241, 244, 224, 0.05)' }, ticks: { color: 'rgba(241, 244, 224, 0.7)', font: { family: 'Hanken Grotesk' } } },
+        x: { grid: { color: gridColor }, ticks: { color: textColor, font: { family: 'Hanken Grotesk' } } },
         y: {
           type: 'linear',
           display: true,
           position: 'left',
-          grid: { color: 'rgba(241, 244, 224, 0.05)' },
-          ticks: { color: 'rgba(241, 244, 224, 0.7)', font: { family: 'Hanken Grotesk' }, callback: value => 'R$ ' + value.toLocaleString('pt-BR') }
+          grid: { color: gridColor },
+          ticks: { color: textColor, font: { family: 'Hanken Grotesk' }, callback: value => 'R$ ' + value.toLocaleString('pt-BR') }
         },
         y1: {
           type: 'linear',
@@ -1782,6 +1796,10 @@ function renderChartSubcategories(data, canvasId = 'chart-subcategory', instance
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
+  const isReport = canvasId.includes('report');
+  const textColor = isReport ? '#191919' : 'rgba(241, 244, 224, 0.7)';
+  const gridColor = isReport ? 'rgba(0, 0, 0, 0.06)' : 'rgba(241, 244, 224, 0.05)';
+
   const labels = data.map(d => d.subcategoria || 'Geral');
   const values = data.map(d => parseFloat(d.valor_liquido_total) || 0);
 
@@ -1807,7 +1825,7 @@ function renderChartSubcategories(data, canvasId = 'chart-subcategory', instance
         const yCenter = bar.y;
 
         c.save();
-        c.fillStyle = 'rgba(241, 244, 224, 0.65)';
+        c.fillStyle = isReport ? 'rgba(25, 25, 25, 0.75)' : 'rgba(241, 244, 224, 0.65)';
         c.font = '600 11px Hanken Grotesk, sans-serif';
         c.textAlign = 'left';
         c.textBaseline = 'middle';
@@ -1852,12 +1870,12 @@ function renderChartSubcategories(data, canvasId = 'chart-subcategory', instance
       },
       scales: {
         x: {
-          grid: { color: 'rgba(241, 244, 224, 0.05)' },
-          ticks: { color: 'rgba(241, 244, 224, 0.7)', font: { family: 'Hanken Grotesk' }, callback: value => 'R$ ' + value.toLocaleString('pt-BR') }
+          grid: { color: gridColor },
+          ticks: { color: textColor, font: { family: 'Hanken Grotesk' }, callback: value => 'R$ ' + value.toLocaleString('pt-BR') }
         },
         y: {
-          grid: { color: 'rgba(241, 244, 224, 0.05)' },
-          ticks: { color: 'rgba(241, 244, 224, 0.7)', font: { family: 'Hanken Grotesk' } }
+          grid: { color: gridColor },
+          ticks: { color: textColor, font: { family: 'Hanken Grotesk' } }
         }
       }
     },
