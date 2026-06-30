@@ -2146,19 +2146,20 @@ async function loadFinancialReports() {
 
     const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${projectionEnd}`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
-    const salesParams = `select=valor_faturamento,pay_date&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
+    const salesParams = `select=valor_faturamento,pay_date,reference,item_description,quantity&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
     const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
-    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData] = await Promise.all([
+    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData, allProductCostsData] = await Promise.all([
       supabaseSelect('procfy_lancamentos', procfyParams),
       supabaseSelect('inter_movimentos_processados', interParams),
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
       supabaseSelect('vw_mt_comissoes_detalhadas', commParams),
       supabaseSelect('mt_faturamento_pagamentos', payParams),
       supabaseSelect('mp_pagamentos', mpParams),
-      supabaseSelect('mt_pagamentos_professores', `reference_period=eq.${monthStart}`)
+      supabaseSelect('mt_pagamentos_professores', `reference_period=eq.${monthStart}`),
+      supabaseSelect('mt_custo_produtos')
     ]);
 
     debugLog(`Lançamentos Procfy: ${allProcfyData.length} linhas.`);
@@ -2388,6 +2389,7 @@ async function loadFinancialReports() {
         receitaBruta: 0.0,
         impostos: 0.0,
         receitaLiquida: 0.0,
+        cogs: 0.0,
         comissao: 0.0,
         energia: 0.0,
         taxasProcessamento: 0.0,
@@ -2402,11 +2404,48 @@ async function loadFinancialReports() {
       };
     });
 
-    // Populate DRE Gross Revenue
+    // Populate DRE Gross Revenue & Calculate CMV for Lanchonete items
     allSalesData.forEach(sale => {
       const monthKey = sale.pay_date ? sale.pay_date.substring(0, 7) : '';
       if (!dreData[monthKey]) return;
-      dreData[monthKey].receitaBruta += parseFloat(sale.valor_faturamento) || 0.0;
+      
+      const valFat = parseFloat(sale.valor_faturamento) || 0.0;
+      dreData[monthKey].receitaBruta += valFat;
+
+      // Find matching cost from Supabase table
+      const saleDate = (sale.pay_date && sale.pay_date.substring(0, 10)) || '';
+      
+      // Match by SKU or Description within validity dates
+      const matchedCostRow = (allProductCostsData || []).find(costRow => {
+        // Validate date range
+        const start = costRow.data_inicio || '2026-01-01';
+        const end = costRow.data_fim || '9999-12-31';
+        if (saleDate < start || saleDate > end) return false;
+
+        // Match SKU (ref)
+        if (sale.reference && costRow.sku) {
+          const skuClean = costRow.sku.trim().replace(/^0+/, '');
+          const refClean = sale.reference.trim().replace(/^0+/, '');
+          if (skuClean && refClean && skuClean === refClean) return true;
+        }
+
+        // Match Description
+        if (sale.item_description && costRow.description) {
+          const descClean = costRow.description.toLowerCase().trim().replace(/\s+/g, ' ');
+          const itemDescClean = sale.item_description.toLowerCase().trim().replace(/\s+/g, ' ');
+          if (descClean === itemDescClean) return true;
+        }
+
+        return false;
+      });
+
+      if (matchedCostRow) {
+        const unitCost = parseFloat(matchedCostRow.custo_unitario) || 0.0;
+        const qty = parseFloat(sale.quantity) || 1.0;
+        const totalCost = unitCost * qty;
+
+        dreData[monthKey].cogs = (dreData[monthKey].cogs || 0.0) + totalCost;
+      }
     });
 
     // Populate DRE Commissions
@@ -2441,6 +2480,10 @@ async function loadFinancialReports() {
       if (category === 'Energia Elétrica') {
         dreData[monthKey].energia += amount;
       } else {
+        // Skip 'Estoque Bar/Lanchonete' from Procfy in DRE because we calculate it via COGS/CMV from sales
+        if (category === 'Estoque Bar/Lanchonete') {
+          return;
+        }
         dreData[monthKey].despesasOperacionais += amount;
         dreData[monthKey].despesasOperacionaisCategories[category] = 
           (dreData[monthKey].despesasOperacionaisCategories[category] || 0.0) + amount;
@@ -2480,6 +2523,7 @@ async function loadFinancialReports() {
     historicMonths.forEach(({ key }) => {
       const d = dreData[key];
       d.receitaBruta = round2(d.receitaBruta);
+      d.cogs = round2(d.cogs || 0.0);
       d.comissao = round2(d.comissao);
       d.energia = round2(d.energia);
       d.taxasProcessamento = round2(d.taxasProcessamento);
@@ -2489,6 +2533,7 @@ async function loadFinancialReports() {
       if (d.receitaBruta === 0.0) {
         d.impostos = 0.0;
         d.receitaLiquida = 0.0;
+        d.cogs = 0.0;
         d.comissao = 0.0;
         d.energia = 0.0;
         d.taxasProcessamento = 0.0;
@@ -2538,7 +2583,7 @@ async function loadFinancialReports() {
       d.impostos = round2(totalSimples * 0.96);
 
       d.receitaLiquida = round2(d.receitaBruta - d.impostos);
-      d.lucroBruto = round2(d.receitaLiquida - d.comissao - d.energia - d.taxasProcessamento);
+      d.lucroBruto = round2(d.receitaLiquida - d.cogs - d.comissao - d.energia - d.taxasProcessamento);
       d.ebitda = round2(d.lucroBruto - d.despesasOperacionais);
       
       // Depreciation (Fixed 7666.67 per active month)
@@ -2607,6 +2652,7 @@ async function loadFinancialReports() {
     dreBodyHtml += renderDreRowHtml('Receita Bruta', [], (d) => d.receitaBruta);
     dreBodyHtml += renderDreRowHtml('Impostos (Simples Nacional)', [], (d) => -d.impostos, true);
     dreBodyHtml += renderDreRowHtml('Receita Líquida', ['dre-result-row'], (d) => d.receitaLiquida);
+    dreBodyHtml += renderDreRowHtml('Custo dos Produtos Vendidos (Lanchonete)', [], (d) => -d.cogs, true);
     dreBodyHtml += renderDreRowHtml('Comissão Professores', [], (d) => -d.comissao, true);
     dreBodyHtml += renderDreRowHtml('Energia (Elétrica)', [], (d) => -d.energia, true);
     dreBodyHtml += renderDreRowHtml('Taxas de processamento', [], (d) => -d.taxasProcessamento, true);
