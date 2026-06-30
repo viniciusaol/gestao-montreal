@@ -1917,6 +1917,33 @@ input:focus, select:focus, textarea:focus {
   body.active-tab-report #section-report #report-dre-title {
     page-break-before: always !important;
   }
+
+  /* Force background colors to print for goals progress bar and badges */
+  body.active-tab-report #section-report .goal-progress-bar-bg {
+    background: #e6e6e6 !important;
+    border: 1px solid #ccc !important;
+    height: 8px !important;
+    border-radius: 4px !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  body.active-tab-report #section-report .goal-progress-bar-fill {
+    height: 100% !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  body.active-tab-report #section-report .goal-card.achieved .goal-progress-bar-fill {
+    background: #00a896 !important; /* darker teal for print contrast */
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  body.active-tab-report #section-report .goal-badge {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
 }
 
 
