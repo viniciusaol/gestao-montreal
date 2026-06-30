@@ -1744,6 +1744,11 @@ input:focus, select:focus, textarea:focus {
 }
 
 @media print {
+  /* Hide the global commission print-header when in active-tab-report */
+  body.active-tab-report > .print-header {
+    display: none !important;
+  }
+
   .print-only {
     display: block !important;
   }
