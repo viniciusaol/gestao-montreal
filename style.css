@@ -1881,6 +1881,37 @@ input:focus, select:focus, textarea:focus {
     color: #191919 !important;
     margin-bottom: 0.5rem !important;
   }
+
+  /* Compress padding and text sizes of all tables in the print layout */
+  body.active-tab-report #section-report .data-table th,
+  body.active-tab-report #section-report .data-table td {
+    padding: 0.25rem 0.4rem !important;
+    font-size: 0.72rem !important;
+    line-height: 1.25 !important;
+  }
+
+  /* Make sure tables do not split page breaks */
+  body.active-tab-report #section-report #report-dre-table,
+  body.active-tab-report #section-report #report-dfc-table,
+  body.active-tab-report #section-report #report-projection-table {
+    page-break-inside: avoid !important;
+  }
+
+  /* Vertical stacking for projection section elements */
+  body.active-tab-report #section-report .report-projection-grid {
+    display: block !important;
+  }
+
+  body.active-tab-report #section-report .report-projection-grid > div {
+    width: 100% !important;
+    margin-bottom: 1.5rem !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Collapse Tuition/Variables child rows under print in Projection Table */
+  body.active-tab-report #section-report .proj-entradas-child-row {
+    display: none !important;
+  }
 }
 
 

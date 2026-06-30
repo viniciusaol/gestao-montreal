@@ -3716,7 +3716,7 @@ function calculateAndRenderProjection() {
 
   const growthRate = elGrowth ? parseFloat(elGrowth.value) / 100 : 0.0;
   const commissionRate = elCommission ? parseFloat(elCommission.value) / 100 : 0.47;
-  const safetyRate = elSafety ? parseFloat(elSafety.value) / 100 : 0.0;
+  const safetyRate = elSafety ? parseFloat(elSafety.value) / 100 : 0.05;
 
   const monthsFullBR = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const targetMonths = [];

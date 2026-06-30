@@ -800,7 +800,7 @@
               </div>
               <div class="control-group" style="flex: 1; min-width: 200px;">
                 <label for="proj-input-safety" style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Provisão de Despesas Extra (%)</label>
-                <input type="number" id="proj-input-safety" value="0.0" step="1" min="0" max="100" style="width: 100%; padding: 0.65rem 0.85rem; background: #111; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: 0.95rem; font-weight: 600;">
+                <input type="number" id="proj-input-safety" value="5" step="1" min="0" max="100" style="width: 100%; padding: 0.65rem 0.85rem; background: #111; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: 0.95rem; font-weight: 600;">
               </div>
             </div>
 
@@ -1007,7 +1007,7 @@
               <h4 style="margin: 0 0 1rem; color: var(--text-main); font-size: 0.9rem; font-weight: 600; text-align: center;">Faturamento por Subcategoria</h4>
               <div style="height: 240px; position: relative;"><canvas id="report-chart-subcategory"></canvas></div>
             </div>
-            <div class="chart-card card" style="min-height: 300px; padding: 1.25rem; page-break-before: always;">
+            <div class="chart-card card" style="min-height: 300px; padding: 1.25rem;">
               <h4 style="margin: 0 0 1rem; color: var(--text-main); font-size: 0.9rem; font-weight: 600; text-align: center;">Evolução da Ocupação</h4>
               <div style="height: 240px; position: relative;"><canvas id="report-chart-occupancy"></canvas></div>
             </div>
@@ -1017,7 +1017,7 @@
             </div>
           </div>
 
-          <h3 style="color: var(--color-creme); margin-top: 2rem; margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600; page-break-before: always;">Eficiência do Uso de Quadras</h3>
+          <h3 style="color: var(--color-creme); margin-top: 2rem; margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600;">Eficiência do Uso de Quadras</h3>
           <div class="table-container" style="margin-bottom: 1.5rem;">
             <table class="data-table">
               <thead>
@@ -1059,7 +1059,7 @@
             </table>
           </div>
 
-          <h3 style="color: var(--color-creme); margin-bottom: 0.75rem; font-size: 1.1rem; font-weight: 600; page-break-before: always;">Demonstração do Resultado (DRE)</h3>
+          <h3 style="color: var(--color-creme); margin-bottom: 0.75rem; font-size: 1.1rem; font-weight: 600;">Demonstração do Resultado (DRE)</h3>
           <div class="table-container" style="margin-bottom: 2.5rem;">
             <table class="data-table" id="report-dre-table">
               <thead>
@@ -1073,7 +1073,7 @@
             </table>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; page-break-before: always;">
+          <div class="report-projection-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
             <div>
               <h3 style="color: var(--color-creme); margin-bottom: 0.75rem; font-size: 1.1rem; font-weight: 600;">Projeção do Fluxo de Caixa (Próximos 3 Meses)</h3>
               <div class="table-container">
