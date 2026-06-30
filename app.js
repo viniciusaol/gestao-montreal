@@ -5146,10 +5146,15 @@ async function loadMonthlyReport() {
     const reportProjRevCard = document.getElementById('report-projected-revenue-card');
     const screenProjRevCard = document.getElementById('proj-billing-grid');
     if (reportProjRevCard && screenProjRevCard) {
-      reportProjRevCard.innerHTML = `
-        <h4 style="margin:0 0 1rem; color:#fff; font-size:0.9rem; font-weight:700;">Próximo Mês</h4>
-        ${screenProjRevCard.innerHTML}
-      `;
+      const firstCard = screenProjRevCard.querySelector('.billing-card');
+      if (firstCard) {
+        reportProjRevCard.innerHTML = `
+          <h4 style="margin:0 0 1rem; color:#fff; font-size:0.9rem; font-weight:700;">Próximo Mês</h4>
+          ${firstCard.outerHTML}
+        `;
+      } else {
+        reportProjRevCard.innerHTML = screenProjRevCard.innerHTML;
+      }
     }
 
     // 4. Update Header metadata for printing

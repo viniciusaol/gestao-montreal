@@ -1912,6 +1912,11 @@ input:focus, select:focus, textarea:focus {
   body.active-tab-report #section-report .proj-entradas-child-row {
     display: none !important;
   }
+
+  /* Force DRE section title to always start on a fresh page */
+  body.active-tab-report #section-report #report-dre-title {
+    page-break-before: always !important;
+  }
 }
 
 
