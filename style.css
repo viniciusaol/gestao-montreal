@@ -1783,6 +1783,18 @@ input:focus, select:focus, textarea:focus {
     display: block !important;
   }
 
+  /* Prevent elements from breaking across pages in half */
+  body.active-tab-report #section-report .report-section {
+    page-break-inside: auto !important;
+  }
+
+  body.active-tab-report #section-report .goals-grid,
+  body.active-tab-report #section-report .table-container,
+  body.active-tab-report #section-report .comment-box {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
   /* Force expanded tables during print */
   body.active-tab-report #section-report .dre-child-row,
   body.active-tab-report #section-report .dre-op-child-row,
@@ -1851,18 +1863,18 @@ input:focus, select:focus, textarea:focus {
   
   /* Ensure charts fit nicely on A4 pages in print */
   body.active-tab-report #section-report .report-charts-grid {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 1rem !important;
+    display: block !important;
     margin-bottom: 1.5rem !important;
   }
 
   body.active-tab-report #section-report .chart-card {
+    width: 100% !important;
     border: 1px solid #ccc !important;
     padding: 0.75rem !important;
     background: #fff !important;
     box-shadow: none !important;
     page-break-inside: avoid !important;
+    margin-bottom: 1.5rem !important;
   }
 
   body.active-tab-report #section-report .chart-card h4 {
