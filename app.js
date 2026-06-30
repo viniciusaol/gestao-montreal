@@ -5046,9 +5046,6 @@ async function loadMonthlyReport() {
     }
 
     // 4. Update Header metadata for printing
-    const year = selectYear.value;
-    const month = selectMonth.value;
-    const monthStart = `${year}-${month}-01`;
     const formattedPeriod = getMonthNameBR(monthStart);
     
     const reportPrintPeriod = document.getElementById('report-print-period');
