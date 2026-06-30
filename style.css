@@ -1734,5 +1734,137 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
+/* ---- Monthly Report Screen & Print Layout Styles ---- */
+.print-only {
+  display: none !important;
+}
+
+.comment-print-text {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block !important;
+  }
+  
+  .comment-print-text {
+    display: block !important;
+    font-family: 'Hanken Grotesk', sans-serif;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #191919 !important;
+    background: #fdfdfd !important;
+    border-left: 4px solid #C05131 !important;
+    padding: 0.75rem 1rem !important;
+    margin-top: 0.75rem !important;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    font-style: italic;
+  }
+  
+  body.active-tab-report #section-commissions,
+  body.active-tab-report #section-operational,
+  body.active-tab-report #section-financial,
+  body.active-tab-report .main-tabs-nav,
+  body.active-tab-report .page-title-row,
+  body.active-tab-report .page-footer,
+  body.active-tab-report .report-header-actions,
+  body.active-tab-report header.no-print {
+    display: none !important;
+  }
+  
+  body.active-tab-report #section-report {
+    display: block !important;
+  }
+
+  /* Force expanded tables during print */
+  body.active-tab-report #section-report .dre-child-row,
+  body.active-tab-report #section-report .dre-op-child-row,
+  body.active-tab-report #section-report .fco-child-row,
+  body.active-tab-report #section-report .fci-child-row,
+  body.active-tab-report #section-report .fcs-child-row {
+    display: table-row !important;
+  }
+  
+  body.active-tab-report #section-report .arrow-indicator {
+    display: none !important;
+  }
+
+  /* Keep goals grid looking clean on print (force horizontal grid) */
+  body.active-tab-report #section-report .goals-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+    gap: 0.5rem !important;
+    margin-bottom: 1.5rem !important;
+  }
+
+  body.active-tab-report #section-report .goal-card {
+    border: 1px solid #ccc !important;
+    padding: 0.5rem !important;
+    background: #fff !important;
+    color: #191919 !important;
+    box-shadow: none !important;
+    min-height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  body.active-tab-report #section-report .goal-card .goal-title {
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    color: #555 !important;
+  }
+  
+  body.active-tab-report #section-report .goal-card .goal-badge {
+    padding: 2px 6px !important;
+    font-size: 0.6rem !important;
+  }
+
+  body.active-tab-report #section-report .goal-card .goal-current {
+    font-size: 1rem !important;
+    color: #191919 !important;
+    font-weight: 800 !important;
+  }
+
+  body.active-tab-report #section-report .goal-card .goal-target {
+    font-size: 0.65rem !important;
+    color: #666 !important;
+  }
+
+  body.active-tab-report #section-report .goal-card .goal-pct {
+    font-size: 0.65rem !important;
+    color: #666 !important;
+    margin-top: 0.15rem !important;
+  }
+
+  body.active-tab-report #section-report .goal-card .goal-footer-text {
+    font-size: 0.65rem !important;
+    color: #666 !important;
+    margin-top: 0.25rem !important;
+  }
+  
+  /* Ensure charts fit nicely on A4 pages in print */
+  body.active-tab-report #section-report .report-charts-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 1rem !important;
+    margin-bottom: 1.5rem !important;
+  }
+
+  body.active-tab-report #section-report .chart-card {
+    border: 1px solid #ccc !important;
+    padding: 0.75rem !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.active-tab-report #section-report .chart-card h4 {
+    color: #191919 !important;
+    margin-bottom: 0.5rem !important;
+  }
+}
+
 
 

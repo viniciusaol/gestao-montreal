@@ -113,6 +113,7 @@
         <button id="main-tab-commissions" class="main-tab-btn active">Controle de Comissões</button>
         <button id="main-tab-operational" class="main-tab-btn">Relatórios Operacionais</button>
         <button id="main-tab-financial" class="main-tab-btn">Relatórios Financeiros</button>
+        <button id="main-tab-report" class="main-tab-btn">Relatório Mensal</button>
       </div>
 
       <!-- Section: Controle de Comissões -->
@@ -934,6 +935,177 @@
           </div>
         </section>
       </div> <!-- End Section: Relatórios Financeiros -->
+
+      <!-- Section: Relatório Mensal -->
+      <div id="section-report" style="display: none;" class="printable-section">
+        
+        <!-- Report Header (Screen Only / No Print) -->
+        <div class="report-header-actions no-print" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding: 1.25rem; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border);">
+          <div>
+            <h2 style="margin: 0; color: var(--text-main); font-size: 1.4rem; font-weight: 700;">Gerador de Relatório Mensal</h2>
+            <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--text-muted);">Escreva seus comentários para cada seção e depois clique em "Exportar PDF".</p>
+          </div>
+          <button id="btn-export-report-pdf" class="btn btn-primary btn-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Exportar PDF
+          </button>
+        </div>
+
+        <!-- Report Printable Title (Print Only) -->
+        <div class="print-header">
+          <img src="assets/logos/Montreal_Logotipo_RGB_Horizontal_2.png" alt="Montreal Tênis" class="print-logo">
+          <h1 id="print-report-title">RELATÓRIO MENSAL DE RESULTADOS</h1>
+          <div class="print-meta">
+            <p><strong>Período:</strong> <span id="report-print-period">Junho/2026</span></p>
+            <p><strong>Data de Geração:</strong> <span id="report-print-generation-date">30/06/2026</span></p>
+          </div>
+        </div>
+
+        <!-- SECTION 1: COMISSÕES DE PROFESSORES -->
+        <section class="report-section card" style="margin-bottom: 2rem; padding: 1.5rem;">
+          <h2 class="section-title">1. Comissões dos Professores</h2>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Professor</th>
+                  <th class="text-center">Aulas Pagas (Qtd)</th>
+                  <th class="text-right">Faturamento Gerado</th>
+                  <th class="text-right">Comissão Devida</th>
+                </tr>
+              </thead>
+              <tbody id="report-commissions-rows">
+                <tr><td colspan="4" class="empty-state">Carregando dados...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="comment-box" style="margin-top: 1.5rem;">
+            <label class="no-print" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Comentários da Seção (Comissões):</label>
+            <textarea id="report-commissions-comment" class="no-print" placeholder="Digite seus comentários sobre as comissões aqui..." style="width: 100%; min-height: 80px; background: #111; border: 1px solid var(--border); color: var(--text-main); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); font-family: inherit; font-size: 0.9rem; resize: vertical;"></textarea>
+            <div id="report-commissions-comment-print" class="print-only comment-print-text"></div>
+          </div>
+        </section>
+
+        <!-- SECTION 2: METAS E OPERAÇÃO -->
+        <section class="report-section card" style="margin-bottom: 2rem; padding: 1.5rem; page-break-before: always;">
+          <h2 class="section-title">2. Relatório Operacional</h2>
+          
+          <h3 style="color: var(--color-creme); margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600;">Acompanhamento de Metas da Operação</h3>
+          <!-- We will render a grid of goals cards here -->
+          <div id="report-goals-grid" class="goals-grid" style="margin-bottom: 2rem;">
+            <!-- Goal Cards populated dynamically -->
+          </div>
+
+          <!-- Charts Sub-section -->
+          <h3 style="color: var(--color-creme); margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600;" class="no-print">Indicadores Operacionais (Gráficos)</h3>
+          <div class="report-charts-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+            <div class="chart-card card" style="min-height: 300px; padding: 1.25rem;">
+              <h4 style="margin: 0 0 1rem; color: var(--text-main); font-size: 0.9rem; font-weight: 600; text-align: center;">Evolução de Receita e Clientes Ativos</h4>
+              <div style="height: 240px; position: relative;"><canvas id="report-chart-revenue-history"></canvas></div>
+            </div>
+            <div class="chart-card card" style="min-height: 300px; padding: 1.25rem;">
+              <h4 style="margin: 0 0 1rem; color: var(--text-main); font-size: 0.9rem; font-weight: 600; text-align: center;">Faturamento por Subcategoria</h4>
+              <div style="height: 240px; position: relative;"><canvas id="report-chart-subcategory"></canvas></div>
+            </div>
+            <div class="chart-card card" style="min-height: 300px; padding: 1.25rem; page-break-before: always;">
+              <h4 style="margin: 0 0 1rem; color: var(--text-main); font-size: 0.9rem; font-weight: 600; text-align: center;">Evolução da Ocupação</h4>
+              <div style="height: 240px; position: relative;"><canvas id="report-chart-occupancy"></canvas></div>
+            </div>
+            <div class="chart-card card" style="min-height: 300px; padding: 1.25rem;">
+              <h4 style="margin: 0 0 1rem; color: var(--text-main); font-size: 0.9rem; font-weight: 600; text-align: center;">Evolução do Ticket Médio</h4>
+              <div style="height: 240px; position: relative;"><canvas id="report-chart-ticket-history"></canvas></div>
+            </div>
+          </div>
+
+          <h3 style="color: var(--color-creme); margin-top: 2rem; margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600; page-break-before: always;">Eficiência do Uso de Quadras</h3>
+          <div class="table-container" style="margin-bottom: 1.5rem;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tipo Operacional</th>
+                  <th class="text-center">Bookings</th>
+                  <th class="text-right">Horas Ocupadas</th>
+                  <th class="text-right">Fat. Clube / Hora</th>
+                </tr>
+              </thead>
+              <tbody id="report-efficiency-rows">
+                <tr><td colspan="4" class="empty-state">Carregando dados...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="comment-box" style="margin-top: 1.5rem;">
+            <label class="no-print" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Comentários da Seção (Metas e Operação):</label>
+            <textarea id="report-operational-comment" class="no-print" placeholder="Digite seus comentários sobre a operação aqui..." style="width: 100%; min-height: 80px; background: #111; border: 1px solid var(--border); color: var(--text-main); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); font-family: inherit; font-size: 0.9rem; resize: vertical;"></textarea>
+            <div id="report-operational-comment-print" class="print-only comment-print-text"></div>
+          </div>
+        </section>
+
+        <!-- SECTION 3: RELATÓRIO FINANCEIRO -->
+        <section class="report-section card" style="margin-bottom: 2rem; padding: 1.5rem; page-break-before: always;">
+          <h2 class="section-title">3. Relatório Financeiro</h2>
+
+          <h3 style="color: var(--color-creme); margin-bottom: 0.75rem; font-size: 1.1rem; font-weight: 600;">Fluxo de Caixa Realizado (DFC)</h3>
+          <div class="table-container" style="margin-bottom: 2.5rem;">
+            <table class="data-table" id="report-dfc-table">
+              <thead>
+                <tr id="report-dfc-header-row">
+                  <th>Categoria / Fluxo</th>
+                </tr>
+              </thead>
+              <tbody id="report-dfc-rows">
+                <tr><td colspan="2" class="empty-state">Carregando dados...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style="color: var(--color-creme); margin-bottom: 0.75rem; font-size: 1.1rem; font-weight: 600; page-break-before: always;">Demonstração do Resultado (DRE)</h3>
+          <div class="table-container" style="margin-bottom: 2.5rem;">
+            <table class="data-table" id="report-dre-table">
+              <thead>
+                <tr id="report-dre-header-row">
+                  <th>Categoria / Conta</th>
+                </tr>
+              </thead>
+              <tbody id="report-dre-rows">
+                <tr><td colspan="2" class="empty-state">Carregando dados...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; page-break-before: always;">
+            <div>
+              <h3 style="color: var(--color-creme); margin-bottom: 0.75rem; font-size: 1.1rem; font-weight: 600;">Projeção do Fluxo de Caixa (Próximos 3 Meses)</h3>
+              <div class="table-container">
+                <table class="data-table" id="report-projection-table">
+                  <thead>
+                    <tr id="report-projection-header-row">
+                      <th>Fluxo Projetado</th>
+                    </tr>
+                  </thead>
+                  <tbody id="report-projection-rows">
+                    <tr><td colspan="2" class="empty-state">Carregando dados...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <div>
+              <h3 style="color: var(--color-creme); margin-bottom: 0.75rem; font-size: 1.1rem; font-weight: 600;">Faturamento Projetado (Regime de Competência)</h3>
+              <div id="report-projected-revenue-card" class="card" style="padding: 1.5rem; background: var(--bg-main); border: 1px solid var(--border); border-radius: var(--radius-md);">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <div class="comment-box" style="margin-top: 1.5rem;">
+            <label class="no-print" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600;">Comentários da Seção (Financeiro e Projeções):</label>
+            <textarea id="report-financial-comment" class="no-print" placeholder="Digite seus comentários sobre o financeiro aqui..." style="width: 100%; min-height: 80px; background: #111; border: 1px solid var(--border); color: var(--text-main); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); font-family: inherit; font-size: 0.9rem; resize: vertical;"></textarea>
+            <div id="report-financial-comment-print" class="print-only comment-print-text"></div>
+          </div>
+        </section>
+
+      </div>
 
       <!-- Footer -->
       <footer class="page-footer no-print">

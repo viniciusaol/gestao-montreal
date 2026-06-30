@@ -189,6 +189,16 @@ let currentAllocationsData = [];
 let cachedFinancialData = null;
 let cachedMonthEndProjectionBalance = null; // final balance from daily projection → used as July opening in 3-month projection
 
+// Caching variables for Monthly Report PDF generation
+let cachedMonthsLabels = [];
+let cachedHistoricalRevenue = [];
+let cachedHistoricalStudents = [];
+let cachedOccupancyHistoryPct = [];
+let cachedTicketMedioHistory = [];
+let cachedProcessedSubData = [];
+let cachedCourtData = [];
+let cachedPayData = [];
+
 
 // Set default date
 payoutDate.value = new Date().toISOString().split('T')[0];
@@ -1500,6 +1510,16 @@ async function loadOperationalReports() {
       return clients > 0 ? parseFloat((rev / clients).toFixed(2)) : 0;
     });
 
+    // Cache operational metrics for the monthly report
+    cachedMonthsLabels = monthsLabels;
+    cachedHistoricalRevenue = historicalRevenue;
+    cachedHistoricalStudents = historicalStudents;
+    cachedOccupancyHistoryPct = occupancyHistoryPct;
+    cachedTicketMedioHistory = ticketMedioHistory;
+    cachedProcessedSubData = processedSubData;
+    cachedCourtData = courtData;
+    cachedPayData = payData;
+
     renderChartRevenueHistory(monthsLabels, historicalRevenue, historicalStudents);
     renderChartPaymethods(payData);
     renderChartSubcategories(processedSubData);
@@ -1514,13 +1534,13 @@ async function loadOperationalReports() {
 
 // ---- Chart Rendering Handlers ----
 
-function renderChartOccupancyHistory(labels, pctValues) {
-  destroyChart('occupancyHistory');
-  const canvas = document.getElementById('chart-occupancy-history');
+function renderChartOccupancyHistory(labels, pctValues, canvasId = 'chart-occupancy-history', instanceKey = 'occupancyHistory') {
+  destroyChart(instanceKey);
+  const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
-  chartInstances['occupancyHistory'] = new Chart(ctx, {
+  chartInstances[instanceKey] = new Chart(ctx, {
     type: 'line',
     data: {
       labels: labels,
@@ -1571,13 +1591,13 @@ function renderChartOccupancyHistory(labels, pctValues) {
   });
 }
 
-function renderChartTicketHistory(labels, values) {
-  destroyChart('ticketHistory');
-  const canvas = document.getElementById('chart-ticket-history');
+function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-history', instanceKey = 'ticketHistory') {
+  destroyChart(instanceKey);
+  const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
-  chartInstances['ticketHistory'] = new Chart(ctx, {
+  chartInstances[instanceKey] = new Chart(ctx, {
     type: 'line',
     data: {
       labels: labels,
@@ -1627,13 +1647,13 @@ function renderChartTicketHistory(labels, values) {
 }
 
 
-function renderChartRevenueHistory(labels, revenues, students) {
+function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart-revenue-history', instanceKey = 'revenueHistory') {
 
-  destroyChart('revenueHistory');
-  const canvas = document.getElementById('chart-revenue-history');
+  destroyChart(instanceKey);
+  const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  chartInstances['revenueHistory'] = new Chart(ctx, {
+  chartInstances[instanceKey] = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: labels,
@@ -1750,9 +1770,9 @@ function renderChartPaymethods(data) {
   });
 }
 
-function renderChartSubcategories(data) {
-  destroyChart('subcategories');
-  const canvas = document.getElementById('chart-subcategory');
+function renderChartSubcategories(data, canvasId = 'chart-subcategory', instanceKey = 'subcategories') {
+  destroyChart(instanceKey);
+  const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
@@ -1791,7 +1811,7 @@ function renderChartSubcategories(data) {
     }
   };
 
-  chartInstances['subcategories'] = new Chart(ctx, {
+  chartInstances[instanceKey] = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: labels,
@@ -2961,15 +2981,23 @@ function renderChartCashFlowHistory(labels, fco, fci, fcs, balances) {
   });
 }
 
+const mainTabReport = document.getElementById('main-tab-report');
+const sectionReport = document.getElementById('section-report');
+
 if (mainTabCommissions && mainTabOperational && mainTabFinancial) {
   mainTabCommissions.addEventListener('click', () => {
     currentMainTab = 'commissions';
     mainTabCommissions.classList.add('active');
     mainTabOperational.classList.remove('active');
     mainTabFinancial.classList.remove('active');
+    if (mainTabReport) mainTabReport.classList.remove('active');
+    
+    document.body.className = 'active-tab-commissions';
+
     if (sectionCommissions) sectionCommissions.style.display = 'block';
     if (sectionOperational) sectionOperational.style.display = 'none';
     if (sectionFinancial) sectionFinancial.style.display = 'none';
+    if (sectionReport) sectionReport.style.display = 'none';
 
     // Restore page title for commissions
     const pageTitle = document.querySelector('.page-title');
@@ -2994,9 +3022,14 @@ if (mainTabCommissions && mainTabOperational && mainTabFinancial) {
     mainTabOperational.classList.add('active');
     mainTabCommissions.classList.remove('active');
     mainTabFinancial.classList.remove('active');
+    if (mainTabReport) mainTabReport.classList.remove('active');
+
+    document.body.className = 'active-tab-operational';
+
     if (sectionCommissions) sectionCommissions.style.display = 'none';
     if (sectionOperational) sectionOperational.style.display = 'block';
     if (sectionFinancial) sectionFinancial.style.display = 'none';
+    if (sectionReport) sectionReport.style.display = 'none';
 
     // Update page title and subtitle for operational context
     const pageTitle = document.querySelector('.page-title');
@@ -3028,9 +3061,14 @@ if (mainTabCommissions && mainTabOperational && mainTabFinancial) {
     mainTabFinancial.classList.add('active');
     mainTabCommissions.classList.remove('active');
     mainTabOperational.classList.remove('active');
+    if (mainTabReport) mainTabReport.classList.remove('active');
+
+    document.body.className = 'active-tab-financial';
+
     if (sectionCommissions) sectionCommissions.style.display = 'none';
     if (sectionOperational) sectionOperational.style.display = 'none';
     if (sectionFinancial) sectionFinancial.style.display = 'block';
+    if (sectionReport) sectionReport.style.display = 'none';
 
     // Update page title and subtitle for financial context
     const pageTitle = document.querySelector('.page-title');
@@ -3056,6 +3094,47 @@ if (mainTabCommissions && mainTabOperational && mainTabFinancial) {
 
     loadFinancialReports();
   });
+
+  if (mainTabReport && sectionReport) {
+    mainTabReport.addEventListener('click', () => {
+      currentMainTab = 'report';
+      mainTabReport.classList.add('active');
+      mainTabCommissions.classList.remove('active');
+      mainTabOperational.classList.remove('active');
+      mainTabFinancial.classList.remove('active');
+
+      document.body.className = 'active-tab-report';
+
+      if (sectionCommissions) sectionCommissions.style.display = 'none';
+      if (sectionOperational) sectionOperational.style.display = 'none';
+      if (sectionFinancial) sectionFinancial.style.display = 'none';
+      if (sectionReport) sectionReport.style.display = 'block';
+
+      // Update page title and subtitle for report context
+      const pageTitle = document.querySelector('.page-title');
+      if (pageTitle) pageTitle.innerText = 'Relatório Mensal';
+      const pageSubtitle = document.getElementById('dashboard-subtitle');
+      if (pageSubtitle) {
+        const year = selectYear.value;
+        const month = selectMonth.value;
+        const monthStart = `${year}-${month}-01`;
+        pageSubtitle.innerText = `Gerador de Relatório Consolidado — ${getMonthNameBR(monthStart)}`;
+      }
+
+      // Hide professor filter and commission rate
+      if (selectProf) {
+        const g = selectProf.closest('.control-group');
+        if (g) { g.style.display = 'none'; }
+      }
+      if (inputCommission) {
+        const g = inputCommission.closest('.control-group');
+        if (g) { g.style.display = 'none'; }
+      }
+      if (btnPrint) btnPrint.style.display = 'none';
+
+      loadMonthlyReport();
+    });
+  }
 }
 
 // ---- Tab Event Listeners (Paid vs Pending) ----
@@ -4864,5 +4943,251 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
     occupancyRate >= targetOccupancy
   );
 }
+
+
+// ---- Monthly Report Generation & Rendering Logic ----
+
+async function loadMonthlyReport() {
+  debugLog('loadMonthlyReport() disparado.');
+  
+  const reportCommissionsRows = document.getElementById('report-commissions-rows');
+  if (reportCommissionsRows) {
+    reportCommissionsRows.innerHTML = `<tr><td colspan="4" class="empty-state">Preparando relatório e carregando dados...</td></tr>`;
+  }
+  
+  try {
+    // 1. Load operational and financial reports for the current month in parallel to update all states
+    await Promise.all([
+      loadOperationalReports(),
+      loadFinancialReports()
+    ]);
+    
+    // 2. Render teacher commissions summary (soma de comissões de todos os professores)
+    renderReportCommissions();
+
+    // 3. Copy tables and cards from screen elements
+    // Metas/Goals
+    const reportGoalsGrid = document.getElementById('report-goals-grid');
+    const screenGoalsGrid = document.querySelector('#section-operational .goals-grid');
+    if (reportGoalsGrid && screenGoalsGrid) {
+      reportGoalsGrid.innerHTML = screenGoalsGrid.innerHTML;
+    }
+    
+    // Efficiency Table
+    const reportEfficiencyRows = document.getElementById('report-efficiency-rows');
+    const screenEfficiencyRows = document.getElementById('op-table-efficiency-rows');
+    if (reportEfficiencyRows && screenEfficiencyRows) {
+      reportEfficiencyRows.innerHTML = screenEfficiencyRows.innerHTML;
+    }
+    
+    // DFC
+    const reportDfcHeaderRow = document.getElementById('report-dfc-header-row');
+    const screenDfcHeaderRow = document.getElementById('fin-dfc-header-row');
+    if (reportDfcHeaderRow && screenDfcHeaderRow) reportDfcHeaderRow.innerHTML = screenDfcHeaderRow.innerHTML;
+    
+    const reportDfcRows = document.getElementById('report-dfc-rows');
+    const screenDfcRows = document.getElementById('fin-dfc-body');
+    if (reportDfcRows && screenDfcRows) reportDfcRows.innerHTML = screenDfcRows.innerHTML;
+    
+    // DRE
+    const reportDreHeaderRow = document.getElementById('report-dre-header-row');
+    const screenDreHeaderRow = document.getElementById('fin-dre-header-row');
+    if (reportDreHeaderRow && screenDreHeaderRow) reportDreHeaderRow.innerHTML = screenDreHeaderRow.innerHTML;
+    
+    const reportDreRows = document.getElementById('report-dre-rows');
+    const screenDreRows = document.getElementById('fin-dre-body');
+    if (reportDreRows && screenDreRows) reportDreRows.innerHTML = screenDreRows.innerHTML;
+    
+    // Projection 3-Months
+    const reportProjHeader = document.getElementById('report-projection-header-row');
+    const screenProjHeader = document.getElementById('fin-projection-header-row');
+    if (reportProjHeader && screenProjHeader) reportProjHeader.innerHTML = screenProjHeader.innerHTML;
+    
+    const reportProjRows = document.getElementById('report-projection-rows');
+    const screenProjRows = document.getElementById('fin-projection-body');
+    if (reportProjRows && screenProjRows) reportProjRows.innerHTML = screenProjRows.innerHTML;
+    
+    // Projected Revenue Card
+    const reportProjRevCard = document.getElementById('report-projected-revenue-card');
+    const screenProjRevCard = document.getElementById('proj-billing-grid');
+    if (reportProjRevCard && screenProjRevCard) {
+      reportProjRevCard.innerHTML = `
+        <h4 style="margin:0 0 1rem; color:#fff; font-size:0.9rem; font-weight:700;">Próximo Mês</h4>
+        ${screenProjRevCard.innerHTML}
+      `;
+    }
+
+    // 4. Update Header metadata for printing
+    const year = selectYear.value;
+    const month = selectMonth.value;
+    const monthStart = `${year}-${month}-01`;
+    const formattedPeriod = getMonthNameBR(monthStart);
+    
+    const reportPrintPeriod = document.getElementById('report-print-period');
+    if (reportPrintPeriod) reportPrintPeriod.innerText = formattedPeriod;
+    
+    const reportPrintGenDate = document.getElementById('report-print-generation-date');
+    if (reportPrintGenDate) reportPrintGenDate.innerText = new Date().toLocaleDateString('pt-BR');
+
+    // 5. Render report charts
+    renderReportCharts();
+
+    // 6. Make sure comments printed fields are synced with textareas
+    syncCommentsToPrint();
+
+  } catch (err) {
+    debugError('Erro ao carregar o relatório mensal', err);
+    if (reportCommissionsRows) {
+      reportCommissionsRows.innerHTML = `<tr><td colspan="4" class="empty-state" style="color:var(--color-saibro);">Erro ao carregar os dados do relatório: ${err.message}</td></tr>`;
+    }
+  }
+}
+
+function renderReportCommissions() {
+  const reportCommissionsRows = document.getElementById('report-commissions-rows');
+  if (!reportCommissionsRows) return;
+
+  const year = selectYear.value;
+  const month = selectMonth.value;
+  const baseMonthPrefix = `${year}-${month}`;
+
+  const teacherData = {}; // professor -> { classesCount, faturamento, commission }
+
+  currentClassesData.forEach(row => {
+    const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(baseMonthPrefix);
+    if (!isPaidInSelectedMonth) return;
+
+    const prof = row.professor || 'Desconhecido';
+    const val = parseFloat(row.booking_value) || 0;
+    const commBase = parseFloat(row.booking_commission_base) || val;
+
+    if (!teacherData[prof]) {
+      teacherData[prof] = { classesCount: 0, faturamento: 0, commission: 0 };
+    }
+
+    teacherData[prof].classesCount += 1;
+    teacherData[prof].faturamento += val;
+    teacherData[prof].commission += commBase * (currentCommissionRate / 100);
+  });
+
+  const teachers = Object.keys(teacherData).sort();
+
+  if (teachers.length === 0) {
+    reportCommissionsRows.innerHTML = `<tr><td colspan="4" class="empty-state">Nenhuma comissão paga neste período.</td></tr>`;
+    return;
+  }
+
+  let totalClasses = 0;
+  let totalFat = 0;
+  let totalComm = 0;
+
+  let html = teachers.map(prof => {
+    const d = teacherData[prof];
+    totalClasses += d.classesCount;
+    totalFat += d.faturamento;
+    totalComm += d.commission;
+
+    return `
+      <tr>
+        <td><strong>${prof}</strong></td>
+        <td class="text-center">${d.classesCount}</td>
+        <td class="text-right">${formatCurrency(d.faturamento)}</td>
+        <td class="text-right font-semibold">${formatCurrency(d.commission)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  // Add a total row
+  html += `
+    <tr class="table-total-row" style="background: rgba(255,255,255,0.05); font-weight:700;">
+      <td>Total Geral</td>
+      <td class="text-center">${totalClasses}</td>
+      <td class="text-right">${formatCurrency(totalFat)}</td>
+      <td class="text-right">${formatCurrency(totalComm)}</td>
+    </tr>
+  `;
+
+  reportCommissionsRows.innerHTML = html;
+}
+
+function renderReportCharts() {
+  if (cachedMonthsLabels.length === 0) return;
+
+  renderChartRevenueHistory(
+    cachedMonthsLabels, 
+    cachedHistoricalRevenue, 
+    cachedHistoricalStudents, 
+    'report-chart-revenue-history', 
+    'reportRevenueHistory'
+  );
+  renderChartSubcategories(
+    cachedProcessedSubData, 
+    'report-chart-subcategory', 
+    'reportSubcategories'
+  );
+  renderChartOccupancyHistory(
+    cachedMonthsLabels, 
+    cachedOccupancyHistoryPct, 
+    'report-chart-occupancy', 
+    'reportOccupancyHistory'
+  );
+  renderChartTicketHistory(
+    cachedMonthsLabels, 
+    cachedTicketMedioHistory, 
+    'report-chart-ticket-history', 
+    'reportTicketHistory'
+  );
+}
+
+function syncCommentsToPrint() {
+  const commTa = document.getElementById('report-commissions-comment');
+  const commPr = document.getElementById('report-commissions-comment-print');
+  if (commTa && commPr) commPr.innerText = commTa.value || '';
+
+  const opTa = document.getElementById('report-operational-comment');
+  const opPr = document.getElementById('report-operational-comment-print');
+  if (opTa && opPr) opPr.innerText = opTa.value || '';
+
+  const finTa = document.getElementById('report-financial-comment');
+  const finPr = document.getElementById('report-financial-comment-print');
+  if (finTa && finPr) finPr.innerText = finTa.value || '';
+}
+
+// Bind live comment syncing
+function setupCommentSyncHandlers() {
+  const setupSync = (textareaId, printId) => {
+    const ta = document.getElementById(textareaId);
+    const pr = document.getElementById(printId);
+    if (ta && pr) {
+      ta.addEventListener('input', (e) => {
+        pr.innerText = e.target.value;
+      });
+    }
+  };
+  setupSync('report-commissions-comment', 'report-commissions-comment-print');
+  setupSync('report-operational-comment', 'report-operational-comment-print');
+  setupSync('report-financial-comment', 'report-financial-comment-print');
+}
+
+// Bind Export PDF Button click
+const btnExportReportPdf = document.getElementById('btn-export-report-pdf');
+if (btnExportReportPdf) {
+  btnExportReportPdf.addEventListener('click', () => {
+    const year = selectYear.value;
+    const month = selectMonth.value;
+    const monthStart = `${year}-${month}-01`;
+    const oldTitle = document.title;
+    document.title = `Montreal Tenis - Relatorio Mensal - ${getMonthNameBR(monthStart)}_${year}`;
+    
+    // Sync all comments right before printing to ensure they are up to date
+    syncCommentsToPrint();
+    
+    window.print();
+    document.title = oldTitle;
+  });
+}
+
+// Initialize comment listeners
+setupCommentSyncHandlers();
 
 
