@@ -1705,7 +1705,8 @@ function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-histo
           }
         }
       }
-    }
+    },
+    plugins: plugins
   });
 }
 
