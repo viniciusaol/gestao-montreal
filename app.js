@@ -2596,7 +2596,6 @@ async function loadFinancialReports() {
 
     // Populate DRE Expenses (Operation cost center)
     allProcfyData.forEach(tx => {
-      if (!tx.paid) return;
       if (tx.cost_center_descricao !== 'Operação') return;
       if (tx.transaction_type === 'revenue') return;
 
