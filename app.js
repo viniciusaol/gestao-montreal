@@ -4863,7 +4863,16 @@ function calculateAndRenderCurrentMonthProjection() {
   const overdueTbody = document.getElementById('fin-proj-current-overdue-rows');
   if (overdueTbody) {
     let overdueHtml = '';
-    const overdueCommissions = 0.0; // Do not show as overdue, they are paid on the 30th!
+    let overdueCommissions = 0.0;
+    if (!isCurrentRealMonth && metricsPaid && metricsPaid.saldo > 0) {
+      overdueCommissions = metricsPaid.saldo;
+    } else if (isCurrentRealMonth && metricsPaid) {
+      if (startDay > 30) {
+        overdueCommissions = metricsPaid.saldo;
+      } else if (startDay > 20) {
+        overdueCommissions = Math.max(0, metricsPaid.period1Comissao - (metricsPaid.period1Pago || 0));
+      }
+    }
     
     if (overdueProcfyList.length === 0 && overdueCommissions === 0) {
       overdueHtml = `<tr><td colspan="4" class="empty-state">Nenhuma conta vencida.</td></tr>`;
@@ -4883,8 +4892,8 @@ function calculateAndRenderCurrentMonthProjection() {
       if (overdueCommissions > 0) {
         overdueHtml += `
           <tr>
-            <td>20/${month}/${year}</td>
-            <td>Comissões de Professores (1º Período)</td>
+            <td>Atrasado</td>
+            <td>Comissões de Professores (Pendentes)</td>
             <td>Operação</td>
             <td class="text-right text-outflow">-${formatCurrency(overdueCommissions)}</td>
           </tr>
