@@ -4888,20 +4888,7 @@ function calculateAndRenderCurrentMonthProjection() {
   
   const tbody = document.getElementById('fin-proj-current-body');
   if (tbody) {
-    const monthlyTotalOutflowOps = round2(scheduledOpsTotalForMonth + totalFixedProvision + commissionPaid + totalFees);
-    const dailyInflowSum = round2(dailyProjection.reduce((s, r) => s + r.inflow, 0));
-    const dailyOutflowOpsSum = round2(dailyProjection.reduce((s, r) => s + r.outflowOps, 0));
-    
-    const diffInflow = round2(totalInflow - dailyInflowSum);
-    const diffOutflowOps = round2(monthlyTotalOutflowOps - dailyOutflowOpsSum);
-
-    const debugHtml = `<tr class="no-print"><td colspan="8" style="background:#fff3cd; color:#856404; padding:8px; text-align:center; font-size: 0.85rem;">
-      <strong>DEBUG MATEMÁTICO:</strong><br>
-      Inflow Total (Base): ${formatCurrency(totalInflow)} | Soma Diária: ${formatCurrency(dailyInflowSum)} (Diff: ${formatCurrency(diffInflow)}) <br>
-      Outflow Operacional (Base): ${formatCurrency(monthlyTotalOutflowOps)} | Soma Diária: ${formatCurrency(dailyOutflowOpsSum)} (Diff: ${formatCurrency(diffOutflowOps)})
-    </td></tr>`;
-    
-    tbody.innerHTML = debugHtml + html;
+    tbody.innerHTML = html;
   }
 
   // Render Overdue details
