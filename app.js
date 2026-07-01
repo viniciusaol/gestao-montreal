@@ -4350,75 +4350,19 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
     return (bDate && bDate.startsWith(monthPrefix)) || (pDate && pDate.startsWith(monthPrefix));
   });
 
-  const pendingBookingsByStudent = {};
   let totalPaidCommissionBase = 0.0;
 
   classesData.forEach(row => {
-    const studentName = row.participant_name || 'Desconhecido';
-    
     const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(monthPrefix);
-    const isPendingInSelectedMonth = !row.is_paid && row.booking_date && row.booking_date.startsWith(monthPrefix);
-
     if (isPaidInSelectedMonth) {
       const val = parseFloat(row.booking_value) || 0;
       const commBase = parseFloat(row.booking_commission_base) || val;
       if (val > 0) {
         totalPaidCommissionBase += commBase;
       }
-    } else if (isPendingInSelectedMonth) {
-      if (!pendingBookingsByStudent[studentName]) pendingBookingsByStudent[studentName] = [];
-      pendingBookingsByStudent[studentName].push(row);
     }
   });
 
-  let totalPendingCommissionBase = 0.0;
-  Object.keys(pendingBookingsByStudent).forEach(studentName => {
-    const bookings = pendingBookingsByStudent[studentName];
-    const slots = {};
-    bookings.forEach(b => {
-      const descUpper = (b.description || '').toUpperCase();
-      const isFree = b.booking_type === 'clase_suelta' || descUpper.includes('REPOSIÇÃO') || descUpper.includes('REPOSICAO') ||
-                     descUpper.includes('EXPERIMENTAL') || descUpper.includes('CORTESIA') || descUpper.includes('TESTE');
-      if (isFree) return;
-      
-      const dateObj = new Date(b.booking_date + 'T00:00:00');
-      const dayOfWeek = dateObj.getDay();
-      const startTime = b.start_time || '00:00';
-      const pricingInfo = getBasePriceForBooking(b);
-      const slotKey = `${dayOfWeek}_${startTime}_${pricingInfo.category}`;
-      if (!slots[slotKey]) slots[slotKey] = { dayOfWeek, startTime, pricingInfo, bookings: [] };
-      slots[slotKey].bookings.push(b);
-    });
-
-    const uniqueSlotsList = Object.values(slots);
-    const frequency = uniqueSlotsList.length;
-    let freqDiscountRate = 0;
-    if (frequency === 2) freqDiscountRate = 0.05;
-    else if (frequency >= 3) freqDiscountRate = 0.07;
-
-    uniqueSlotsList.forEach(slot => {
-      const pricing = slot.pricingInfo;
-      const nBookings = slot.bookings.length;
-      const isOffPeak = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5 && 
-                        (parseInt(slot.startTime.split(':')[0], 10) >= 10 && parseInt(slot.startTime.split(':')[0], 10) <= 15);
-      
-      let slotProRataValue = 0;
-      if (pricing.isMonthly) {
-        const nTotal = getWeekdayOccurrencesInMonth(year, month, slot.dayOfWeek);
-        slotProRataValue = (nBookings / nTotal) * pricing.price;
-      } else {
-        slotProRataValue = nBookings * pricing.price;
-      }
-      
-      let slotFinalValue = 0;
-      if (isOffPeak) slotFinalValue = slotProRataValue * 0.88;
-      else slotFinalValue = slotProRataValue * (1 - freqDiscountRate);
-      
-      totalPendingCommissionBase += slotFinalValue;
-    });
-  });
-
-  const pendingCommissionVal = totalPendingCommissionBase * (currentCommissionRate / 100);
   const paidCommissionVal = totalPaidCommissionBase * (currentCommissionRate / 100);
 
   let totalPayouts = 0.0;
@@ -4428,7 +4372,7 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
     }
   });
 
-  return Math.max(0.0, (paidCommissionVal + pendingCommissionVal) - totalPayouts);
+  return Math.max(0.0, paidCommissionVal - totalPayouts);
 }
 
 
