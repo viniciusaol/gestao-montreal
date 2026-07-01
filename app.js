@@ -4864,13 +4864,18 @@ function calculateAndRenderCurrentMonthProjection() {
   if (overdueTbody) {
     let overdueHtml = '';
     let overdueCommissions = 0.0;
-    if (!isCurrentRealMonth && metricsPaid && metricsPaid.saldo > 0) {
-      overdueCommissions = metricsPaid.saldo;
-    } else if (isCurrentRealMonth && metricsPaid) {
+    let commDueDate = `${daysInMonth}/${month}/${year}`;
+    let commLabel = 'Comissões de Professores (Total Pendente)';
+    
+    if (!isCurrentRealMonth) {
+      overdueCommissions = remainingCommP1 + remainingCommP2;
+    } else {
       if (startDay > 30) {
-        overdueCommissions = metricsPaid.saldo;
+        overdueCommissions = remainingCommP1 + remainingCommP2;
       } else if (startDay > 20) {
-        overdueCommissions = Math.max(0, metricsPaid.period1Comissao - (metricsPaid.period1Pago || 0));
+        overdueCommissions = remainingCommP1;
+        commDueDate = `20/${month}/${year}`;
+        commLabel = 'Comissões de Professores (1º Período Pendente)';
       }
     }
     
@@ -4892,8 +4897,8 @@ function calculateAndRenderCurrentMonthProjection() {
       if (overdueCommissions > 0) {
         overdueHtml += `
           <tr>
-            <td>Atrasado</td>
-            <td>Comissões de Professores (Pendentes)</td>
+            <td>${commDueDate}</td>
+            <td>${commLabel}</td>
             <td>Operação</td>
             <td class="text-right text-outflow">-${formatCurrency(overdueCommissions)}</td>
           </tr>
