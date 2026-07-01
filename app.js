@@ -3990,7 +3990,7 @@ function calculateAndRenderProjection() {
 
   // Today's date string for filtering only FUTURE unpaid transactions
   const todayDateFor3M = new Date();
-  const todayStrFor3M = `${year}-${month}-${String(todayDateFor3M.getDate()).padStart(2, '0')}`;
+  const todayStrFor3M = `${todayDateFor3M.getFullYear()}-${String(todayDateFor3M.getMonth() + 1).padStart(2, '0')}-${String(todayDateFor3M.getDate()).padStart(2, '0')}`;
 
   // Only count unpaid inflows/outflows from today onwards (already in bank balance for past days)
   let juneRemainingUnpaidInflowsD0 = 0.0;
@@ -4611,7 +4611,7 @@ function calculateAndRenderCurrentMonthProjection() {
   allGlobalPayouts.forEach(p => {
     const pDate = p.payout_date;
     // Only consider payouts made in the projected month
-    if (pDate && pDate.substring(0, 7) !== `${year}-${month}`) return;
+    if (!pDate || pDate.substring(0, 7) !== `${year}-${month}`) return;
     
     const amt = parseFloat(p.amount) || 0.0;
     const period = p.payout_period;
