@@ -2282,11 +2282,11 @@ async function loadFinancialReports() {
     const procfyParams = `due_date=gte.${firstMonth}&due_date=lte.${projectionEnd}`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
     const salesParams = `select=valor_faturamento,pay_date,reference,item_description,quantity&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
-    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))`;
+    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
-    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData, allProductCostsData] = await Promise.all([
+    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData, allProductCostsData, baseCourtOccupancy, baseHourlyEfficiency] = await Promise.all([
       supabaseSelect('procfy_lancamentos', procfyParams),
       supabaseSelect('inter_movimentos_processados', interParams),
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
@@ -2294,7 +2294,9 @@ async function loadFinancialReports() {
       supabaseSelect('mt_faturamento_pagamentos', payParams),
       supabaseSelect('mp_pagamentos', mpParams),
       supabaseSelect('mt_pagamentos_professores', `reference_period=eq.${monthStart}`),
-      supabaseSelect('mt_custo_produtos')
+      supabaseSelect('mt_custo_produtos'),
+      supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${monthStart}`),
+      supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${monthStart}`)
     ]);
 
     debugLog(`Lançamentos Procfy: ${allProcfyData.length} linhas.`);
@@ -2861,7 +2863,9 @@ async function loadFinancialReports() {
       month,
       historicMonths,
       monthlyData,
-      dreData
+      dreData,
+      baseCourtOccupancy,
+      baseHourlyEfficiency
     };
 
     // Calculate daily projection first — it stores the June 30 balance in cachedMonthEndProjectionBalance
@@ -4038,6 +4042,52 @@ function calculateAndRenderProjection() {
   const rollingVariableRevenues = [juneVariableRevenueBaseline];
   const rollingFixedExpenses = [juneFixedExpensesBaseline];
 
+  // Capacity parameters calculation from base month (June 2026)
+  const baseCourtOccupancy = cachedFinancialData.baseCourtOccupancy || [];
+  const baseHourlyEfficiency = cachedFinancialData.baseHourlyEfficiency || [];
+
+  const courtNames = new Set(baseCourtOccupancy.map(d => d.resource_name).filter(Boolean));
+  const numCourts = Math.max(courtNames.size, 4);
+
+  let baseMaintHours = 0;
+  let baseFixedHours = 0;
+  let baseAvulsaHours = 0;
+  let baseRentalHours = 0;
+
+  if (baseCourtOccupancy.length > 0) {
+    baseCourtOccupancy.forEach(item => {
+      const tipo = (item.tipo_operacional || '').toLowerCase();
+      const hours = parseFloat(item.horas_ocupadas) || 0;
+      const isMaint = tipo.includes('manutenção') || tipo.includes('bloqueio') || tipo.includes('manutencao');
+      
+      if (isMaint) {
+        baseMaintHours += hours;
+      } else if (tipo.startsWith('aulas - regular') || tipo.includes('reserva mensal') || tipo.startsWith('aulas - adulto') || tipo.startsWith('aulas - kids') || tipo === 'outros') {
+        baseFixedHours += hours;
+      } else if (tipo.includes('locação - quadra avulsa')) {
+        baseRentalHours += hours;
+      } else if (tipo.includes('aulas - avulsa particular')) {
+        baseAvulsaHours += hours;
+      }
+    });
+  } else {
+    // Fallback if data not loaded
+    baseMaintHours = 447.0;
+    baseFixedHours = 242.0;
+    baseAvulsaHours = 31.0;
+    baseRentalHours = 140.50;
+  }
+
+  const rentalEff = baseHourlyEfficiency.find(d => (d.tipo_operacional || '').toLowerCase().includes('locação - quadra avulsa'));
+  const ticketMedioLocacao = rentalEff ? parseFloat(rentalEff.faturamento_por_hora_ocupada) : 111.28;
+
+  const baseCapacityHours = calcTotalAvailableHoursForMonth(parseInt(year, 10), parseInt(month, 10)) * numCourts;
+  const baseFreeHours = Math.max(0, baseCapacityHours - baseMaintHours - baseFixedHours - baseAvulsaHours);
+  const baseRentalOccupancyRate = baseFreeHours > 0 ? (baseRentalHours / baseFreeHours) : 0.1641;
+
+  const baseRentalRevenue = baseRentalHours * ticketMedioLocacao;
+  const baseOtherVarRevenue = Math.max(0.0, juneVariableRevenueBaseline - baseRentalRevenue);
+
   const juneD30TuitionTotal = juneBookings.map(b => {
     const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : ((juneUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE);
     return val * baseD30Ratio;
@@ -4052,20 +4102,30 @@ function calculateAndRenderProjection() {
     const mKey = m.key;
     const curYearStr = mKey.substring(0, 4);
     const curMonthStr = mKey.substring(5, 7);
+    const monthIndex = idx + 1;
 
-    let tuitionGenerated = 0.0;
-
+    let baseTuitionVal = 0.0;
     activeJuneSlots.forEach(slot => {
-      const slotVal = slot.monthlyPrice;
-      tuitionGenerated += slotVal;
+      baseTuitionVal += slot.monthlyPrice;
     });
 
-    tuitionGenerated = round2(tuitionGenerated * (1 + growthRate));
+    const tuitionGenerated = round2(baseTuitionVal * Math.pow(1 + growthRate, monthIndex));
     const tuitionD0 = round2(tuitionGenerated * baseD0Ratio);
     const tuitionD30 = round2(tuitionGenerated * baseD30Ratio);
 
-    const avgVarRevenue = rollingVariableRevenues.reduce((s, v) => s + v, 0) / rollingVariableRevenues.length;
-    let projectedVarRevenue = round2(avgVarRevenue * (1 + growthRate));
+    const projCapacityHours = calcTotalAvailableHoursForMonth(parseInt(curYearStr, 10), parseInt(curMonthStr, 10)) * numCourts;
+    const projFixedHours = baseFixedHours * Math.pow(1 + growthRate, monthIndex);
+    const projAvulsaHours = baseAvulsaHours;
+    const projMaintHours = baseMaintHours;
+
+    const projFreeHours = Math.max(0, projCapacityHours - projMaintHours - projFixedHours - projAvulsaHours);
+    const projOccupancyRate = Math.min(0.35, baseRentalOccupancyRate * Math.pow(1 + 0.05, monthIndex));
+    
+    const projRentalHours = projFreeHours * projOccupancyRate;
+    const projRentalRevenue = projRentalHours * ticketMedioLocacao;
+    const projOtherVarRevenue = baseOtherVarRevenue * Math.pow(1 + growthRate, monthIndex);
+
+    const projectedVarRevenue = round2(projRentalRevenue + projOtherVarRevenue);
     rollingVariableRevenues.push(projectedVarRevenue);
 
     let varD0 = round2(projectedVarRevenue * baseD0Ratio);
