@@ -2287,7 +2287,20 @@ async function loadFinancialReports() {
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
 
-    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData, allProductCostsData, baseCourtOccupancy, baseHourlyEfficiency] = await Promise.all([
+    const occupancyParams = `select=*&ano=eq.${year}&mes=eq.${month}`;
+    const efficiencyParams = `select=*&ano=eq.${year}&mes=eq.${month}`;
+
+    let prevYear = parseInt(year, 10);
+    let prevMonth = parseInt(month, 10) - 1;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevYear -= 1;
+    }
+    const prevMonthStr = String(prevMonth).padStart(2, '0');
+    const prevOccupancyParams = `select=*&ano=eq.${prevYear}&mes=eq.${prevMonthStr}`;
+    const prevEfficiencyParams = `select=*&ano=eq.${prevYear}&mes=eq.${prevMonthStr}`;
+
+    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData, allProductCostsData, baseCourtOccupancy, baseHourlyEfficiency, prevCourtOccupancy, prevHourlyEfficiency] = await Promise.all([
       supabaseSelect('procfy_lancamentos', procfyParams),
       supabaseSelect('inter_movimentos_processados', interParams),
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
@@ -2297,7 +2310,9 @@ async function loadFinancialReports() {
       supabaseSelect('mt_pagamentos_professores', `reference_period=eq.${monthStart}`),
       supabaseSelect('mt_custo_produtos'),
       supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${monthStart}`),
-      supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${monthStart}`)
+      supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${monthStart}`),
+      supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
+      supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`)
     ]);
 
     debugLog(`Lançamentos Procfy: ${allProcfyData.length} linhas.`);
@@ -2858,6 +2873,11 @@ async function loadFinancialReports() {
       allPaymentMethodsData,
       allMpPaymentsData,
       allGlobalPayoutsData,
+      allProductCostsData,
+      baseCourtOccupancy,
+      baseHourlyEfficiency,
+      prevCourtOccupancy,
+      prevHourlyEfficiency,
       monthStart,
       monthEnd,
       year,
@@ -4402,6 +4422,8 @@ function calculateAndRenderCurrentMonthProjection() {
     allPaymentMethodsData,
     allMpPaymentsData,
     allGlobalPayoutsData,
+    prevCourtOccupancy,
+    prevHourlyEfficiency,
     monthStart,
     monthEnd,
     year,
@@ -4449,9 +4471,19 @@ function calculateAndRenderCurrentMonthProjection() {
     return d.toISOString().split('T')[0].substring(0, 8) + '01';
   })();
 
-  // Use all retrieved historical data (6-month window) to compute the payment method ratios dynamically
-  const basePayments = allPaymentMethodsData;
-  const baseMp = allMpPaymentsData;
+  const prevMonthPrefix = (() => {
+    const d = new Date(monthStart + 'T00:00:00');
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().split('T')[0].substring(0, 7);
+  })();
+  const projBaseMonthPrefix = prevMonthPrefix; // "2026-06"
+
+  // Use the PREVIOUS month to compute the payment method ratios dynamically, identical to Monthly DFC base
+  const basePayments = allPaymentMethodsData.filter(p => {
+    if (!p.pay_date) return false;
+    return p.pay_date.startsWith(projBaseMonthPrefix);
+  });
+  const baseMp = allMpPaymentsData.filter(p => p.date_approved && p.date_approved.startsWith(projBaseMonthPrefix));
 
   let mpPix = 0, mpCredit = 0, mpSaldo = 0, mpOther = 0;
   baseMp.forEach(p => {
@@ -4488,11 +4520,6 @@ function calculateAndRenderCurrentMonthProjection() {
   const baseD0Ratio = 1 - baseD30Ratio;
 
   // ── PREV MONTH (base for projection) ──────────────────────────────
-  const prevMonthPrefix = (() => {
-    const d = new Date(monthStart + 'T00:00:00');
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().split('T')[0].substring(0, 7);
-  })();
 
   // =========================================================================
   // GUARANTEED EXACT MATCH WITH MONTHLY DFC FOR THE BASE MONTH
@@ -4599,13 +4626,12 @@ function calculateAndRenderCurrentMonthProjection() {
   const tuitionReceivedD0 = round2(tuitionGenerated * baseD0Ratio);
   const tuitionReceivedD30 = juneD30TuitionTotal;
 
-  const baseCourtOccupancy = cachedFinancialData.baseCourtOccupancy || [];
   let baseRentalHours = 0;
   let baseMaintHours = 0;
   let baseFixedHours = 0;
   let baseAvulsaHours = 0;
-  if (baseCourtOccupancy.length > 0) {
-    baseCourtOccupancy.forEach(item => {
+  if (prevCourtOccupancy.length > 0) {
+    prevCourtOccupancy.forEach(item => {
       const tipo = (item.tipo_operacional || '').toLowerCase();
       const hours = parseFloat(item.horas_ocupadas) || 0;
       if (tipo.includes('manutenção') || tipo.includes('bloqueio') || tipo.includes('manutencao')) baseMaintHours += hours;
@@ -4616,12 +4642,12 @@ function calculateAndRenderCurrentMonthProjection() {
   } else {
     baseMaintHours = 447.0; baseFixedHours = 242.0; baseAvulsaHours = 31.0; baseRentalHours = 140.50;
   }
-  const courtNames = new Set(baseCourtOccupancy.map(d => d.resource_name).filter(Boolean));
+  const courtNames = new Set(prevCourtOccupancy.map(d => d.resource_name).filter(Boolean));
   const numCourts = Math.max(courtNames.size, 4);
   const baseCapacityHours = calcTotalAvailableHoursForMonth(parseInt(projBaseMonthPrefix.substring(0,4), 10), parseInt(projBaseMonthPrefix.substring(5,7), 10)) * numCourts;
   const baseFreeHours = Math.max(0, baseCapacityHours - baseMaintHours - baseFixedHours - baseAvulsaHours);
   const baseRentalOccupancyRate = baseFreeHours > 0 ? (baseRentalHours / baseFreeHours) : 0.1641;
-  const rentalEff = (cachedFinancialData.baseHourlyEfficiency || []).find(d => (d.tipo_operacional || '').toLowerCase().includes('locação - quadra avulsa'));
+  const rentalEff = (prevHourlyEfficiency || []).find(d => (d.tipo_operacional || '').toLowerCase().includes('locação - quadra avulsa'));
   const ticketMedioLocacao = rentalEff ? parseFloat(rentalEff.faturamento_por_hora_ocupada) : 111.28;
   const baseRentalRevenue = baseRentalHours * ticketMedioLocacao;
   const baseOtherVarRevenue = Math.max(0.0, juneVariableRevenueBaseline - baseRentalRevenue);
@@ -4773,7 +4799,7 @@ function calculateAndRenderCurrentMonthProjection() {
     allProcfyData.forEach(tx => {
       if (tx.paid) return;
       if (tx.transaction_type === 'revenue') return;
-      if (tx.due_date === dayStr) {
+      if (tx.due_date && tx.due_date.startsWith(dayStr)) {
         const amt = parseFloat(tx.amount) || 0.0;
         if (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos') {
           outflowInv += amt;
