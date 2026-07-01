@@ -4342,7 +4342,6 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
   
   const allCommData = cachedFinancialData.allCommData;
   const allGlobalPayoutsData = cachedFinancialData.allGlobalPayoutsData;
-  
   const monthPrefix = `${year}-${month}`;
   
   const classesData = allCommData.filter(row => {
@@ -4352,9 +4351,21 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
   });
 
   const pendingBookingsByStudent = {};
+  let totalPaidCommissionBase = 0.0;
+
   classesData.forEach(row => {
-    if (!row.is_paid) {
-      const studentName = row.participant_name || 'Desconhecido';
+    const studentName = row.participant_name || 'Desconhecido';
+    
+    const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(monthPrefix);
+    const isPendingInSelectedMonth = !row.is_paid && row.booking_date && row.booking_date.startsWith(monthPrefix);
+
+    if (isPaidInSelectedMonth) {
+      const val = parseFloat(row.booking_value) || 0;
+      const commBase = parseFloat(row.booking_commission_base) || val;
+      if (val > 0) {
+        totalPaidCommissionBase += commBase;
+      }
+    } else if (isPendingInSelectedMonth) {
       if (!pendingBookingsByStudent[studentName]) pendingBookingsByStudent[studentName] = [];
       pendingBookingsByStudent[studentName].push(row);
     }
@@ -4408,18 +4419,6 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
   });
 
   const pendingCommissionVal = totalPendingCommissionBase * (currentCommissionRate / 100);
-
-  let totalPaidCommissionBase = 0.0;
-  classesData.forEach(row => {
-    if (row.is_paid) {
-      let commBase = parseFloat(row.booking_commission_base) || 0.0;
-      if (commBase === 0 && parseFloat(row.booking_value) > 0) {
-        commBase = parseFloat(row.booking_value);
-      }
-      totalPaidCommissionBase += commBase;
-    }
-  });
-  
   const paidCommissionVal = totalPaidCommissionBase * (currentCommissionRate / 100);
 
   let totalPayouts = 0.0;
