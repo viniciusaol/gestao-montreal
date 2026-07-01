@@ -4680,7 +4680,9 @@ function calculateAndRenderCurrentMonthProjection() {
   const procfyScheduledOps = procfyScheduledTxList.filter(tx => tx.cost_center_name !== 'Investimentos' && tx.cost_center_descricao !== 'Investimentos').reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
   const upcomingScheduledInv = procfyScheduledTxList.filter(tx => tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos').reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
   
-  const scheduledOpsTotalForMonth = round2(procfyScheduledOps + juneRemainingUnpaidOutflowsOps);
+  const overdueOpsTotal = juneRemainingUnpaidOutflowsOps;
+  const overdueInvTotal = juneRemainingUnpaidOutflowsInv;
+  const scheduledOpsTotalForMonth = round2(procfyScheduledOps + overdueOpsTotal);
 
   const juneFixedExpensesBaseline = (dreData[projBaseMonthPrefix] ? dreData[projBaseMonthPrefix].energia : 0.0) + (dreData[projBaseMonthPrefix] ? dreData[projBaseMonthPrefix].despesasOperacionais : 0.0);
   const baseProvision = Math.max(0.0, juneFixedExpensesBaseline - scheduledOpsTotalForMonth);
