@@ -4010,21 +4010,23 @@ function calculateAndRenderProjection() {
 
   allProcfyData.forEach(tx => {
     const dateStr = tx.due_date;
-    if (!dateStr || !dateStr.startsWith(baseMonthPrefix)) return;
+    if (!dateStr) return;
     if (tx.paid) return;
 
     const amount = parseFloat(tx.amount) || 0.0;
     if (tx.transaction_type === 'revenue') {
-      // Only include future unpaid revenues (past unpaid revenues already in bank balance)
-      if (dateStr >= todayStrFor3M) {
+      // Only include future unpaid revenues for the BASE month
+      if (dateStr.startsWith(baseMonthPrefix) && dateStr >= todayStrFor3M) {
         juneRemainingUnpaidInflowsProcfy += amount;
       }
     } else {
-      // Include ALL unpaid outflows: bank balance is still HIGH because these haven't been paid
-      if (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos') {
-        juneRemainingUnpaidOutflowsInv += amount;
-      } else {
-        juneRemainingUnpaidOutflowsOps += amount;
+      // Include ALL unpaid outflows from before today (they are overdue, money still in bank)
+      if (dateStr < todayStrFor3M) {
+        if (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos') {
+          juneRemainingUnpaidOutflowsInv += amount;
+        } else {
+          juneRemainingUnpaidOutflowsOps += amount;
+        }
       }
     }
   });
