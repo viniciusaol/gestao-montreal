@@ -4733,7 +4733,14 @@ function calculateAndRenderCurrentMonthProjection() {
     });
   }
 
-
+  // Re-add lists for the UI tables at the bottom
+  const overdueProcfyList = allProcfyData.filter(tx =>
+    !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && tx.due_date < todayStr
+  );
+  const upcomingProcfyList = allProcfyData.filter(tx =>
+    !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date &&
+    tx.due_date >= todayStr && tx.due_date.startsWith(mKey)
+  );
 
   // Use hardcoded day-of-week weights (Sunday is usually slower)
   const dowWeights = [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
