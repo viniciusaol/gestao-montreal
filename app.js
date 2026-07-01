@@ -4499,14 +4499,14 @@ function calculateAndRenderCurrentMonthProjection() {
   // We will re-run the exact same data aggregation logic used by the 3-month projection
   // =========================================================================
   
-  const baseMonthPrefix = prevMonthPrefix; // "2026-06"
+  const projBaseMonthPrefix = prevMonthPrefix; // "2026-06"
   const mKey = `${year}-${month}`; // "2026-07"
   
   // Re-build active slots exactly as Monthly DFC
-  const monthlyJuneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix) && row.booking_type !== 'clase_suelta');
+  const monthlyJuneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(projBaseMonthPrefix) && row.booking_type !== 'clase_suelta');
   
   const juneUnpaidByStudent = {};
-  allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix)).forEach(b => {
+  allCommData.filter(row => row.booking_date && row.booking_date.startsWith(projBaseMonthPrefix)).forEach(b => {
     if (!b.is_paid) {
       const studentName = b.participant_name || 'Desconhecido';
       if (!juneUnpaidByStudent[studentName]) juneUnpaidByStudent[studentName] = [];
@@ -4542,7 +4542,7 @@ function calculateAndRenderCurrentMonthProjection() {
       const nBookings = slot.bookings.length;
       const isOffPeak = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5 && (parseInt(slot.startTime.split(':')[0], 10) >= 10 && parseInt(slot.startTime.split(':')[0], 10) <= 15);
       
-      let slotProRataValue = pricing.isMonthly ? (nBookings / getWeekdayOccurrencesInMonth(parseInt(baseMonthPrefix.substring(0,4),10), parseInt(baseMonthPrefix.substring(5,7),10), slot.dayOfWeek)) * pricing.price : nBookings * pricing.price;
+      let slotProRataValue = pricing.isMonthly ? (nBookings / getWeekdayOccurrencesInMonth(parseInt(projBaseMonthPrefix.substring(0,4),10), parseInt(projBaseMonthPrefix.substring(5,7),10), slot.dayOfWeek)) * pricing.price : nBookings * pricing.price;
       let slotFinalValue = isOffPeak ? slotProRataValue * 0.88 : slotProRataValue * (1 - freqDiscountRate);
       const perBookingValue = slotFinalValue / nBookings;
       slot.bookings.forEach(b => { juneUnpaidEstimatedValues[b.booking_id] = perBookingValue; });
@@ -4583,10 +4583,10 @@ function calculateAndRenderCurrentMonthProjection() {
   });
 
   // Calculate base inflows identically
-  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix)).reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
-  const junePaidTuition = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix)).filter(b => b.is_paid).reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
+  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(projBaseMonthPrefix)).reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
+  const junePaidTuition = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(projBaseMonthPrefix)).filter(b => b.is_paid).reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
   const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
-  const juneD30TuitionTotal = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix)).map(b => {
+  const juneD30TuitionTotal = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(projBaseMonthPrefix)).map(b => {
     const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : ((juneUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE);
     return val * baseD30Ratio;
   }).reduce((sum, val) => sum + val, 0.0);
@@ -4618,7 +4618,7 @@ function calculateAndRenderCurrentMonthProjection() {
   }
   const courtNames = new Set(baseCourtOccupancy.map(d => d.resource_name).filter(Boolean));
   const numCourts = Math.max(courtNames.size, 4);
-  const baseCapacityHours = calcTotalAvailableHoursForMonth(parseInt(baseMonthPrefix.substring(0,4), 10), parseInt(baseMonthPrefix.substring(5,7), 10)) * numCourts;
+  const baseCapacityHours = calcTotalAvailableHoursForMonth(parseInt(projBaseMonthPrefix.substring(0,4), 10), parseInt(projBaseMonthPrefix.substring(5,7), 10)) * numCourts;
   const baseFreeHours = Math.max(0, baseCapacityHours - baseMaintHours - baseFixedHours - baseAvulsaHours);
   const baseRentalOccupancyRate = baseFreeHours > 0 ? (baseRentalHours / baseFreeHours) : 0.1641;
   const rentalEff = (cachedFinancialData.baseHourlyEfficiency || []).find(d => (d.tipo_operacional || '').toLowerCase().includes('locação - quadra avulsa'));
@@ -4660,13 +4660,13 @@ function calculateAndRenderCurrentMonthProjection() {
   let juneRemainingUnpaidOutflowsOps = 0.0;
   let juneRemainingUnpaidOutflowsInv = 0.0;
   const todayDateFor3M = new Date();
-  const isCurrentRealMonth3M = (baseMonthPrefix.substring(0,4) === String(todayDateFor3M.getFullYear()) && baseMonthPrefix.substring(5,7) === String(todayDateFor3M.getMonth() + 1).padStart(2, '0'));
+  const isCurrentRealMonth3M = (projBaseMonthPrefix.substring(0,4) === String(todayDateFor3M.getFullYear()) && projBaseMonthPrefix.substring(5,7) === String(todayDateFor3M.getMonth() + 1).padStart(2, '0'));
   let startDay3M = 1;
   if (isCurrentRealMonth3M) startDay3M = todayDateFor3M.getDate();
-  else if (baseMonthPrefix < `${todayDateFor3M.getFullYear()}-${String(todayDateFor3M.getMonth() + 1).padStart(2, '0')}`) {
-    startDay3M = new Date(parseInt(baseMonthPrefix.substring(0,4), 10), parseInt(baseMonthPrefix.substring(5,7), 10), 0).getDate() + 1;
+  else if (projBaseMonthPrefix < `${todayDateFor3M.getFullYear()}-${String(todayDateFor3M.getMonth() + 1).padStart(2, '0')}`) {
+    startDay3M = new Date(parseInt(projBaseMonthPrefix.substring(0,4), 10), parseInt(projBaseMonthPrefix.substring(5,7), 10), 0).getDate() + 1;
   }
-  const todayStrFor3M = `${baseMonthPrefix.substring(0,4)}-${baseMonthPrefix.substring(5,7)}-${String(startDay3M).padStart(2, '0')}`;
+  const todayStrFor3M = `${projBaseMonthPrefix.substring(0,4)}-${projBaseMonthPrefix.substring(5,7)}-${String(startDay3M).padStart(2, '0')}`;
   
   allProcfyData.forEach(tx => {
     if (!tx.due_date || tx.paid) return;
@@ -4682,7 +4682,7 @@ function calculateAndRenderCurrentMonthProjection() {
   
   const scheduledOpsTotalForMonth = round2(procfyScheduledOps + juneRemainingUnpaidOutflowsOps);
 
-  const juneFixedExpensesBaseline = (dreData[baseMonthPrefix] ? dreData[baseMonthPrefix].energia : 0.0) + (dreData[baseMonthPrefix] ? dreData[baseMonthPrefix].despesasOperacionais : 0.0);
+  const juneFixedExpensesBaseline = (dreData[projBaseMonthPrefix] ? dreData[projBaseMonthPrefix].energia : 0.0) + (dreData[projBaseMonthPrefix] ? dreData[projBaseMonthPrefix].despesasOperacionais : 0.0);
   const baseProvision = Math.max(0.0, juneFixedExpensesBaseline - scheduledOpsTotalForMonth);
   const elSafety = document.getElementById('proj-input-safety');
   const safetyRate = elSafety ? parseFloat(elSafety.value) / 100 : 0.05;
