@@ -4609,19 +4609,20 @@ function calculateAndRenderCurrentMonthProjection() {
   });
 
   // Calculate base inflows identically
-  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(projBaseMonthPrefix)).reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
-  const junePaidTuition = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(projBaseMonthPrefix)).filter(b => b.is_paid).reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
-  const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
-  const juneD30TuitionTotal = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(projBaseMonthPrefix)).map(b => {
-    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : ((juneUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE);
-    return val * baseD30Ratio;
-  }).reduce((sum, val) => sum + val, 0.0);
-
   // Exact Month 1 calculations
   let baseTuitionVal = 0.0;
   activeJuneSlots.forEach(slot => { baseTuitionVal += slot.monthlyPrice; });
+
+  let estimatedJuneUnpaidTotal = 0.0;
+  Object.values(juneUnpaidSlotsMap).forEach(price => { estimatedJuneUnpaidTotal += price; });
+  estimatedJuneUnpaidTotal *= UNPAID_RECOVERY_RATE;
+
+  const juneTuitionGenerated = baseTuitionVal + estimatedJuneUnpaidTotal;
+  const juneD30TuitionTotal = round2(juneTuitionGenerated * baseD30Ratio);
+  const juneVariableRevenueBaseline = Math.max(0.0, totalBaseFaturamento - juneTuitionGenerated);
+
   const monthIndex = 1; // July is monthIndex 1
-  const tuitionGenerated = round2(baseTuitionVal * Math.pow(1 + growthRate, monthIndex));
+  const tuitionGenerated = round2((baseTuitionVal + estimatedJuneUnpaidTotal) * Math.pow(1 + growthRate, monthIndex));
   const tuitionReceivedD0 = round2(tuitionGenerated * baseD0Ratio);
   const tuitionReceivedD30 = juneD30TuitionTotal;
 
