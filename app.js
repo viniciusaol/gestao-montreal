@@ -4868,7 +4868,12 @@ function calculateAndRenderCurrentMonthProjection() {
     let commLabel = 'Comissões de Professores (Total Pendente)';
     
     if (!isCurrentRealMonth) {
-      overdueCommissions = remainingCommP1 + remainingCommP2;
+      if (typeof metricsPaid !== 'undefined' && metricsPaid) {
+        const pendCom = (typeof metricsPending !== 'undefined' && metricsPending) ? metricsPending.comissao : 0;
+        overdueCommissions = Math.max(0, (metricsPaid.comissao + pendCom) - metricsPaid.repasse);
+      } else {
+        overdueCommissions = remainingCommP1 + remainingCommP2;
+      }
     } else {
       if (startDay > 30) {
         overdueCommissions = remainingCommP1 + remainingCommP2;
