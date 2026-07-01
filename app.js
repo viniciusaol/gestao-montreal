@@ -4526,7 +4526,6 @@ function calculateAndRenderCurrentMonthProjection() {
   // We will re-run the exact same data aggregation logic used by the 3-month projection
   // =========================================================================
   
-  const projBaseMonthPrefix = prevMonthPrefix; // "2026-06"
   const mKey = `${year}-${month}`; // "2026-07"
   
   // Re-build active slots exactly as Monthly DFC
