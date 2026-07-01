@@ -4887,7 +4887,7 @@ function calculateAndRenderCurrentMonthProjection() {
   
   const tbody = document.getElementById('fin-proj-current-body');
   if (tbody) {
-    const monthlyTotalOutflowOps = round2(scheduledOpsTotalForMonth + totalFixedProvision + totalCommissions + totalFees);
+    const monthlyTotalOutflowOps = round2(scheduledOpsTotalForMonth + totalFixedProvision + commissionPaid + totalFees);
     const dailyInflowSum = round2(dailyProjection.reduce((s, r) => s + r.inflow, 0));
     const dailyOutflowOpsSum = round2(dailyProjection.reduce((s, r) => s + r.outflowOps, 0));
     
