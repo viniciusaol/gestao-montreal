@@ -4867,14 +4867,7 @@ function calculateAndRenderCurrentMonthProjection() {
     let commDueDate = `${daysInMonth}/${month}/${year}`;
     let commLabel = 'Comissões de Professores (Total Pendente)';
     
-    if (!isCurrentRealMonth) {
-      if (typeof metricsPaid !== 'undefined' && metricsPaid) {
-        const pendCom = (typeof metricsPending !== 'undefined' && metricsPending) ? metricsPending.comissao : 0;
-        overdueCommissions = Math.max(0, (metricsPaid.comissao + pendCom) - metricsPaid.repasse);
-      } else {
-        overdueCommissions = remainingCommP1 + remainingCommP2;
-      }
-    } else {
+    if (isCurrentRealMonth) {
       if (startDay > 30) {
         overdueCommissions = remainingCommP1 + remainingCommP2;
       } else if (startDay > 20) {
@@ -4920,7 +4913,15 @@ function calculateAndRenderCurrentMonthProjection() {
     const hasCommP1 = (startDay <= 20) && remainingCommP1 > 0;
     const hasCommP2 = (remainingCommP2 + (startDay > 20 ? remainingCommP1 : 0.0)) > 0;
     
-    if (upcomingProcfyList.length === 0 && !hasCommP1 && !hasCommP2) {
+    let pendingCommissions = 0.0;
+    if (!isCurrentRealMonth) {
+      if (typeof metricsPaid !== 'undefined' && metricsPaid) {
+        const pendCom = (typeof metricsPending !== 'undefined' && metricsPending) ? metricsPending.comissao : 0;
+        pendingCommissions = Math.max(0, (metricsPaid.comissao + pendCom) - metricsPaid.repasse);
+      }
+    }
+    
+    if (upcomingProcfyList.length === 0 && !hasCommP1 && !hasCommP2 && pendingCommissions === 0) {
       upcomingHtml = `<tr><td colspan="4" class="empty-state">Nenhum lançamento agendado.</td></tr>`;
     } else {
       const sortedUpcoming = [...upcomingProcfyList].sort((a, b) => a.due_date.localeCompare(b.due_date));
@@ -4975,6 +4976,18 @@ function calculateAndRenderCurrentMonthProjection() {
           name: 'Comissões de Professores (2º Período)',
           flow: 'Operação',
           amount: remainingCommP2 + (startDay > 20 ? remainingCommP1 : 0.0)
+        });
+      }
+      
+      if (pendingCommissions > 0) {
+        let nextM = parseInt(month, 10) + 1;
+        let nextY = parseInt(year, 10);
+        if (nextM > 12) { nextM = 1; nextY++; }
+        rows.push({
+          date: `${nextY}-${String(nextM).padStart(2, '0')}-05`,
+          name: 'Comissões a Repassar (Mês Anterior)',
+          flow: 'Operação',
+          amount: pendingCommissions
         });
       }
       
