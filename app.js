@@ -4609,9 +4609,12 @@ function calculateAndRenderCurrentMonthProjection() {
   let payoutsP1 = 0.0;
   let payoutsP2 = 0.0;
   allGlobalPayouts.forEach(p => {
+    const pDate = p.payout_date;
+    // Only consider payouts made in the projected month
+    if (pDate && pDate.substring(0, 7) !== `${year}-${month}`) return;
+    
     const amt = parseFloat(p.amount) || 0.0;
     const period = p.payout_period;
-    const pDate = p.payout_date;
     if (period === 'ate_dia_20') { payoutsP1 += amt; }
     else if (period === 'apos_dia_20') { payoutsP2 += amt; }
     else {
@@ -4669,6 +4672,7 @@ function calculateAndRenderCurrentMonthProjection() {
   const overdueProcfyList = allProcfyData.filter(tx =>
     !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && tx.due_date < todayStr
   );
+  
   let overdueOpsTotal = 0.0;
   let overdueInvTotal = 0.0;
   overdueProcfyList.forEach(tx => {
@@ -4679,6 +4683,21 @@ function calculateAndRenderCurrentMonthProjection() {
       overdueOpsTotal += amt;
     }
   });
+
+  // Overdue inflows (unpaid Procfy revenues + unpaid previous month bookings)
+  const overdueProcfyRevs = allProcfyData.filter(tx =>
+    !tx.paid && tx.transaction_type === 'revenue' && tx.due_date && tx.due_date < todayStr
+  ).reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+
+  let overdueCommRevs = 0.0;
+  prevMonthCommBookings.filter(b => !b.is_paid).forEach(b => {
+    const d = b.booking_date;
+    if (d && d < todayStr) {
+      overdueCommRevs += (prevUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE;
+    }
+  });
+
+  const overdueInflowTotal = overdueProcfyRevs + overdueCommRevs;
 
   // Upcoming scheduled outflows for this month
   const upcomingProcfyList = allProcfyData.filter(tx =>
@@ -4717,27 +4736,8 @@ function calculateAndRenderCurrentMonthProjection() {
   const totalFees = round2(tuitionFees + variableFees);
   const dayFees = round2(totalFees / daysInMonth);
 
-  // Calculate day-of-week weights from the 6-month historical sales data (allSalesData)
-  const salesByDayOfWeek = [0, 0, 0, 0, 0, 0, 0];
-  allSalesData.forEach(s => {
-    if (!s.pay_date) return;
-    const dateObj = new Date(s.pay_date + 'T00:00:00');
-    const dow = dateObj.getDay();
-    const amt = parseFloat(s.valor_faturamento) || 0.0;
-    salesByDayOfWeek[dow] += amt;
-  });
-
-  const totalSalesAllTime = salesByDayOfWeek.reduce((a, b) => a + b, 0);
-  const dowWeights = [1, 1, 1, 1, 1, 1, 1];
-  if (totalSalesAllTime > 0) {
-    for (let i = 0; i < 7; i++) {
-      dowWeights[i] = salesByDayOfWeek[i] / totalSalesAllTime;
-    }
-  } else {
-    for (let i = 0; i < 7; i++) {
-      dowWeights[i] = 1 / 7;
-    }
-  }
+  // Use hardcoded day-of-week weights (Sunday is usually slower)
+  const dowWeights = [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
 
   // Normalize by summing the day weights for every day of the selected month
   let totalMonthWeight = 0;
