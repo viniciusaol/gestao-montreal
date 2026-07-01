@@ -4544,13 +4544,57 @@ function calculateAndRenderCurrentMonthProjection() {
   }).reduce((s, v) => s + v, 0.0);
   const tuitionReceivedD30 = round2(prevD30TuitionTotal);
 
-  // Prev month variable revenue (= juneVariableRevenueBaseline in 3-month DFC)
+  // Prev month variable revenue baseline
   const prevSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(prevMonthPrefix))
                                      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
   const prevPaidTuition = prevMonthCommBookings.filter(b => b.is_paid)
                                                .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
   const prevVarRevBaseline = Math.max(0.0, prevSalesTotal - prevPaidTuition);
-  const projectedVarRevenue = round2(prevVarRevBaseline * (1 + growthRate));
+
+  // Capacity parameters calculation from base month (matching DFC)
+  const baseCourtOccupancy = cachedFinancialData.baseCourtOccupancy || [];
+  const baseHourlyEfficiency = cachedFinancialData.baseHourlyEfficiency || [];
+  const courtNames = new Set(baseCourtOccupancy.map(d => d.resource_name).filter(Boolean));
+  const numCourts = Math.max(courtNames.size, 4);
+
+  let baseMaintHours = 0, baseFixedHours = 0, baseAvulsaHours = 0, baseRentalHours = 0;
+  if (baseCourtOccupancy.length > 0) {
+    baseCourtOccupancy.forEach(item => {
+      const tipo = (item.tipo_operacional || '').toLowerCase();
+      const hours = parseFloat(item.horas_ocupadas) || 0;
+      if (tipo.includes('manutenção') || tipo.includes('bloqueio') || tipo.includes('manutencao')) { baseMaintHours += hours; }
+      else if (tipo.startsWith('aulas - regular') || tipo.includes('reserva mensal') || tipo.startsWith('aulas - adulto') || tipo.startsWith('aulas - kids') || tipo === 'outros') { baseFixedHours += hours; }
+      else if (tipo.includes('locação - quadra avulsa')) { baseRentalHours += hours; }
+      else if (tipo.includes('aulas - avulsa particular')) { baseAvulsaHours += hours; }
+    });
+  } else {
+    baseMaintHours = 447.0; baseFixedHours = 242.0; baseAvulsaHours = 31.0; baseRentalHours = 140.50;
+  }
+
+  const rentalEff = baseHourlyEfficiency.find(d => (d.tipo_operacional || '').toLowerCase().includes('locação - quadra avulsa'));
+  const ticketMedioLocacao = rentalEff ? parseFloat(rentalEff.faturamento_por_hora_ocupada) : 111.28;
+
+  const baseCapacityHours = calcTotalAvailableHoursForMonth(prevYear, prevMonth) * numCourts;
+  const baseFreeHours = Math.max(0, baseCapacityHours - baseMaintHours - baseFixedHours - baseAvulsaHours);
+  const baseRentalOccupancyRate = baseFreeHours > 0 ? (baseRentalHours / baseFreeHours) : 0.1641;
+
+  const baseRentalRevenue = baseRentalHours * ticketMedioLocacao;
+  const baseOtherVarRevenue = Math.max(0.0, prevVarRevBaseline - baseRentalRevenue);
+
+  const projCapacityHours = calcTotalAvailableHoursForMonth(parseInt(year, 10), parseInt(month, 10)) * numCourts;
+  const projFixedHours = baseFixedHours * (1 + growthRate);
+  const projAvulsaHours = baseAvulsaHours;
+  const projMaintHours = baseMaintHours;
+
+  const projFreeHours = Math.max(0, projCapacityHours - projMaintHours - projFixedHours - projAvulsaHours);
+  const projOccupancyRate = Math.min(0.35, baseRentalOccupancyRate * (1 + 0.05));
+  
+  const projRentalHours = projFreeHours * projOccupancyRate;
+  const projRentalRevenue = projRentalHours * ticketMedioLocacao;
+  const projOtherVarRevenue = baseOtherVarRevenue * (1 + growthRate);
+
+  const projectedVarRevenue = round2(projRentalRevenue + projOtherVarRevenue);
+
   const variableReceivedD0 = round2(projectedVarRevenue * baseD0Ratio);
   const variableReceivedD30 = round2(prevVarRevBaseline * baseD30Ratio);
 
@@ -4644,9 +4688,11 @@ function calculateAndRenderCurrentMonthProjection() {
   const prevMonthFixedExpenses = (dreData[prevMonthPrefix] ? dreData[prevMonthPrefix].energia : 0.0) +
                                  (dreData[prevMonthPrefix] ? dreData[prevMonthPrefix].despesasOperacionais : 0.0);
 
-  const scheduledOpsTotalForMonth = upcomingProcfyList
+  const upcomingScheduledOps = upcomingProcfyList
     .filter(tx => tx.cost_center_name !== 'Investimentos' && tx.cost_center_descricao !== 'Investimentos')
     .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+  
+  const scheduledOpsTotalForMonth = round2(upcomingScheduledOps + overdueOpsTotal);
 
   const baseProvision = Math.max(0.0, prevMonthFixedExpenses - scheduledOpsTotalForMonth);
   const elSafety = document.getElementById('proj-input-safety');
