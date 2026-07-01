@@ -4004,22 +4004,34 @@ function calculateAndRenderProjection() {
     juneRemainingUnpaidInflowsD30 += val * baseD30Ratio;
   });
 
-  let juneRemainingUnpaidOutflows = 0.0;
+  let juneRemainingUnpaidOutflowsOps = 0.0;
+  let juneRemainingUnpaidOutflowsInv = 0.0;
   let juneRemainingUnpaidInflowsProcfy = 0.0;
 
   allProcfyData.forEach(tx => {
     const dateStr = tx.due_date;
     if (!dateStr || !dateStr.startsWith(baseMonthPrefix)) return;
     if (tx.paid) return;
-    if (dateStr < todayStrFor3M) return; // skip past unpaid (already reflected in real balance)
 
     const amount = parseFloat(tx.amount) || 0.0;
     if (tx.transaction_type === 'revenue') {
-      juneRemainingUnpaidInflowsProcfy += amount;
+      // Only include future unpaid revenues (past unpaid revenues already in bank balance)
+      if (dateStr >= todayStrFor3M) {
+        juneRemainingUnpaidInflowsProcfy += amount;
+      }
     } else {
-      juneRemainingUnpaidOutflows += amount;
+      // Include ALL unpaid outflows: bank balance is still HIGH because these haven't been paid
+      if (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos') {
+        juneRemainingUnpaidOutflowsInv += amount;
+      } else {
+        juneRemainingUnpaidOutflowsOps += amount;
+      }
     }
   });
+
+  // Backward compat alias
+  const juneRemainingUnpaidOutflows = round2(juneRemainingUnpaidOutflowsOps + juneRemainingUnpaidOutflowsInv);
+
 
   // July opening balance = the final balance from the daily (current month) projection
   // That projection already accounts for all real-bank-balance + future inflows - future outflows + commissions
@@ -4155,8 +4167,12 @@ function calculateAndRenderProjection() {
       .filter(tx => tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos')
       .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
 
-    const procfyScheduledOpsRounded = round2(procfyScheduledOps);
-    const procfyScheduledInvRounded = round2(procfyScheduledInv);
+    // Add overdue base-month outflows to the first projected month
+    const overdueOpsAdj = idx === 0 ? juneRemainingUnpaidOutflowsOps : 0.0;
+    const overdueInvAdj = idx === 0 ? juneRemainingUnpaidOutflowsInv : 0.0;
+
+    const procfyScheduledOpsRounded = round2(procfyScheduledOps + overdueOpsAdj);
+    const procfyScheduledInvRounded = round2(procfyScheduledInv + overdueInvAdj);
 
     const avgFixedExpenses = rollingFixedExpenses.reduce((s, v) => s + v, 0) / rollingFixedExpenses.length;
     
@@ -4211,7 +4227,9 @@ function calculateAndRenderProjection() {
       finalBalance,
       tuitionGenerated,
       projectedVarRevenue,
-      totalBilling: round2(tuitionGenerated + projectedVarRevenue)
+      totalBilling: round2(tuitionGenerated + projectedVarRevenue),
+      overdueOpsIncluded: overdueOpsAdj,
+      overdueInvIncluded: overdueInvAdj
     };
 
     prevMonthFinalBalance = finalBalance;
@@ -4323,6 +4341,8 @@ function calculateAndRenderCurrentMonthProjection() {
     return;
   }
 
+  try {
+
   const {
     allProcfyData,
     allInterData,
@@ -4416,76 +4436,152 @@ function calculateAndRenderCurrentMonthProjection() {
   const baseD30Ratio = totalBaseFaturamento > 0 ? (totalBaseD30 / totalBaseFaturamento) : 0.70;
   const baseD0Ratio = 1 - baseD30Ratio;
 
-  const juneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix));
-  const juneUnpaidByStudent = {};
-  juneBookings.forEach(b => {
-    const studentName = b.participant_name || 'Desconhecido';
+  // ── PREV MONTH (base for projection) ──────────────────────────────
+  const prevMonthPrefix = (() => {
+    const d = new Date(monthStart + 'T00:00:00');
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().split('T')[0].substring(0, 7);
+  })();
+  const prevYear = parseInt(prevMonthPrefix.substring(0, 4), 10);
+  const prevMonth = parseInt(prevMonthPrefix.substring(5, 7), 10);
+
+  // Previous month bookings (= "juneBookings" in the 3-month DFC when viewing June)
+  const prevMonthCommBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(prevMonthPrefix));
+
+  // Estimate values for unpaid prev-month bookings (same logic as 3-month DFC)
+  const prevUnpaidByStudent = {};
+  prevMonthCommBookings.forEach(b => {
     if (!b.is_paid) {
-      if (!juneUnpaidByStudent[studentName]) juneUnpaidByStudent[studentName] = [];
-      juneUnpaidByStudent[studentName].push(b);
+      const s = b.participant_name || 'Desconhecido';
+      if (!prevUnpaidByStudent[s]) prevUnpaidByStudent[s] = [];
+      prevUnpaidByStudent[s].push(b);
     }
   });
-
-  const juneUnpaidEstimatedValues = {};
-  Object.keys(juneUnpaidByStudent).forEach(studentName => {
-    const bookings = juneUnpaidByStudent[studentName];
+  const prevUnpaidEstimatedValues = {};
+  Object.keys(prevUnpaidByStudent).forEach(studentName => {
+    const bookings = prevUnpaidByStudent[studentName];
     const slots = {};
     bookings.forEach(b => {
       const descUpper = (b.description || '').toUpperCase();
-      const isFree = b.booking_type === 'clase_suelta' ||
-                     descUpper.includes('REPOSIÇÃO') ||
-                     descUpper.includes('REPOSICAO') ||
-                     descUpper.includes('EXPERIMENTAL') ||
-                     descUpper.includes('CORTESIA') ||
-                     descUpper.includes('TESTE');
-      
-      if (isFree) {
-        juneUnpaidEstimatedValues[b.booking_id] = 0.0;
+      if (b.booking_type === 'clase_suelta' || descUpper.includes('REPOSIÇÃO') || descUpper.includes('REPOSICAO') ||
+          descUpper.includes('EXPERIMENTAL') || descUpper.includes('CORTESIA') || descUpper.includes('TESTE')) {
+        prevUnpaidEstimatedValues[b.booking_id] = 0.0;
         return;
       }
-
       const dateObj = new Date(b.booking_date + 'T00:00:00');
-      const dayOfWeek = dateObj.getDay();
+      const dow = dateObj.getDay();
       const startTime = b.start_time || '00:00';
       const pricingInfo = getBasePriceForBooking(b);
-      const slotKey = `${dayOfWeek}_${startTime}_${pricingInfo.category}`;
-      if (!slots[slotKey]) slots[slotKey] = { dayOfWeek, startTime, pricingInfo, bookings: [] };
+      const slotKey = `${dow}_${startTime}_${pricingInfo.category}`;
+      if (!slots[slotKey]) slots[slotKey] = { dayOfWeek: dow, startTime, pricingInfo, bookings: [] };
       slots[slotKey].bookings.push(b);
     });
-
     const uniqueSlotsList = Object.values(slots);
-    const frequency = uniqueSlotsList.length;
-    let freqDiscountRate = 0;
-    if (frequency === 2) freqDiscountRate = 0.05;
-    else if (frequency >= 3) freqDiscountRate = 0.07;
-
+    const freq = uniqueSlotsList.length;
+    const freqDisc = freq === 2 ? 0.05 : freq >= 3 ? 0.07 : 0;
     uniqueSlotsList.forEach(slot => {
       const pricing = slot.pricingInfo;
-      const nBookings = slot.bookings.length;
-      const isOffPeak = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5 && 
+      const nBk = slot.bookings.length;
+      const isOffPeak = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5 &&
                         (parseInt(slot.startTime.split(':')[0], 10) >= 10 && parseInt(slot.startTime.split(':')[0], 10) <= 15);
-      
-      let slotProRataValue = 0;
-      if (pricing.isMonthly) {
-        const nTotal = getWeekdayOccurrencesInMonth(year, month, slot.dayOfWeek);
-        slotProRataValue = (nBookings / nTotal) * pricing.price;
-      } else {
-        slotProRataValue = nBookings * pricing.price;
-      }
-      
-      let slotFinalValue = 0;
-      if (isOffPeak) slotFinalValue = slotProRataValue * 0.88;
-      else slotFinalValue = slotProRataValue * (1 - freqDiscountRate);
-      
-      const perBookingValue = slotFinalValue / nBookings;
-      slot.bookings.forEach(b => {
-        juneUnpaidEstimatedValues[b.booking_id] = perBookingValue;
-      });
+      let slotVal = pricing.isMonthly
+        ? (nBk / getWeekdayOccurrencesInMonth(prevYear, prevMonth, slot.dayOfWeek)) * pricing.price
+        : nBk * pricing.price;
+      slotVal = isOffPeak ? slotVal * 0.88 : slotVal * (1 - freqDisc);
+      const perBk = slotVal / nBk;
+      slot.bookings.forEach(b => { prevUnpaidEstimatedValues[b.booking_id] = perBk; });
     });
   });
 
-  // Get the latest bank account balance from the Procfy data
-  let currentActualCashBalance = 17430.92; // Default fallback if no data
+  // Build active slots from prev month (same as activeJuneSlots in 3-month DFC)
+  const activePrevSlotGroups = {};
+  prevMonthCommBookings.filter(b => b.booking_type !== 'clase_suelta').forEach(b => {
+    const studentName = b.participant_name || 'Desconhecido';
+    const dateObj = new Date(b.booking_date + 'T00:00:00');
+    const dow = dateObj.getDay();
+    const startTime = b.start_time || '00:00';
+    const slotKey = `${studentName}_${dow}_${startTime}`;
+    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : (prevUnpaidEstimatedValues[b.booking_id] || 0.0);
+    if (!activePrevSlotGroups[slotKey]) {
+      activePrevSlotGroups[slotKey] = { studentName, customerCode: b.customer_code, dayOfWeek: dow, startTime, values: [], booking: b };
+    }
+    if (val > 0) activePrevSlotGroups[slotKey].values.push(val);
+  });
+  const activePrevSlots = [];
+  Object.values(activePrevSlotGroups).forEach(g => {
+    const avgVal = g.values.length > 0 ? g.values.reduce((s, v) => s + v, 0) / g.values.length : 0.0;
+    if (avgVal > 0) {
+      const pricingInfo = getBasePriceForBooking(g.booking);
+      const isOffPeak = g.dayOfWeek >= 1 && g.dayOfWeek <= 5 &&
+                        (parseInt(g.startTime.split(':')[0], 10) >= 10 && parseInt(g.startTime.split(':')[0], 10) <= 15);
+      const desc = (g.booking.description || '').toUpperCase();
+      let discountRate = 0;
+      if (desc.includes('SÓCIO') || desc.includes('SOCIO') || g.booking.is_socio_benefit) discountRate = 0.50;
+      else if (desc.includes('HORA LIGHT') || isOffPeak) discountRate = 0.12;
+      else if (desc.includes('FREQUENCIA +3')) discountRate = 0.07;
+      else if (desc.includes('FREQUENCIA +2') || desc.includes('FAMÍLIA') || desc.includes('FAMILIA')) discountRate = 0.05;
+      activePrevSlots.push({
+        studentName: g.studentName,
+        customerCode: g.customerCode,
+        dayOfWeek: g.dayOfWeek,
+        startTime: g.startTime,
+        monthlyPrice: pricingInfo.price * (1 - discountRate)
+      });
+    }
+  });
+
+  // ── PROJECTED INFLOWS (same formula as 3-month DFC for the first projected month) ───
+  let baseTuitionVal = 0.0;
+  activePrevSlots.forEach(slot => { baseTuitionVal += slot.monthlyPrice; });
+  const tuitionGenerated = round2(baseTuitionVal * (1 + growthRate));
+  const tuitionReceivedD0 = round2(tuitionGenerated * baseD0Ratio);
+
+  const prevD30TuitionTotal = prevMonthCommBookings.map(b => {
+    const val = b.is_paid
+      ? (parseFloat(b.booking_value) || 0.0)
+      : ((prevUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE);
+    return val * baseD30Ratio;
+  }).reduce((s, v) => s + v, 0.0);
+  const tuitionReceivedD30 = round2(prevD30TuitionTotal);
+
+  // Prev month variable revenue (= juneVariableRevenueBaseline in 3-month DFC)
+  const prevSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(prevMonthPrefix))
+                                     .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
+  const prevPaidTuition = prevMonthCommBookings.filter(b => b.is_paid)
+                                               .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
+  const prevVarRevBaseline = Math.max(0.0, prevSalesTotal - prevPaidTuition);
+  const projectedVarRevenue = round2(prevVarRevBaseline * (1 + growthRate));
+  const variableReceivedD0 = round2(projectedVarRevenue * baseD0Ratio);
+  const variableReceivedD30 = round2(prevVarRevBaseline * baseD30Ratio);
+
+  const totalInflow = round2(tuitionReceivedD0 + tuitionReceivedD30 + variableReceivedD0 + variableReceivedD30);
+
+  // ── COMMISSIONS (same formula as 3-month DFC) ─────────────────────
+  const commissionPaid = round2(tuitionGenerated * commissionRate);
+
+  const allGlobalPayouts = allGlobalPayoutsData || [];
+  let payoutsP1 = 0.0;
+  let payoutsP2 = 0.0;
+  allGlobalPayouts.forEach(p => {
+    const amt = parseFloat(p.amount) || 0.0;
+    const period = p.payout_period;
+    const pDate = p.payout_date;
+    if (period === 'ate_dia_20') { payoutsP1 += amt; }
+    else if (period === 'apos_dia_20') { payoutsP2 += amt; }
+    else {
+      const day = pDate ? parseInt(pDate.substring(8, 10), 10) : 0;
+      if (day <= 20) payoutsP1 += amt; else payoutsP2 += amt;
+    }
+  });
+
+  const remainingCommP1 = Math.max(0.0, commissionPaid * 0.5 - payoutsP1);
+  const remainingCommP2 = Math.max(0.0, commissionPaid - (payoutsP1 + payoutsP2 + remainingCommP1));
+
+  // Keep juneVariableRevenueBaseline alias for compat
+  const juneVariableRevenueBaseline = prevVarRevBaseline;
+
+  // ── BANK BALANCE & RUNNING BALANCE ───────────────────────────────
+  let currentActualCashBalance = 17430.92; // Default fallback
   if (allProcfyData && allProcfyData.length > 0) {
     const sortedBySync = [...allProcfyData].sort((a, b) => {
       const dateA = a.synced_at || '';
@@ -4497,7 +4593,6 @@ function calculateAndRenderCurrentMonthProjection() {
     }
   }
 
-  // Calculate actual starting cash balance
   const selMonthInitial = (monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].initial) || 7280.98;
   let runningBalance = selMonthInitial;
 
@@ -4510,15 +4605,10 @@ function calculateAndRenderCurrentMonthProjection() {
       if (!tx.paid) return;
       if (!tx.due_date || !tx.due_date.startsWith(baseMonthPrefix)) return;
       if (tx.due_date >= todayStr) return;
-
       const amount = parseFloat(tx.amount) || 0.0;
-      if (tx.transaction_type === 'revenue') {
-        runningBalance += amount;
-      } else {
-        runningBalance -= amount;
-      }
+      if (tx.transaction_type === 'revenue') { runningBalance += amount; }
+      else { runningBalance -= amount; }
     });
-
     allInterData.forEach(tx => {
       const desc = (tx.descricao || '').toLowerCase();
       const title = (tx.titulo || '').toLowerCase();
@@ -4529,14 +4619,12 @@ function calculateAndRenderCurrentMonthProjection() {
     });
   }
 
-  // 2. Identify Overdue Outflows
-  const overdueProcfyList = allProcfyData.filter(tx => {
-    return !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && tx.due_date < todayStr;
-  });
-
+  // Overdue outflows (unpaid Procfy items before today)
+  const overdueProcfyList = allProcfyData.filter(tx =>
+    !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && tx.due_date < todayStr
+  );
   let overdueOpsTotal = 0.0;
   let overdueInvTotal = 0.0;
-
   overdueProcfyList.forEach(tx => {
     const amt = parseFloat(tx.amount) || 0.0;
     if (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos') {
@@ -4546,75 +4634,47 @@ function calculateAndRenderCurrentMonthProjection() {
     }
   });
 
-  // 3. Identify Upcoming Scheduled Outflows
-  const upcomingProcfyList = allProcfyData.filter(tx => {
-    return !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && tx.due_date >= todayStr && tx.due_date.startsWith(baseMonthPrefix);
-  });
+  // Upcoming scheduled outflows for this month
+  const upcomingProcfyList = allProcfyData.filter(tx =>
+    !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date &&
+    tx.due_date >= todayStr && tx.due_date.startsWith(baseMonthPrefix)
+  );
 
-  // 4. Calculate Expected Commissions (Período 1 e 2) - Only on paid bookings matching cash-basis regime
-  const commissionBookings = allCommData.filter(row => {
-    return row.is_paid && row.pay_date && row.pay_date.startsWith(baseMonthPrefix);
-  });
+  // Calculate fixed provision (same formula as monthly projection)
+  const prevMonthFixedExpenses = (dreData[prevMonthPrefix] ? dreData[prevMonthPrefix].energia : 0.0) +
+                                 (dreData[prevMonthPrefix] ? dreData[prevMonthPrefix].despesasOperacionais : 0.0);
 
-  const bookingsP1 = commissionBookings.filter(b => {
-    const day = parseInt(b.booking_date.substring(8, 10), 10);
-    return day <= 20;
-  });
-  const expectedCommP1 = bookingsP1.reduce((sum, b) => {
-    const commBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? parseFloat(b.booking_value) * 2 : parseFloat(b.booking_value) || 0.0);
-    return sum + commBase * commissionRate;
-  }, 0.0);
+  const scheduledOpsTotalForMonth = upcomingProcfyList
+    .filter(tx => tx.cost_center_name !== 'Investimentos' && tx.cost_center_descricao !== 'Investimentos')
+    .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
 
-  const bookingsP2 = commissionBookings.filter(b => {
-    const day = parseInt(b.booking_date.substring(8, 10), 10);
-    return day > 20;
-  });
-  const expectedCommP2 = bookingsP2.reduce((sum, b) => {
-    const commBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? parseFloat(b.booking_value) * 2 : parseFloat(b.booking_value) || 0.0);
-    return sum + commBase * commissionRate;
-  }, 0.0);
+  const baseProvision = Math.max(0.0, prevMonthFixedExpenses - scheduledOpsTotalForMonth);
+  const elSafety = document.getElementById('proj-input-safety');
+  const safetyRate = elSafety ? parseFloat(elSafety.value) / 100 : 0.05;
+  const safetyProvision = (scheduledOpsTotalForMonth + baseProvision) * safetyRate;
+  const totalFixedProvision = round2(baseProvision + safetyProvision);
+  const dayProvision = round2(totalFixedProvision / daysInMonth);
 
-  const allGlobalPayouts = allGlobalPayoutsData || [];
-  let payoutsP1 = 0.0;
-  let payoutsP2 = 0.0;
-  
-  allGlobalPayouts.forEach(p => {
-    const amt = parseFloat(p.amount) || 0.0;
-    const period = p.payout_period;
-    const pDate = p.payout_date;
-    
-    if (period === 'ate_dia_20') {
-      payoutsP1 += amt;
-    } else if (period === 'apos_dia_20') {
-      payoutsP2 += amt;
-    } else {
-      const day = pDate ? parseInt(pDate.substring(8, 10), 10) : 0;
-      if (day <= 20) {
-        payoutsP1 += amt;
-      } else {
-        payoutsP2 += amt;
-      }
+  // Calculate processing fees
+  let tuitionFees = round2(tuitionReceivedD30 * 0.025);
+  activePrevSlots.forEach(slot => {
+    const slotVal = round2(slot.monthlyPrice * (1 + growthRate));
+    const payments = allPaymentMethodsData.filter(p => p.customer_code === slot.customerCode);
+    const isDebit = payments.some(p => (p.pay_method || '').toLowerCase() === 'cartão débito');
+    if (isDebit) {
+      tuitionFees += (slotVal * baseD0Ratio) * 0.0099;
     }
   });
-
-  const remainingCommP1 = Math.max(0.0, expectedCommP1 - payoutsP1);
-  const remainingCommP2 = Math.max(0.0, (expectedCommP1 + expectedCommP2) - (payoutsP1 + payoutsP2 + remainingCommP1));
-
-  // Baselines for variable revenues
-  const baseMonthPrefixHistorical = `${year}-${month}`;
-  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefixHistorical))
-                                     .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
-  const junePaidTuition = juneBookings.filter(b => b.is_paid)
-                                      .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
-  const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
-  const projectedVarRevenue = round2(juneVariableRevenueBaseline * (1 + growthRate));
+  const variableFees = round2(variableReceivedD30 * 0.025);
+  const totalFees = round2(tuitionFees + variableFees);
+  const dayFees = round2(totalFees / daysInMonth);
 
   // Calculate day-of-week weights from the 6-month historical sales data (allSalesData)
   const salesByDayOfWeek = [0, 0, 0, 0, 0, 0, 0];
   allSalesData.forEach(s => {
     if (!s.pay_date) return;
     const dateObj = new Date(s.pay_date + 'T00:00:00');
-    const dow = dateObj.getDay(); // 0 = Sunday, 1 = Monday, ...
+    const dow = dateObj.getDay();
     const amt = parseFloat(s.valor_faturamento) || 0.0;
     salesByDayOfWeek[dow] += amt;
   });
@@ -4649,27 +4709,11 @@ function calculateAndRenderCurrentMonthProjection() {
     const dow = dateObj.getDay();
     const dayWeight = dowWeights[dow];
     
-    const bookingsOnDay = juneBookings.filter(b => !b.is_paid && b.booking_date === dayStr);
-    const tuitionD0 = bookingsOnDay.reduce((sum, b) => {
-      const val = (juneUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE;
-      return sum + val * baseD0Ratio;
-    }, 0.0);
-
-    const prevMonthDate = get30DaysBefore(dayStr);
-    const prevMonthBookings = allCommData.filter(b => b.booking_date === prevMonthDate);
-    const tuitionD30 = prevMonthBookings.reduce((sum, b) => {
-      const val = parseFloat(b.booking_value) || 0.0;
-      return sum + val * baseD30Ratio;
-    }, 0.0);
-
-    const varD0 = (projectedVarRevenue * baseD0Ratio) * (dayWeight / totalMonthWeight);
-    const varD30 = (juneVariableRevenueBaseline * baseD30Ratio) * (dayWeight / totalMonthWeight);
-
     const chkIncludeInflows = document.getElementById('chk-include-inflows');
     const includeInflows = chkIncludeInflows ? chkIncludeInflows.checked : true;
-    const totalInflowDay = includeInflows ? round2(tuitionD0 + tuitionD30 + varD0 + varD30) : 0.0;
+    const totalInflowDay = includeInflows ? round2(totalInflow * (dayWeight / totalMonthWeight)) : 0.0;
 
-    let outflowOps = 0.0;
+    let outflowOps = round2(dayProvision + dayFees);
     let outflowInv = 0.0;
 
     allProcfyData.forEach(tx => {
@@ -4879,6 +4923,13 @@ function calculateAndRenderCurrentMonthProjection() {
       `).join('');
     }
     upcomingTbody.innerHTML = upcomingHtml;
+  }
+  } catch (err) {
+    console.error("Erro na projeção diária:", err);
+    const tbody = document.getElementById('fin-proj-current-body');
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color: #e63946; font-weight: 600; padding: 20px;">⚠️ Erro ao calcular projeção diária: ${err.message}<br><pre style="text-align: left; font-size: 0.75rem; margin-top: 10px; white-space: pre-wrap; overflow-x: auto;">${err.stack}</pre></td></tr>`;
+    }
   }
 }
 
