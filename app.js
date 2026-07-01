@@ -4614,7 +4614,7 @@ function calculateAndRenderCurrentMonthProjection() {
   activeJuneSlots.forEach(slot => { baseTuitionVal += slot.monthlyPrice; });
 
   let estimatedJuneUnpaidTotal = 0.0;
-  Object.values(juneUnpaidSlotsMap).forEach(price => { estimatedJuneUnpaidTotal += price; });
+  Object.values(juneUnpaidEstimatedValues).forEach(price => { estimatedJuneUnpaidTotal += price; });
   estimatedJuneUnpaidTotal *= UNPAID_RECOVERY_RATE;
 
   const juneTuitionGenerated = baseTuitionVal + estimatedJuneUnpaidTotal;
