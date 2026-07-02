@@ -4299,11 +4299,12 @@ function calculateAndRenderProjection() {
     const procfyScheduledOpsRounded = round2(procfyScheduledOps + overdueOpsAdj);
     const procfyScheduledInvRounded = round2(procfyScheduledInv + overdueInvAdj);
 
+    // totalFixedProvision is fully controlled by the safetyRate slider.
+    // baseProvision covers the gap between historical avg and scheduled expenses,
+    // but only applies when the safety rate > 0. This way 0% slider = zero provision.
     const avgFixedExpenses = rollingFixedExpenses.reduce((s, v) => s + v, 0) / rollingFixedExpenses.length;
-    
-    const baseProvision = Math.max(0.0, avgFixedExpenses - procfyScheduledOpsRounded);
-    const safetyProvision = (procfyScheduledOpsRounded + baseProvision) * safetyRate;
-    const totalFixedProvision = round2(baseProvision + safetyProvision);
+    const effectiveBase = Math.max(procfyScheduledOpsRounded, avgFixedExpenses);
+    const totalFixedProvision = round2(effectiveBase * safetyRate);
 
     const totalMonthFixedExpenses = procfyScheduledOpsRounded + totalFixedProvision;
     rollingFixedExpenses.push(totalMonthFixedExpenses);
