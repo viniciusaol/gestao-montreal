@@ -817,7 +817,9 @@ function renderDashboardUI() {
   }
 
   // ---- Conciliação de Caixa Geral ----
-  const baseMonthPrefix = `${year}-${month}`;
+  const _year = selectYear ? selectYear.value : '';
+  const _month = selectMonth ? selectMonth.value : '';
+  const baseMonthPrefix = `${_year}-${_month}`;
   const globalComissionableVal = currentClassesData.reduce((sum, row) => {
     const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(baseMonthPrefix);
     return sum + (isPaidInSelectedMonth ? (parseFloat(row.booking_value) || 0) : 0);
