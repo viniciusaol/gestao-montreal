@@ -74,22 +74,67 @@ function checkSession() {
 
 // ---- Supabase REST helpers ----
 async function supabaseSelect(table, queryParams = '') {
-  const url = `${SUPABASE_URL}/rest/v1/${table}?${queryParams}`;
-  debugLog(`[REST] GET ${url}`);
-  const token = getUserToken() || SUPABASE_KEY;
-  const res = await fetch(url, {
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
+  const hasLimit = queryParams.includes('limit=');
+  const hasOffset = queryParams.includes('offset=');
+  
+  if (hasLimit || hasOffset) {
+    const url = `${SUPABASE_URL}/rest/v1/${table}?${queryParams}`;
+    debugLog(`[REST] GET ${url}`);
+    const token = getUserToken() || SUPABASE_KEY;
+    const res = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Supabase REST error ${res.status}: ${body}`);
     }
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Supabase REST error ${res.status}: ${body}`);
+    return res.json();
   }
-  return res.json();
+
+  let allData = [];
+  let currentOffset = 0;
+  const limit = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const separator = queryParams ? '&' : '';
+    const paginatedParams = `${queryParams}${separator}limit=${limit}&offset=${currentOffset}`;
+    const url = `${SUPABASE_URL}/rest/v1/${table}?${paginatedParams}`;
+    debugLog(`[REST] GET ${url} (offset: ${currentOffset})`);
+    
+    const token = getUserToken() || SUPABASE_KEY;
+    const res = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Supabase REST error ${res.status}: ${body}`);
+    }
+    
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      return data;
+    }
+    
+    allData = allData.concat(data);
+    
+    if (data.length < limit) {
+      hasMore = false;
+    } else {
+      currentOffset += limit;
+    }
+  }
+  
+  return allData;
 }
 
 async function supabaseInsert(table, row) {
@@ -3765,8 +3810,31 @@ function calculateAndRenderProjection() {
   const round2 = val => Math.round(val * 100) / 100;
   
   const baseMonthPrefix = `${year}-${month}`;
+  const todayForBaseline = new Date();
+  const todayYearForBaseline = todayForBaseline.getFullYear();
+  const todayMonthForBaseline = todayForBaseline.getMonth() + 1;
+  const isJunho2026 = (baseMonthPrefix === '2026-06');
+  const isCurrentMonth = (parseInt(year, 10) === todayYearForBaseline && parseInt(month, 10) === todayMonthForBaseline) && !isJunho2026;
+
+  const baselineMonthPrefix = (() => {
+    if (isCurrentMonth) {
+      let prevM = parseInt(month, 10) - 1;
+      let prevY = parseInt(year, 10);
+      if (prevM === 0) {
+        prevM = 12;
+        prevY -= 1;
+      }
+      return `${prevY}-${String(prevM).padStart(2, '0')}`;
+    } else {
+      return baseMonthPrefix;
+    }
+  })();
+
+  const baselineYear = parseInt(baselineMonthPrefix.split('-')[0], 10);
+  const baselineMonth = parseInt(baselineMonthPrefix.split('-')[1], 10);
+
   // Filter base month bookings
-  const juneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baseMonthPrefix));
+  const juneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(baselineMonthPrefix));
   
   // Calculate next month start date format YYYY-MM-01
   const nextMonthStart = (() => {
@@ -3904,7 +3972,7 @@ function calculateAndRenderProjection() {
       
       let slotProRataValue = 0;
       if (pricing.isMonthly) {
-        const nTotal = getWeekdayOccurrencesInMonth(year, month, slot.dayOfWeek);
+        const nTotal = getWeekdayOccurrencesInMonth(baselineYear, baselineMonth, slot.dayOfWeek);
         slotProRataValue = (nBookings / nTotal) * pricing.price;
       } else {
         slotProRataValue = nBookings * pricing.price;
@@ -3994,7 +4062,7 @@ function calculateAndRenderProjection() {
     }
   });
 
-  const junePaidFinal = (monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].final) || 7280.98;
+  const junePaidFinal = (monthlyData[baselineMonthPrefix] && monthlyData[baselineMonthPrefix].final) || 7280.98;
 
   // ---- Get real current bank balance (same source as daily projection) ----
   let currentActualCashBalance3M = junePaidFinal; // fallback to DFC if no real data
@@ -4063,14 +4131,14 @@ function calculateAndRenderProjection() {
     ? cachedMonthEndProjectionBalance
     : ((monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].final) || 7280.98);
   
-  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix))
+  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(baselineMonthPrefix))
                                      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
   const junePaidTuition = juneBookings.filter(b => b.is_paid)
                                       .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
   const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
 
-  const juneFixedExpensesBaseline = (dreData[baseMonthPrefix] ? dreData[baseMonthPrefix].energia : 0.0) +
-                                    (dreData[baseMonthPrefix] ? dreData[baseMonthPrefix].despesasOperacionais : 0.0);
+  const juneFixedExpensesBaseline = (dreData[baselineMonthPrefix] ? dreData[baselineMonthPrefix].energia : 0.0) +
+                                    (dreData[baselineMonthPrefix] ? dreData[baselineMonthPrefix].despesasOperacionais : 0.0);
 
   const projectionResults = {};
   
@@ -4078,8 +4146,8 @@ function calculateAndRenderProjection() {
   const rollingFixedExpenses = [juneFixedExpensesBaseline];
 
   // Capacity parameters calculation from base month (June 2026)
-  const baseCourtOccupancy = cachedFinancialData.baseCourtOccupancy || [];
-  const baseHourlyEfficiency = cachedFinancialData.baseHourlyEfficiency || [];
+  const baseCourtOccupancy = isCurrentMonth ? (cachedFinancialData.prevCourtOccupancy || []) : (cachedFinancialData.baseCourtOccupancy || []);
+  const baseHourlyEfficiency = isCurrentMonth ? (cachedFinancialData.prevHourlyEfficiency || []) : (cachedFinancialData.baseHourlyEfficiency || []);
 
   const courtNames = new Set(baseCourtOccupancy.map(d => d.resource_name).filter(Boolean));
   const numCourts = Math.max(courtNames.size, 4);
@@ -4116,7 +4184,7 @@ function calculateAndRenderProjection() {
   const rentalEff = baseHourlyEfficiency.find(d => (d.tipo_operacional || '').toLowerCase().includes('locação - quadra avulsa'));
   const ticketMedioLocacao = rentalEff ? parseFloat(rentalEff.faturamento_por_hora_ocupada) : 111.28;
 
-  const baseCapacityHours = calcTotalAvailableHoursForMonth(parseInt(year, 10), parseInt(month, 10)) * numCourts;
+  const baseCapacityHours = calcTotalAvailableHoursForMonth(baselineYear, baselineMonth) * numCourts;
   const baseFreeHours = Math.max(0, baseCapacityHours - baseMaintHours - baseFixedHours - baseAvulsaHours);
   const baseRentalOccupancyRate = baseFreeHours > 0 ? (baseRentalHours / baseFreeHours) : 0.1641;
 
@@ -4133,7 +4201,21 @@ function calculateAndRenderProjection() {
 
   let prevMonthFinalBalance = julyOpeningBalance;
 
-  targetMonths.forEach((m, idx) => {
+  const calculationMonths = [];
+  if (isCurrentMonth) {
+    calculationMonths.push({
+      key: baseMonthPrefix,
+      label: `${monthsFullBR[currentMonthInt - 1]}/${currentYearInt}`,
+      monthStart: `${currentYearInt}-${String(currentMonthInt).padStart(2, '0')}-01`,
+      monthEnd: getEndOfMonth(`${currentYearInt}-${String(currentMonthInt).padStart(2, '0')}-01`),
+      isHidden: true
+    });
+  }
+  targetMonths.forEach(m => {
+    calculationMonths.push({ ...m, isHidden: false });
+  });
+
+  calculationMonths.forEach((m, idx) => {
     const mKey = m.key;
     const curYearStr = mKey.substring(0, 4);
     const curMonthStr = mKey.substring(5, 7);
@@ -4174,8 +4256,17 @@ function calculateAndRenderProjection() {
 
     const totalInflow = round2(tuitionReceivedD0 + tuitionReceivedD30 + variableReceivedD0 + variableReceivedD30);
 
-    prevD30Tuition = tuitionD30;
-    prevD30Variable = varD30;
+    const nextPrevD30Tuition = tuitionD30;
+    const nextPrevD30Variable = varD30;
+
+    if (m.isHidden) {
+      prevD30Tuition = nextPrevD30Tuition;
+      prevD30Variable = nextPrevD30Variable;
+      return;
+    }
+
+    prevD30Tuition = nextPrevD30Tuition;
+    prevD30Variable = nextPrevD30Variable;
 
     const procfyScheduledTxList = allProcfyData.filter(tx => {
       const dateStr = tx.due_date;
@@ -4191,8 +4282,9 @@ function calculateAndRenderProjection() {
       .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
 
     // Add overdue base-month outflows to the first projected month
-    const overdueOpsAdj = idx === 0 ? juneRemainingUnpaidOutflowsOps : 0.0;
-    const overdueInvAdj = idx === 0 ? juneRemainingUnpaidOutflowsInv : 0.0;
+    // If it is the current month, they are already handled by the current month's daily DFC projection, so we set them to 0.0 to prevent double-counting.
+    const overdueOpsAdj = (idx === 0 && !isCurrentMonth) ? juneRemainingUnpaidOutflowsOps : 0.0;
+    const overdueInvAdj = (idx === 0 && !isCurrentMonth) ? juneRemainingUnpaidOutflowsInv : 0.0;
 
     const procfyScheduledOpsRounded = round2(procfyScheduledOps + overdueOpsAdj);
     const procfyScheduledInvRounded = round2(procfyScheduledInv + overdueInvAdj);
@@ -4478,12 +4570,9 @@ function calculateAndRenderCurrentMonthProjection() {
   })();
   const projBaseMonthPrefix = prevMonthPrefix; // "2026-06"
 
-  // Use the PREVIOUS month to compute the payment method ratios dynamically, identical to Monthly DFC base
-  const basePayments = allPaymentMethodsData.filter(p => {
-    if (!p.pay_date) return false;
-    return p.pay_date.startsWith(projBaseMonthPrefix);
-  });
-  const baseMp = allMpPaymentsData.filter(p => p.date_approved && p.date_approved.startsWith(projBaseMonthPrefix));
+  // Use the entire loaded payment methods dataset to compute ratios, identical to Monthly DFC
+  const basePayments = allPaymentMethodsData;
+  const baseMp = allMpPaymentsData;
 
   let mpPix = 0, mpCredit = 0, mpSaldo = 0, mpOther = 0;
   baseMp.forEach(p => {
@@ -4613,16 +4702,19 @@ function calculateAndRenderCurrentMonthProjection() {
   let baseTuitionVal = 0.0;
   activeJuneSlots.forEach(slot => { baseTuitionVal += slot.monthlyPrice; });
 
-  let estimatedJuneUnpaidTotal = 0.0;
-  Object.values(juneUnpaidEstimatedValues).forEach(price => { estimatedJuneUnpaidTotal += price; });
-  estimatedJuneUnpaidTotal *= UNPAID_RECOVERY_RATE;
+  const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(projBaseMonthPrefix))
+                                     .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
+  const junePaidTuition = monthlyJuneBookings.filter(b => b.is_paid)
+                                             .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
+  const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
 
-  const juneTuitionGenerated = baseTuitionVal + estimatedJuneUnpaidTotal;
-  const juneD30TuitionTotal = round2(juneTuitionGenerated * baseD30Ratio);
-  const juneVariableRevenueBaseline = Math.max(0.0, totalBaseFaturamento - juneTuitionGenerated);
+  const juneD30TuitionTotal = monthlyJuneBookings.map(b => {
+    const val = b.is_paid ? (parseFloat(b.booking_value) || 0.0) : ((juneUnpaidEstimatedValues[b.booking_id] || 0.0) * UNPAID_RECOVERY_RATE);
+    return val * baseD30Ratio;
+  }).reduce((sum, val) => sum + val, 0.0);
 
   const monthIndex = 1; // July is monthIndex 1
-  const tuitionGenerated = round2((baseTuitionVal + estimatedJuneUnpaidTotal) * Math.pow(1 + growthRate, monthIndex));
+  const tuitionGenerated = round2(baseTuitionVal * Math.pow(1 + growthRate, monthIndex));
   const tuitionReceivedD0 = round2(tuitionGenerated * baseD0Ratio);
   const tuitionReceivedD30 = juneD30TuitionTotal;
 
