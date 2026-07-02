@@ -1361,7 +1361,7 @@ async function loadOperationalReports() {
     // Uses vw_mt_alunos_ativos_por_mes (based directly on mt_bookings + mt_booking_participantes),
     // which is NOT coupled to payments — so it correctly counts students even if payment hasn't been
     // matched yet. This gives the true active student base (current + future confirmed starts).
-    const activeStudentsParams = `select=customer_code&mes=gte.${monthStart}`;
+    const activeStudentsParams = `select=customer_code&entry_date=lte.${monthEnd}`;
     const activeStudentsData = await supabaseSelect('vw_mt_alunos_ativos_por_mes', activeStudentsParams);
 
     const activeStudentsSet = new Set();
