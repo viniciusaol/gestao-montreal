@@ -824,6 +824,7 @@ function renderDashboardUI() {
     const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(baseMonthPrefix);
     return sum + (isPaidInSelectedMonth ? (parseFloat(row.booking_value) || 0) : 0);
   }, 0);
+  debugLog(`[Conciliação] baseMonthPrefix="${baseMonthPrefix}", totalRows=${currentClassesData.length}, comissionable=${globalComissionableVal.toFixed(2)}, paidCount=${currentClassesData.filter(r=>r.is_paid && r.pay_date && r.pay_date.startsWith(baseMonthPrefix)).length}`);
 
   let globalTotalCaixaVal = 0;
   let globalLocacoesVal = 0;
