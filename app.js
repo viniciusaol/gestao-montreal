@@ -4102,6 +4102,11 @@ function calculateAndRenderProjection() {
   let juneRemainingUnpaidOutflowsInv = 0.0;
   let juneRemainingUnpaidInflowsProcfy = 0.0;
 
+  // The cutoff for "overdue" is the start of the first projected month.
+  // A July 1st expense must NOT be counted as overdue because it is already
+  // picked up by procfyScheduledTxList for July (double-counting).
+  const firstProjectedMonthStart = targetMonths[0].monthStart; // e.g. "2026-07-01"
+
   allProcfyData.forEach(tx => {
     const dateStr = tx.due_date;
     if (!dateStr) return;
@@ -4114,8 +4119,8 @@ function calculateAndRenderProjection() {
         juneRemainingUnpaidInflowsProcfy += amount;
       }
     } else {
-      // Include ALL unpaid outflows from before today (they are overdue, money still in bank)
-      if (dateStr < todayStrFor3M) {
+      // Include ALL unpaid outflows due BEFORE the first projected month (they are overdue)
+      if (dateStr < firstProjectedMonthStart) {
         if (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos') {
           juneRemainingUnpaidOutflowsInv += amount;
         } else {
