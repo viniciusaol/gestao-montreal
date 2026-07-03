@@ -231,6 +231,7 @@ let metricsPending = { faturamento: 0, comissao: 0, repasse: 0, saldo: 0, period
 let currentClassesData = [];
 let currentPayoutsData = [];
 let currentSalesData = [];
+let currentVoucherData = []; // Vouchers de intensivão: [{customer_name, description, total, pay_date}]
 let currentAllocationsData = [];
 let cachedFinancialData = null;
 let cachedMonthEndProjectionBalance = null; // final balance from daily projection → used as July opening in 3-month projection
@@ -475,6 +476,20 @@ async function loadDashboard() {
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams)
     ]);
 
+    // 5. Fetch intensivão vouchers directly from mt_faturamento_vendas
+    //    (a descrição completa com nome do professor fica na venda, não no item)
+    const voucherParams = `select=external_id,doc_number,description,total,pay_date,customer_name,customer_code&description=ilike.*INTENSIV*&paid=eq.true&is_canceled=eq.false&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    let rawVouchers = [];
+    try {
+      rawVouchers = await supabaseSelect('mt_faturamento_vendas', voucherParams);
+    } catch(e) { debugError('Erro ao buscar vouchers intensivão', e); }
+    // Filtra: apenas vouchers com professor identificado na descrição e valor positivo
+    const voucherData = rawVouchers.filter(v => {
+      const prof = parseVoucherProfessor(v.description || '');
+      return prof && parseFloat(v.total) > 0 && !/anula/i.test(v.description || '');
+    });
+    debugLog(`Vouchers intensivão carregados: ${voucherData.length} válidos de ${rawVouchers.length} total.`);
+
     debugLog(`Aulas globais carregadas: ${classesData.length} linhas.`);
     debugLog(`Repasses carregados: ${payoutsData.length} linhas.`);
     debugLog(`Vendas globais carregadas: ${salesData.length} linhas.`);
@@ -483,6 +498,7 @@ async function loadDashboard() {
     currentClassesData = classesData;
     currentPayoutsData = payoutsData;
     currentSalesData = salesData; // Cache global sales
+    currentVoucherData = voucherData; // Cache intensivão vouchers
     currentAllocationsData = []; // No client-level allocations needed anymore
 
     // Perform calculations and rendering locally
@@ -575,24 +591,24 @@ function calculateAndRenderDashboardData() {
     }
   });
 
-  // ---- Intensivão Voucher: alocar ao professor selecionado ----
-  // Varre salesData buscando vendas de voucher com professor na descrição.
-  // O valor é somado ao faturamento comissionável do mês em que foi pago.
-  // Aulas avulsas pagas com 'bono' já têm booking_value=0 na view → não contam duas vezes.
+  // ---- Intensivão Vouchers: alocar ao professor selecionado ----
+  // Usa currentVoucherData (fetch direto de mt_faturamento_vendas) — a descrição
+  // completa com nome do professor fica na venda, não no item da view.
   const normalizedSelectedProf = normalizeNameForMatch(professor);
-  (currentSalesData || []).forEach(row => {
-    const profInVoucher = parseVoucherProfessor(row.item_description || '');
+  (currentVoucherData || []).forEach(v => {
+    const profInVoucher = parseVoucherProfessor(v.description || '');
     if (!profInVoucher) return;
     const normalizedVoucherProf = normalizeNameForMatch(profInVoucher);
-    // Match flexível: um nome contém o outro (cobre variações de sobrenome)
     if (!normalizedSelectedProf || !normalizedVoucherProf) return;
     if (!normalizedSelectedProf.includes(normalizedVoucherProf) && !normalizedVoucherProf.includes(normalizedSelectedProf)) return;
-    const val = parseFloat(row.valor_faturamento) || 0;
+    const val = parseFloat(v.total) || 0;
     if (val <= 0) return;
+
     totalPaidFaturamento += val;
     totalCommissionBase += val;
+
     // Split de período pelo dia do pay_date do voucher
-    const payDateStr = (row.pay_date || '').split('T')[0];
+    const payDateStr = (v.pay_date || '').split('T')[0];
     const vDay = payDateStr ? parseInt(payDateStr.split('-')[2], 10) : 1;
     if (vDay <= 20) {
       period1PagoVal += val;
@@ -601,7 +617,17 @@ function calculateAndRenderDashboardData() {
       period2PagoVal += val;
       period2CommissionBase += val;
     }
-    debugLog(`[Voucher Intensivão] Professor="${profInVoucher}" Val=${val} Dia=${vDay}`);
+
+    // Adiciona o aluno à tabela de pagos (para aparecer na listagem)
+    const studentName = (v.customer_name || 'Voucher Intensivão') + ' 🎫';
+    if (!paidAgg[studentName]) {
+      paidAgg[studentName] = { name: studentName, classesCount: 0, totalBilled: 0, totalCommissionBase: 0, isSocio: false };
+    }
+    paidAgg[studentName].classesCount += 1;
+    paidAgg[studentName].totalBilled += val;
+    paidAgg[studentName].totalCommissionBase += val;
+
+    debugLog(`[Voucher Intensivão] Cliente="${v.customer_name}" Prof="${profInVoucher}" Val=${val} Dia=${vDay}`);
   });
 
   studentsPaid = Object.values(paidAgg);
