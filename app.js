@@ -884,11 +884,17 @@ function renderDashboardUI() {
     const cat = (row.categoria || '').toLowerCase();
     const prod = (row.produto_padronizado || '').toLowerCase();
 
-    // Voucher de intensivão com professor identificado → entra no comissionável global
-    const voucherProf = parseVoucherProfessor(row.item_description || '');
-    if (voucherProf && val > 0) {
-      globalVoucherComissionavel += val;
-      return; // não classifica como consumo nem locação
+    // Voucher de intensivão: qualquer linha com "INTENSIV" vai para o bucket de voucher
+    // (inclui emissões, anulações e reemissões — o líquido é o valor correto)
+    const isIntensivao = /INTENSIV/i.test(row.item_description || '');
+    if (isIntensivao) {
+      const voucherProf = parseVoucherProfessor(row.item_description || '');
+      if (voucherProf && val > 0) {
+        globalVoucherComissionavel += val; // voucher com professor identificado → comissionável
+      }
+      // anulações e vouchers sem professor → ficam em globalVoucherComissionavel como 0
+      // mas são retirados dos buckets de aula/locação/consumo (return abaixo)
+      return;
     }
 
     const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('tenis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
