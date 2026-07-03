@@ -1417,7 +1417,7 @@ async function loadOperationalReports() {
       const desc = (item.item_description || '').toLowerCase();
       const cat = (item.categoria || '').toLowerCase();
       const prod = (item.produto_padronizado || '').toLowerCase();
-      const val = parseFloat(item.valor_liquido) || 0;
+      const val = parseFloat(item.valor_faturamento) || 0;
       const client = item.customer_code;
 
       const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
