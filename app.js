@@ -1206,7 +1206,7 @@ async function loadOperationalReports() {
     );
 
     // Fetch all paid items for the selected month to run detailed goals calculations
-    const itemsParams = `select=categoria,subcategoria,customer_code,valor_liquido,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    const itemsParams = `select=categoria,subcategoria,customer_code,valor_liquido,valor_faturamento,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
     const itemsData = await supabaseSelect('vw_mt_faturamento_itens_pago', itemsParams);
 
     // Fetch Mercado Pago payments
@@ -5268,7 +5268,7 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
     const desc = (item.item_description || '').toLowerCase();
     const cat = (item.categoria || '').toLowerCase();
     const prod = (item.produto_padronizado || '').toLowerCase();
-    const val = parseFloat(item.valor_liquido) || 0;
+    const val = parseFloat(item.valor_faturamento) || 0;
     
     const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
     const isRental = cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva');
