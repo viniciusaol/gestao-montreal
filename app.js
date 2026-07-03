@@ -346,6 +346,22 @@ function getMonthNameBR(dateString) {
   return `${months[monthIdx]}/${parts[0]}`;
 }
 
+// ---- Utility: normalize name for professor matching (remove accents, uppercase) ----
+function normalizeNameForMatch(name) {
+  return (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+}
+
+// ---- Utility: parse intensivão voucher professor from sale description ----
+// Pattern: "Voucher ... INTENSIVÃO - N aulas - PROFESSOR NAME"
+function parseVoucherProfessor(description) {
+  const match = (description || '').match(/INTENSIV\S*\s*-\s*\d+\s*aulas?\s*-\s*(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
 // ---- Pricing Table and Estimation Engine ----
 const PRICING = {
   ADULTO: { GRUPO: 335, TRIO: 395, DUPLA: 430, INDIVIDUAL: 720 },
@@ -450,7 +466,7 @@ async function loadDashboard() {
     debugLog('Buscando repasses via REST API...');
 
     // 4. Fetch global sales data for faturamento reconciliation
-    const salesParams = `select=valor_faturamento,categoria,subcategoria,item_description&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    const salesParams = `select=valor_faturamento,categoria,subcategoria,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
     debugLog('Buscando vendas globais para conciliação...');
 
     const [classesData, payoutsData, salesData] = await Promise.all([
@@ -557,6 +573,35 @@ function calculateAndRenderDashboardData() {
       }
       pendingBookingsByStudent[studentName].push(row);
     }
+  });
+
+  // ---- Intensivão Voucher: alocar ao professor selecionado ----
+  // Varre salesData buscando vendas de voucher com professor na descrição.
+  // O valor é somado ao faturamento comissionável do mês em que foi pago.
+  // Aulas avulsas pagas com 'bono' já têm booking_value=0 na view → não contam duas vezes.
+  const normalizedSelectedProf = normalizeNameForMatch(professor);
+  (currentSalesData || []).forEach(row => {
+    const profInVoucher = parseVoucherProfessor(row.item_description || '');
+    if (!profInVoucher) return;
+    const normalizedVoucherProf = normalizeNameForMatch(profInVoucher);
+    // Match flexível: um nome contém o outro (cobre variações de sobrenome)
+    if (!normalizedSelectedProf || !normalizedVoucherProf) return;
+    if (!normalizedSelectedProf.includes(normalizedVoucherProf) && !normalizedVoucherProf.includes(normalizedSelectedProf)) return;
+    const val = parseFloat(row.valor_faturamento) || 0;
+    if (val <= 0) return;
+    totalPaidFaturamento += val;
+    totalCommissionBase += val;
+    // Split de período pelo dia do pay_date do voucher
+    const payDateStr = (row.pay_date || '').split('T')[0];
+    const vDay = payDateStr ? parseInt(payDateStr.split('-')[2], 10) : 1;
+    if (vDay <= 20) {
+      period1PagoVal += val;
+      period1CommissionBase += val;
+    } else {
+      period2PagoVal += val;
+      period2CommissionBase += val;
+    }
+    debugLog(`[Voucher Intensivão] Professor="${profInVoucher}" Val=${val} Dia=${vDay}`);
   });
 
   studentsPaid = Object.values(paidAgg);
@@ -820,15 +865,15 @@ function renderDashboardUI() {
   const _year = selectYear ? selectYear.value : '';
   const _month = selectMonth ? selectMonth.value : '';
   const baseMonthPrefix = `${_year}-${_month}`;
-  const globalComissionableVal = currentClassesData.reduce((sum, row) => {
+  const globalComissionableBase = currentClassesData.reduce((sum, row) => {
     const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(baseMonthPrefix);
     return sum + (isPaidInSelectedMonth ? (parseFloat(row.booking_value) || 0) : 0);
   }, 0);
-  debugLog(`[Conciliação] baseMonthPrefix="${baseMonthPrefix}", totalRows=${currentClassesData.length}, comissionable=${globalComissionableVal.toFixed(2)}, paidCount=${currentClassesData.filter(r=>r.is_paid && r.pay_date && r.pay_date.startsWith(baseMonthPrefix)).length}`);
 
   let globalTotalCaixaVal = 0;
   let globalLocacoesVal = 0;
   let globalConsumosVal = 0;
+  let globalVoucherComissionavel = 0; // Vouchers de intensivão com professor identificado
 
   const salesData = currentSalesData || [];
   salesData.forEach(row => {
@@ -839,11 +884,18 @@ function renderDashboardUI() {
     const cat = (row.categoria || '').toLowerCase();
     const prod = (row.produto_padronizado || '').toLowerCase();
 
+    // Voucher de intensivão com professor identificado → entra no comissionável global
+    const voucherProf = parseVoucherProfessor(row.item_description || '');
+    if (voucherProf && val > 0) {
+      globalVoucherComissionavel += val;
+      return; // não classifica como consumo nem locação
+    }
+
     const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('tenis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
     const isRental = cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva');
 
     if (isLesson) {
-      // Already handled by globalComissionableVal
+      // Already handled by globalComissionableBase
     } else if (isRental) {
       globalLocacoesVal += val;
     } else {
@@ -851,7 +903,9 @@ function renderDashboardUI() {
     }
   });
 
+  const globalComissionableVal = globalComissionableBase + globalVoucherComissionavel;
   const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal);
+  debugLog(`[Conciliação] comissionableBase=${globalComissionableBase.toFixed(2)}, vouchers=${globalVoucherComissionavel.toFixed(2)}, total=${globalComissionableVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
 
   // Update DOM elements for Global Cash Reconciliation Card
   const elGlobalComissionavel = document.getElementById('global-rec-comissionavel');
