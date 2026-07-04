@@ -4860,10 +4860,19 @@ function calculateAndRenderCurrentMonthProjection() {
   // e projetamos apenas o restante nos dias futuros.
   const fixedMonthTotal = totalInflow;
 
+  // Já recebido no mês = receitas Procfy pagas no mês atual
+  // Mesma fonte do DFC mensal (allProcfyData paid revenues)
+  // Captura apenas o que fisicamente entrou no banco — exclui
+  // pagamentos via cartão de crédito que ainda não liquidaram (D30)
   const alreadyReceived = round2(
-    allSalesData
-      .filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix))
-      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0)
+    allProcfyData
+      .filter(tx =>
+        tx.paid &&
+        tx.due_date &&
+        tx.due_date.startsWith(baseMonthPrefix) &&
+        tx.transaction_type === 'revenue'
+      )
+      .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0)
   );
 
   const remainingToReceive = round2(Math.max(0, fixedMonthTotal - alreadyReceived));
