@@ -4853,6 +4853,21 @@ function calculateAndRenderCurrentMonthProjection() {
   
   const totalInflow = round2(tuitionReceivedD0 + tuitionReceivedD30 + variableReceivedD0 + variableReceivedD30);
 
+  // ── TETO FIXO DO MÊS ─────────────────────────────────────────────
+  // totalInflow já é o teto correto (D0 mês atual + D30 mês anterior),
+  // calculado com os mesmos ratios do DFC mensal.
+  // Subtraímos o que já entrou no banco (allSalesData do mês atual)
+  // e projetamos apenas o restante nos dias futuros.
+  const fixedMonthTotal = totalInflow;
+
+  const alreadyReceived = round2(
+    allSalesData
+      .filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix))
+      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0)
+  );
+
+  const remainingToReceive = round2(Math.max(0, fixedMonthTotal - alreadyReceived));
+
   // Exact Outflows matching Monthly DFC
   const commissionPaid = round2(tuitionGenerated * commissionRate);
   
@@ -4960,14 +4975,18 @@ function calculateAndRenderCurrentMonthProjection() {
   // Use hardcoded day-of-week weights (Sunday is usually slower)
   const dowWeights = [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
 
-  // Normalize by summing the day weights for every day of the selected month
+  // Calcular peso total do mês e peso apenas dos dias restantes (startDay em diante)
   let totalMonthWeight = 0;
+  let remainingDaysWeight = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
     const dateObj = new Date(dayStr + 'T00:00:00');
     const dow = dateObj.getDay();
     totalMonthWeight += dowWeights[dow];
+    if (d >= startDay) remainingDaysWeight += dowWeights[dow];
   }
+  // Fallback para evitar divisão por zero
+  if (remainingDaysWeight <= 0) remainingDaysWeight = 1;
 
   // Loop day-by-day
   const dailyProjection = [];
@@ -4980,7 +4999,8 @@ function calculateAndRenderCurrentMonthProjection() {
     
     const chkIncludeInflows = document.getElementById('chk-include-inflows');
     const includeInflows = chkIncludeInflows ? chkIncludeInflows.checked : true;
-    const totalInflowDay = includeInflows ? round2(totalInflow * (dayWeight / totalMonthWeight)) : 0.0;
+    // Distribui apenas o RESTANTE a receber (teto - já recebido) pelos dias futuros
+    const totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
 
     let outflowOps = round2(dayProvision + dayFees);
     let outflowInv = 0.0;
@@ -5078,6 +5098,34 @@ function calculateAndRenderCurrentMonthProjection() {
   const tbody = document.getElementById('fin-proj-current-body');
   if (tbody) {
     tbody.innerHTML = html;
+  }
+
+  // ── BARRA DE RESUMO DO TETO FIXO ────────────────────────────────
+  const summaryEl = document.getElementById('fin-proj-current-summary');
+  if (summaryEl) {
+    const monthsFullBR = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const monthLabel = `${monthsFullBR[parseInt(month, 10) - 1]}/${year}`;
+    const pctReceived = fixedMonthTotal > 0 ? Math.round((alreadyReceived / fixedMonthTotal) * 100) : 0;
+    summaryEl.innerHTML = `
+      <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; padding:0.75rem 1rem;
+                  background:rgba(255,255,255,0.04); border-radius:10px; border:1px solid rgba(255,255,255,0.08);">
+        <div style="flex:1; min-width:140px; text-align:center;">
+          <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">🏆 Teto Fixo — ${monthLabel}</div>
+          <div style="font-size:1.1rem; font-weight:700; color:#e0e0e0; margin-top:2px;">${formatCurrency(fixedMonthTotal)}</div>
+          <div style="font-size:0.65rem; color:#888; margin-top:1px;">D0 ${monthLabel} + D30 mês anterior</div>
+        </div>
+        <div style="flex:1; min-width:140px; text-align:center;">
+          <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">✅ Já Recebido</div>
+          <div style="font-size:1.1rem; font-weight:700; color:#4caf82; margin-top:2px;">${formatCurrency(alreadyReceived)}</div>
+          <div style="font-size:0.65rem; color:#888; margin-top:1px;">${pctReceived}% do teto · DFC realizado</div>
+        </div>
+        <div style="flex:1; min-width:140px; text-align:center;">
+          <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">📤 A Receber</div>
+          <div style="font-size:1.1rem; font-weight:700; color:#c0b86a; margin-top:2px;">${formatCurrency(remainingToReceive)}</div>
+          <div style="font-size:0.65rem; color:#888; margin-top:1px;">Projetado nos dias restantes</div>
+        </div>
+      </div>
+    `;
   }
 
   // Render Overdue details
