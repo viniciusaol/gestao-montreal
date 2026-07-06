@@ -4647,6 +4647,7 @@ function calculateAndRenderCurrentMonthProjection() {
 
   const daysInMonth = new Date(selectedYearInt, selectedMonthInt, 0).getDate();
   const baseMonthPrefix = `${year}-${month}`;
+  const todayStr = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
 
   const elGrowth = document.getElementById('proj-input-growth');
   const elCommission = document.getElementById('proj-input-commission');
@@ -4958,8 +4959,6 @@ function calculateAndRenderCurrentMonthProjection() {
 
   const selMonthInitial = (monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].initial) || 7280.98;
   let runningBalance = selMonthInitial;
-
-  const todayStr = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
 
   if (isCurrentRealMonth) {
     runningBalance = currentActualCashBalance;
