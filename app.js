@@ -4919,9 +4919,19 @@ function calculateAndRenderCurrentMonthProjection() {
   const procfyScheduledOps = procfyScheduledTxList.filter(tx => tx.cost_center_name !== 'Investimentos' && tx.cost_center_descricao !== 'Investimentos').reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
   const upcomingScheduledInv = procfyScheduledTxList.filter(tx => tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos').reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
   
-  const overdueOpsTotal = juneRemainingUnpaidOutflowsOps;
-  const overdueInvTotal = juneRemainingUnpaidOutflowsInv;
-  const scheduledOpsTotalForMonth = round2(procfyScheduledOps + overdueOpsTotal);
+  const overdueOpsTotal = juneRemainingUnpaidOutflowsOps + allProcfyData.filter(tx => 
+    !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && 
+    tx.due_date >= `${year}-${month}-01` && tx.due_date < todayStr &&
+    tx.cost_center_name !== 'Investimentos' && tx.cost_center_descricao !== 'Investimentos'
+  ).reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+
+  const overdueInvTotal = juneRemainingUnpaidOutflowsInv + allProcfyData.filter(tx => 
+    !tx.paid && tx.transaction_type !== 'revenue' && tx.due_date && 
+    tx.due_date >= `${year}-${month}-01` && tx.due_date < todayStr &&
+    (tx.cost_center_name === 'Investimentos' || tx.cost_center_descricao === 'Investimentos')
+  ).reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+
+  const scheduledOpsTotalForMonth = round2(procfyScheduledOps + juneRemainingUnpaidOutflowsOps);
 
   const juneFixedExpensesBaseline = (dreData[projBaseMonthPrefix] ? dreData[projBaseMonthPrefix].energia : 0.0) + (dreData[projBaseMonthPrefix] ? dreData[projBaseMonthPrefix].despesasOperacionais : 0.0);
   const baseProvision = Math.max(0.0, juneFixedExpensesBaseline - scheduledOpsTotalForMonth);
