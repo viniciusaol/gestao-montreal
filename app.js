@@ -72,6 +72,43 @@ function checkSession() {
   }
 }
 
+// ---- Investment Balance Calculator ----
+function calculateInvestmentBalance(allInterData, upToDateStr = null) {
+  const INITIAL_INVESTMENT_BALANCE = 111.79;
+  const CUTOFF_DATE = '2026-07-01';
+  let balance = INITIAL_INVESTMENT_BALANCE;
+  
+  if (!allInterData) return balance;
+  
+  allInterData.forEach(tx => {
+    if (!tx.data_movimento || tx.data_movimento < CUTOFF_DATE) return;
+    if (upToDateStr && tx.data_movimento > upToDateStr) return;
+    
+    const desc = (tx.descricao || '').toLowerCase();
+    const title = (tx.titulo || '').toLowerCase();
+    
+    const isInvTx = tx.tipo_transacao_inter === 'INVESTIMENTO' ||
+                    desc.includes('resgate') || desc.includes('cdb') || desc.includes('firf') || desc.includes('aplicação') || desc.includes('aplicacao') ||
+                    title.includes('resgate') || title.includes('cdb') || title.includes('firf') || title.includes('aplicação') || title.includes('aplicacao');
+                    
+    if (isInvTx) {
+      const valComSinal = parseFloat(tx.valor_com_sinal) || 0;
+      const isCredit = valComSinal > 0 || tx.tipo_movimento === 'entrada';
+      const amount = Math.abs(valComSinal);
+      
+      if (isCredit) {
+        // Resgate: decreases investment account balance
+        balance -= amount;
+      } else {
+        // Aplicação: increases investment account balance
+        balance += amount;
+      }
+    }
+  });
+  
+  return balance;
+}
+
 // ---- Supabase REST helpers ----
 async function supabaseSelect(table, queryParams = '') {
   const hasLimit = queryParams.includes('limit=');
@@ -2484,6 +2521,9 @@ async function loadFinancialReports() {
       const monthKey = tx.due_date ? tx.due_date.substring(0, 7) : '';
       if (!monthlyData[monthKey] || monthKey < '2026-06') return;
 
+      // Skip internal transfers for July 2026 onwards to avoid double counting
+      if (tx.transaction_type === 'transfer' && monthKey >= '2026-07') return;
+
       const amount = parseFloat(tx.amount) || 0;
       const flow = tx.cost_center_descricao;
       const category = tx.category_name || 'Sem Categoria';
@@ -2510,22 +2550,59 @@ async function loadFinancialReports() {
       }
     });
 
-    // Process Banco Inter CDB resgates for DFC (only June 2026 onwards)
+    // Constant cutoff and initial investment balance
+    const INVESTMENT_CUTOFF_MONTH = '2026-07';
+    const INITIAL_INVESTMENT_BALANCE = 111.79;
+
+    // Process Banco Inter CDB / investment transactions for DFC
     allInterData.forEach(tx => {
       const desc = (tx.descricao || '').toLowerCase();
       const title = (tx.titulo || '').toLowerCase();
-      const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
-      if (isResgate) {
+      
+      const isInvTx = tx.tipo_transacao_inter === 'INVESTIMENTO' ||
+                      desc.includes('resgate') || desc.includes('cdb') || desc.includes('firf') || desc.includes('aplicação') || desc.includes('aplicacao') ||
+                      title.includes('resgate') || title.includes('cdb') || title.includes('firf') || title.includes('aplicação') || title.includes('aplicacao');
+
+      if (isInvTx) {
         const monthKey = tx.data_movimento ? tx.data_movimento.substring(0, 7) : '';
         if (!monthlyData[monthKey] || monthKey < '2026-06') return;
 
-        const amount = Math.abs(parseFloat(tx.valor_com_sinal)) || 0;
-        const category = 'Resgate de Aplicação Financeira (CDB)';
+        const valComSinal = parseFloat(tx.valor_com_sinal) || 0;
         
-        allCategories.fci.add(category);
-        monthlyData[monthKey].fci.categories[category] = (monthlyData[monthKey].fci.categories[category] || 0.0) + amount;
-        monthlyData[monthKey].fci.net += amount;
-        monthlyData[monthKey].net += amount;
+        if (monthKey < INVESTMENT_CUTOFF_MONTH) {
+          // Keep old behavior for June 2026: only process resgates (credits) as positive inflow
+          const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
+          if (isResgate && valComSinal > 0) {
+            const amount = Math.abs(valComSinal);
+            const category = 'Resgate de Aplicação Financeira (CDB)';
+            allCategories.fci.add(category);
+            monthlyData[monthKey].fci.categories[category] = (monthlyData[monthKey].fci.categories[category] || 0.0) + amount;
+            monthlyData[monthKey].fci.net += amount;
+            monthlyData[monthKey].net += amount;
+          }
+        } else {
+          // New behavior for July 2026 onwards:
+          // Debits (saídas) = applications (negative value in DFC, positive for investment account)
+          // Credits (entradas) = resgates (positive value in DFC, negative for investment account)
+          const isCredit = valComSinal > 0 || tx.tipo_movimento === 'entrada';
+          const amount = Math.abs(valComSinal);
+          
+          if (isCredit) {
+            // Resgate
+            const category = 'Resgate de Aplicação Financeira (CDB)';
+            allCategories.fci.add(category);
+            monthlyData[monthKey].fci.categories[category] = (monthlyData[monthKey].fci.categories[category] || 0.0) + amount;
+            monthlyData[monthKey].fci.net += amount;
+            // Internal transfers do NOT affect monthlyData[monthKey].net (consolidated cash flow net is zero)
+          } else {
+            // Aplicação
+            const category = 'Aplicação Financeira (CDB)';
+            allCategories.fci.add(category);
+            monthlyData[monthKey].fci.categories[category] = (monthlyData[monthKey].fci.categories[category] || 0.0) - amount;
+            monthlyData[monthKey].fci.net -= amount;
+            // Internal transfers do NOT affect monthlyData[monthKey].net (consolidated cash flow net is zero)
+          }
+        }
       }
     });
 
@@ -2544,6 +2621,11 @@ async function loadFinancialReports() {
       } else if (mKey === '2026-06') {
         monthlyData[mKey].initial = 7280.98;
         monthlyData[mKey].final = 7280.98 + monthlyData[mKey].net;
+      } else if (mKey === INVESTMENT_CUTOFF_MONTH) {
+        // July starts with June's final balance + initial investment balance
+        const prevKey = monthKeys[i - 1];
+        monthlyData[mKey].initial = monthlyData[prevKey].final + INITIAL_INVESTMENT_BALANCE;
+        monthlyData[mKey].final = monthlyData[mKey].initial + monthlyData[mKey].net;
       } else {
         const prevKey = monthKeys[i - 1];
         monthlyData[mKey].initial = monthlyData[prevKey].final;
@@ -2561,7 +2643,16 @@ async function loadFinancialReports() {
 
     const elInicialSubtitle = document.getElementById('fin-val-saldo-inicial-subtitle');
     if (elInicialSubtitle) {
-      elInicialSubtitle.innerText = 'Saldo Inicial: ' + formatCurrency(curInitial);
+      if (currentMonthKey >= '2026-07') {
+        const [curYear, curMonth] = currentMonthKey.split('-');
+        const lastDay = new Date(parseInt(curYear, 10), parseInt(curMonth, 10), 0).getDate();
+        const monthEndStr = `${currentMonthKey}-${String(lastDay).padStart(2, '0')}`;
+        const finalInv = calculateInvestmentBalance(allInterData, monthEndStr);
+        const finalCc = curFinal - finalInv;
+        elInicialSubtitle.innerText = `Saldo Inicial: ${formatCurrency(curInitial)} | CC: ${formatCurrency(finalCc)} | Inv: ${formatCurrency(finalInv)}`;
+      } else {
+        elInicialSubtitle.innerText = 'Saldo Inicial: ' + formatCurrency(curInitial);
+      }
     }
     const elFco = document.getElementById('fin-val-fco');
     if (elFco) elFco.innerText = formatCurrency(curFcoNet);
@@ -4167,6 +4258,13 @@ function calculateAndRenderProjection() {
       currentActualCashBalance3M = sortedBySync[0].bank_account_balance_cents / 100;
     }
   }
+  
+  // Consolidate with investment account balance if we are in July 2026 or later
+  const todayDateFor3MCheck = new Date();
+  const currentYearMonthFor3M = `${todayDateFor3MCheck.getFullYear()}-${String(todayDateFor3MCheck.getMonth() + 1).padStart(2, '0')}`;
+  if (currentYearMonthFor3M >= '2026-07') {
+    currentActualCashBalance3M += calculateInvestmentBalance(allInterData);
+  }
 
   // Today's date string for filtering only FUTURE unpaid transactions
   const todayDateFor3M = new Date();
@@ -4956,6 +5054,11 @@ function calculateAndRenderCurrentMonthProjection() {
       currentActualCashBalance = sortedBySync[0].bank_account_balance_cents / 100;
     }
   }
+  
+  // Consolidate with investment account balance if we are in July 2026 or later
+  if (baseMonthPrefix >= '2026-07') {
+    currentActualCashBalance += calculateInvestmentBalance(allInterData);
+  }
 
   const selMonthInitial = (monthlyData[baseMonthPrefix] && monthlyData[baseMonthPrefix].initial) || 7280.98;
   let runningBalance = selMonthInitial;
@@ -4967,6 +5070,10 @@ function calculateAndRenderCurrentMonthProjection() {
       if (!tx.paid) return;
       if (!tx.due_date || !tx.due_date.startsWith(baseMonthPrefix)) return;
       if (tx.due_date >= todayStr) return;
+      
+      // Skip internal transfers for July 2026 and later to avoid double counting
+      if (tx.transaction_type === 'transfer' && baseMonthPrefix >= '2026-07') return;
+
       const amount = parseFloat(tx.amount) || 0.0;
       if (tx.transaction_type === 'revenue') { runningBalance += amount; }
       else { runningBalance -= amount; }
@@ -4974,9 +5081,12 @@ function calculateAndRenderCurrentMonthProjection() {
     allInterData.forEach(tx => {
       const desc = (tx.descricao || '').toLowerCase();
       const title = (tx.titulo || '').toLowerCase();
-      const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
-      if (isResgate && tx.data_movimento && tx.data_movimento.startsWith(baseMonthPrefix) && tx.data_movimento < todayStr) {
-        runningBalance += Math.abs(parseFloat(tx.valor_com_sinal)) || 0;
+      
+      if (baseMonthPrefix < '2026-07') {
+        const isResgate = desc.includes('resgate') || desc.includes('cdb') || title.includes('resgate');
+        if (isResgate && tx.data_movimento && tx.data_movimento.startsWith(baseMonthPrefix) && tx.data_movimento < todayStr) {
+          runningBalance += Math.abs(parseFloat(tx.valor_com_sinal)) || 0;
+        }
       }
     });
   }
