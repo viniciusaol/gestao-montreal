@@ -2582,26 +2582,9 @@ async function loadFinancialReports() {
           }
         } else {
           // New behavior for July 2026 onwards:
-          // Debits (saídas) = applications (negative value in DFC, positive for investment account)
-          // Credits (entradas) = resgates (positive value in DFC, negative for investment account)
-          const isCredit = valComSinal > 0 || tx.tipo_movimento === 'entrada';
-          const amount = Math.abs(valComSinal);
-          
-          if (isCredit) {
-            // Resgate
-            const category = 'Resgate de Aplicação Financeira (CDB)';
-            allCategories.fci.add(category);
-            monthlyData[monthKey].fci.categories[category] = (monthlyData[monthKey].fci.categories[category] || 0.0) + amount;
-            monthlyData[monthKey].fci.net += amount;
-            // Internal transfers do NOT affect monthlyData[monthKey].net (consolidated cash flow net is zero)
-          } else {
-            // Aplicação
-            const category = 'Aplicação Financeira (CDB)';
-            allCategories.fci.add(category);
-            monthlyData[monthKey].fci.categories[category] = (monthlyData[monthKey].fci.categories[category] || 0.0) - amount;
-            monthlyData[monthKey].fci.net -= amount;
-            // Internal transfers do NOT affect monthlyData[monthKey].net (consolidated cash flow net is zero)
-          }
+          // Internal transfers (applications and redemptions) are completely excluded from the DFC table 
+          // because they are moves between cash accounts and have net zero effect on consolidated cash.
+          // This ensures that FCO + FCI + FCS matches the change in Saldo Final.
         }
       }
     });
