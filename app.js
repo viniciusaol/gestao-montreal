@@ -2449,7 +2449,7 @@ async function loadFinancialReports() {
 
     const procfyParams = `or=(and(due_date.gte.${firstMonth},due_date.lte.${projectionEnd}),and(paid.eq.false,due_date.lt.${firstMonth}))`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
-    const salesParams = `select=valor_faturamento,pay_date,reference,item_description,quantity&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
+    const salesParams = `select=valor_faturamento,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
     const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
@@ -3946,6 +3946,33 @@ function calculateAndRenderProjection() {
   const commissionRate = elCommission ? parseFloat(elCommission.value) / 100 : 0.47;
   const safetyRate = elSafety ? parseFloat(elSafety.value) / 100 : 0.05;
 
+  // Build historical payment memory per customer_code
+  const clientMemory = {};
+  allSalesData.forEach(s => {
+    const code = s.customer_code;
+    if (!code) return;
+    const desc = (s.item_description || '').toUpperCase();
+    if (desc.includes('TÊNIS') || desc.includes('TENIS') || desc.includes('TNIS') || desc.includes('TARNIS')) {
+      const val = parseFloat(s.valor_faturamento) || 0.0;
+      const payMonth = s.pay_date ? s.pay_date.substring(0, 7) : '';
+      if (!clientMemory[code]) {
+        clientMemory[code] = {};
+      }
+      if (!clientMemory[code][payMonth]) {
+        clientMemory[code][payMonth] = 0.0;
+      }
+      clientMemory[code][payMonth] += val;
+    }
+  });
+
+  const clientMostRecentPayment = {};
+  Object.keys(clientMemory).forEach(code => {
+    const months = Object.keys(clientMemory[code]).sort((a, b) => b.localeCompare(a));
+    if (months.length > 0) {
+      clientMostRecentPayment[code] = clientMemory[code][months[0]];
+    }
+  });
+
   const monthsFullBR = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const targetMonths = [];
   const currentMonthInt = parseInt(month, 10);
@@ -4152,72 +4179,112 @@ function calculateAndRenderProjection() {
   });
   
   const activeJuneSlots = [];
-  const slotGroups = {};
   
-  // Filter out clase_suelta (avulsas) from the recurring monthly slot mapping
-  const monthlyJuneBookings = juneBookings.filter(b => b.booking_type !== 'clase_suelta');
-
-  monthlyJuneBookings.forEach(b => {
+  const slotsBaselineMonthPrefix = baseMonthPrefix;
+  const slotsBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(slotsBaselineMonthPrefix));
+  const monthlySlotsBookings = slotsBookings.filter(b => b.booking_type !== 'clase_suelta');
+  
+  // Group bookings by student
+  const bookingsByStudent = {};
+  monthlySlotsBookings.forEach(b => {
     const studentName = b.participant_name || 'Desconhecido';
-    const dateObj = new Date(b.booking_date + 'T00:00:00');
-    const dayOfWeek = dateObj.getDay();
-    const startTime = b.start_time || '00:00';
-    const slotKey = `${studentName}_${dayOfWeek}_${startTime}`;
-    
-    let val = 0;
-    if (b.is_paid) {
-      val = parseFloat(b.booking_value) || 0.0;
-    } else {
-      val = juneUnpaidEstimatedValues[b.booking_id] || 0.0;
+    if (!bookingsByStudent[studentName]) {
+      bookingsByStudent[studentName] = [];
     }
-    
-    if (!slotGroups[slotKey]) {
-      slotGroups[slotKey] = {
-        studentName,
-        customerCode: b.customer_code,
-        dayOfWeek,
-        startTime,
-        values: [],
-        booking: b
-      };
-    }
-    if (val > 0) {
-      slotGroups[slotKey].values.push(val);
-    }
+    bookingsByStudent[studentName].push(b);
   });
   
-  Object.values(slotGroups).forEach(g => {
-    const avgVal = g.values.length > 0 ? g.values.reduce((s, v) => s + v, 0) / g.values.length : 0.0;
-    if (avgVal > 0) {
-      // Calculate flat monthly price for this slot
-      const pricingInfo = getBasePriceForBooking(g.booking);
-      const isOffPeak = g.dayOfWeek >= 1 && g.dayOfWeek <= 5 && 
-                        (parseInt(g.startTime.split(':')[0], 10) >= 10 && parseInt(g.startTime.split(':')[0], 10) <= 15);
-      
-      let basePrice = pricingInfo.price;
-      const desc = (g.booking.description || '').toUpperCase();
-      let discountRate = 0;
-      
-      if (desc.includes('SÓCIO') || desc.includes('SOCIO') || g.booking.is_socio_benefit) {
-        discountRate = 0.50;
-      } else if (desc.includes('HORA LIGHT') || isOffPeak) {
-        discountRate = 0.12;
-      } else if (desc.includes('DESCONTO FREQUENCIA +3') || desc.includes('FREQUENCIA +3')) {
-        discountRate = 0.07;
-      } else if (desc.includes('DESCONTO FREQUENCIA +2') || desc.includes('FREQUENCIA +2') || desc.includes('FAMÍLIA') || desc.includes('FAMILIA')) {
-        discountRate = 0.05;
+  Object.keys(bookingsByStudent).forEach(studentName => {
+    const listB = bookingsByStudent[studentName];
+    const code = listB[0].customer_code;
+    
+    // 1. Check historical price memory
+    if (code && clientMostRecentPayment[code] !== undefined) {
+      const val = clientMostRecentPayment[code];
+      if (val > 0) {
+        activeJuneSlots.push({
+          studentName,
+          customerCode: code,
+          monthlyPrice: val,
+          isHistorical: true
+        });
       }
-      
-      const flatMonthlyPrice = basePrice * (1 - discountRate);
-
-      activeJuneSlots.push({
-        studentName: g.studentName,
-        customerCode: g.customerCode,
-        dayOfWeek: g.dayOfWeek,
-        startTime: g.startTime,
-        unitPrice: avgVal,
-        monthlyPrice: flatMonthlyPrice
+    } else {
+      // 2. New student: calculate frequency from calendar and apply package rules
+      const slots = {};
+      listB.forEach(b => {
+        const descUpper = (b.description || '').toUpperCase();
+        const isFree = descUpper.includes('REPOSIÇÃO') ||
+                       descUpper.includes('REPOSICAO') ||
+                       descUpper.includes('EXPERIMENTAL') ||
+                       descUpper.includes('CORTESIA') ||
+                       descUpper.includes('TESTE');
+        if (isFree) return;
+        
+        const dateObj = new Date(b.booking_date + 'T00:00:00');
+        const dayOfWeek = dateObj.getDay();
+        const startTime = b.start_time || '00:00';
+        const pricingInfo = getBasePriceForBooking(b);
+        const slotKey = `${dayOfWeek}_${startTime}`;
+        slots[slotKey] = pricingInfo;
       });
+      
+      const uniqueSlots = Object.values(slots);
+      const nSlots = uniqueSlots.length;
+      if (nSlots > 0) {
+        const mainCategory = uniqueSlots[0].category;
+        let price = 0.0;
+        
+        if (mainCategory.includes('Individual')) {
+          if (nSlots === 1) price = 720.0;
+          else if (nSlots === 2) price = 1296.0;
+          else price = 1836.0;
+        } else if (mainCategory.includes('Dupla')) {
+          if (nSlots === 1) price = 430.0;
+          else if (nSlots === 2) price = 774.0;
+          else price = 1096.50;
+        } else if (mainCategory.includes('Trio')) {
+          if (nSlots === 1) price = 395.0;
+          else if (nSlots === 2) price = 711.0;
+          else price = 1007.25;
+        } else { // Grupo
+          if (nSlots === 1) price = 335.0;
+          else if (nSlots === 2) price = 603.0;
+          else price = 854.25;
+        }
+        
+        // Apply discounts if any booking has socio/offpeak keywords
+        let discountRate = 0;
+        let hasSocio = false;
+        let hasOffPeak = false;
+        
+        listB.forEach(b => {
+          const desc = (b.description || '').toUpperCase();
+          const dateObj = new Date(b.booking_date + 'T00:00:00');
+          const dayOfWeek = dateObj.getDay();
+          const startTime = b.start_time || '00:00';
+          const isOffPeak = dayOfWeek >= 1 && dayOfWeek <= 5 && 
+                            (parseInt(startTime.split(':')[0], 10) >= 10 && parseInt(startTime.split(':')[0], 10) <= 15);
+                            
+          if (desc.includes('SÓCIO') || desc.includes('SOCIO') || b.is_socio_benefit) {
+            hasSocio = true;
+          } else if (desc.includes('HORA LIGHT') || isOffPeak) {
+            hasOffPeak = true;
+          }
+        });
+        
+        if (hasSocio) discountRate = 0.50;
+        else if (hasOffPeak) discountRate = 0.12;
+        
+        price = price * (1 - discountRate);
+        
+        activeJuneSlots.push({
+          studentName,
+          customerCode: code,
+          monthlyPrice: price,
+          isHistorical: false
+        });
+      }
     }
   });
 
