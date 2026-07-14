@@ -7,6 +7,19 @@ const SUPABASE_URL = 'https://ehhjnwosqcrfwonqhfoz.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4OTc4NjksImV4cCI6MjA3ODQ3Mzg2OX0.qxbGgdq3lOiOmXuY8fMok7xlNluKPQIKoC3zQroUYSQ';
 const UNPAID_RECOVERY_RATE = 0.90; // 90% recovery rate / 10% delinquency rate for unpaid bookings
 
+// Helper to get adjusted commission base (applies custom rules, e.g., Jaqueline Bordejaco off-peak discount)
+function getAdjustedCommissionBase(row, baseValue) {
+  let base = parseFloat(baseValue) || 0.0;
+  const name = (row.participant_name || '').toLowerCase();
+  const date = row.booking_date || '';
+  if (name.includes('jaqueline') && name.includes('bordejaco')) {
+    if (date >= '2026-07-01') {
+      base = base * 0.88; // 12% discount for off-peak (15h-16h) from July 2026 onwards
+    }
+  }
+  return base;
+}
+
 // ---- Debug Logger ----
 const debugLog = (msg, obj = '') => {
   const div = document.getElementById('debug-log');
@@ -584,7 +597,8 @@ function calculateAndRenderDashboardData() {
 
     if (isPaidInSelectedMonth) {
       const val = parseFloat(row.booking_value) || 0;
-      const commBase = parseFloat(row.booking_commission_base) || val;
+      const rawBase = parseFloat(row.booking_commission_base) || val;
+      const commBase = getAdjustedCommissionBase(row, rawBase);
       const isSocio = row.is_socio_benefit || false;
       if (val > 0) {
         totalPaidFaturamento += val;
@@ -752,7 +766,8 @@ function calculateAndRenderDashboardData() {
       slot.bookings.forEach(b => {
         b.estimated_value = perBookingValue;
         const day = parseInt(b.booking_date.split('-')[2], 10);
-        const commBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? perBookingValue * 2 : perBookingValue);
+        const rawBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? perBookingValue * 2 : perBookingValue);
+        const commBase = getAdjustedCommissionBase(b, rawBase);
         if (day <= 20) {
           period1PendingVal += perBookingValue;
           period1PendingCommissionBase += commBase;
@@ -771,7 +786,8 @@ function calculateAndRenderDashboardData() {
     let isSocio = false;
     bookings.forEach(b => {
       if (b.is_socio_benefit) isSocio = true;
-      const commBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? (b.estimated_value * 2) : (b.estimated_value || 0));
+      const rawBase = parseFloat(b.booking_commission_base) || (b.is_socio_benefit ? (b.estimated_value * 2) : (b.estimated_value || 0));
+      const commBase = getAdjustedCommissionBase(b, rawBase);
       studentCommissionBase += commBase;
     });
 
@@ -2812,7 +2828,8 @@ async function loadFinancialReports() {
       const monthKey = (row.pay_date && row.pay_date.substring(0, 7)) || (row.booking_date ? row.booking_date.substring(0, 7) : '');
       if (!dreData[monthKey]) return;
       
-      const commBase = parseFloat(row.booking_commission_base) || (row.is_socio_benefit ? (parseFloat(row.booking_value) * 2) : (parseFloat(row.booking_value) || 0.0));
+      const rawBase = parseFloat(row.booking_commission_base) || (row.is_socio_benefit ? (parseFloat(row.booking_value) * 2) : (parseFloat(row.booking_value) || 0.0));
+      const commBase = getAdjustedCommissionBase(row, rawBase);
       dreData[monthKey].comissao += commBase * (currentCommissionRate / 100);
     });
 
@@ -4717,7 +4734,8 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
     const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(monthPrefix);
     if (isPaidInSelectedMonth) {
       const val = parseFloat(row.booking_value) || 0;
-      const commBase = parseFloat(row.booking_commission_base) || val;
+      const rawBase = parseFloat(row.booking_commission_base) || val;
+      const commBase = getAdjustedCommissionBase(row, rawBase);
       if (val > 0) {
         totalPaidCommissionBase += commBase;
       }
@@ -5846,7 +5864,8 @@ function renderReportCommissions() {
 
     const prof = row.professor || 'Desconhecido';
     const val = parseFloat(row.booking_value) || 0;
-    const commBase = parseFloat(row.booking_commission_base) || val;
+    const rawBase = parseFloat(row.booking_commission_base) || val;
+    const commBase = getAdjustedCommissionBase(row, rawBase);
 
     if (!teacherData[prof]) {
       teacherData[prof] = { classesCount: 0, faturamento: 0, commission: 0 };
