@@ -5559,10 +5559,21 @@ window.addEventListener('afterprint', () => {
 // ---- Render Goals Dashboard (Acompanhamento de Metas) ----
 function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month, totalActiveStudents) {
   const targetStudents = 300;
-  const targetRentals = 15000;
   const targetSnack = 10000;
-  const targetTicket = 550;
   const targetOccupancy = 50;
+
+  // Goals before August 2026: Rentals 15000, Ticket 550
+  // Goals for August 2026 and forward: Rentals 25000, Ticket 600
+  const y = parseInt(year, 10) || 2026;
+  const m = parseInt(month, 10) || 7;
+  
+  let targetRentals = 15000;
+  let targetTicket = 550;
+  
+  if (y > 2026 || (y === 2026 && m >= 8)) {
+    targetRentals = 25000;
+    targetTicket = 600;
+  }
 
   // 1. Group and calculate values from itemsData
   const studentsSet = new Set();
@@ -5610,8 +5621,19 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
     const fillEl = card.querySelector('.goal-progress-bar-fill');
     const pctEl = card.querySelector('.goal-pct');
     const footerEl = card.querySelector('.goal-footer-text');
+    const targetEl = card.querySelector('.goal-target');
 
     if (valCurrentEl) valCurrentEl.innerText = formatFn(currentVal);
+
+    if (targetEl) {
+      if (cardId === 'goal-card-students') {
+        targetEl.innerText = `Meta: ${targetVal} alunos`;
+      } else if (cardId === 'goal-card-occupancy') {
+        targetEl.innerText = `Meta: ${targetVal.toFixed(1).replace('.', ',')}%`;
+      } else {
+        targetEl.innerText = `Meta: ${formatFn(targetVal)}`;
+      }
+    }
 
     const pct = targetVal > 0 ? (currentVal / targetVal) * 100 : 0;
     if (pctEl) pctEl.innerText = pct.toFixed(1).replace('.', ',') + '%';
