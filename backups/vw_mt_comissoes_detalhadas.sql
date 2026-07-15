@@ -487,6 +487,43 @@ WITH booking_min_pay_dates AS (
       AND b.booking_type IN ('clase_colectiva', 'clase_suelta')
       AND b.description !~~* '%RESERVA MENSAL%'::text
 )
+, unallocated_payments AS (
+    SELECT 
+        rf.item_key,
+        rf.customer_code,
+        rf.pay_date,
+        rf.data_venda,
+        rf.valor_faturamento,
+        rf.valor_bruto,
+        rf.description,
+        rf.paid,
+        rf.is_avulsa,
+        rf.is_avulsa_grupo_fixo,
+        CASE
+            WHEN ((rf.description ~~* '%João Assunção%'::text) OR (rf.description ~~* '%Joao Assuncao%'::text) OR (rf.description ~~* '%Joao Assunção%'::text) OR (rf.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
+            WHEN ((rf.description ~~* '%Rodrigo Assunção%'::text) OR (rf.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+            WHEN (rf.description ~~* '%Leandro Bonete%'::text OR rf.description ~~* '%Leandro B.%'::text) THEN 'Leandro Bonete'::text
+            WHEN ((rf.description ~~* '%Tatiana Araújo%'::text) OR (rf.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+            WHEN (rf.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
+            WHEN ((rf.description ~~* '%Eliton Sanches%'::text) OR (rf.description ~~* '%Éliton Sanches%'::text)) THEN 'Eliton Sanches'::text
+            ELSE NULL::text
+        END AS professor,
+        CASE
+            WHEN ((rf.description ~~* '%Sócio Montreal%'::text) OR (rf.description ~~* '%Leonardo Assunção%'::text) OR (rf.description ~~* '%Leonardo Assuncao%'::text)) THEN true
+            ELSE false
+        END AS is_socio
+    FROM resolved_faturamento rf
+    WHERE rf.item_canceled = false AND rf.sale_canceled = false 
+      AND COALESCE(rf.sale_type, ''::text) <> 'refund'::text 
+      AND rf.valor_faturamento > 0 
+      AND (rf.subcategoria IS NULL OR rf.subcategoria <> 'Avulsa - Particular'::text) 
+      AND (rf.categoria = 'Aulas'::text OR (rf.categoria = 'Outros'::text AND rf.description ~~* '%TÊNIS%'::text AND rf.description ~~* '%ADULTO%'::text))
+      AND rf.item_key NOT IN (
+          SELECT DISTINCT item_key FROM loose_class_matches WHERE item_key IS NOT NULL
+          UNION
+          SELECT DISTINCT item_key FROM schedule_allocations WHERE item_key IS NOT NULL
+      )
+)
 SELECT booking_id,
     booking_date,
     booking_type,
@@ -506,4 +543,41 @@ SELECT booking_id,
     booking_commission_base_monthly,
     is_avulsa,
     is_avulsa_grupo_fixo
-FROM final_bookings;
+FROM final_bookings
+
+UNION ALL
+
+SELECT
+    NULL::integer AS booking_id,
+    COALESCE(pay_date, data_venda::timestamp without time zone)::date AS booking_date,
+    CASE WHEN is_avulsa THEN 'clase_suelta'::text ELSE 'clase_colectiva'::text END AS booking_type,
+    '00:00:00'::time without time zone AS start_time,
+    'Montreal'::text AS venue,
+    'Quadra'::text AS resource_name,
+    'Mensalidade/Avulsa sem agendamento no sistema - ' || description AS description,
+    COALESCE(
+        professor,
+        (
+            SELECT DISTINCT b.professor 
+            FROM final_bookings b 
+            WHERE b.customer_code = unallocated_payments.customer_code 
+              AND b.professor <> 'Sem professor'::text
+            LIMIT 1
+        ),
+        'Sem professor'::text
+    ) AS professor,
+    customer_code,
+    COALESCE(
+        (SELECT participant_name FROM mt_booking_participantes WHERE customer_code = unallocated_payments.customer_code LIMIT 1),
+        'Aluno sem agendamento'::text
+    ) AS participant_name,
+    valor_faturamento AS booking_value,
+    COALESCE(valor_bruto, valor_faturamento) AS booking_commission_base,
+    is_socio AS is_socio_benefit,
+    paid AS is_paid,
+    pay_date,
+    CASE WHEN is_avulsa THEN 0::numeric ELSE valor_faturamento END AS booking_value_monthly,
+    CASE WHEN is_avulsa THEN 0::numeric ELSE COALESCE(valor_bruto, valor_faturamento) END AS booking_commission_base_monthly,
+    is_avulsa,
+    is_avulsa_grupo_fixo
+FROM unallocated_payments;
