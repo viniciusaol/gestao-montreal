@@ -1,6 +1,7 @@
 -- View: public.vw_mt_comissoes_detalhadas
 -- Updated: 2026-07-15
 -- Description: View to calculate detailed commission allocations for teachers based on student schedules and plan weights.
+-- Incorporates smart prorated ratio checks and coverage fallback for complement/switch plans.
 
 CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
 WITH booking_min_pay_dates AS (
@@ -94,19 +95,33 @@ WITH booking_min_pay_dates AS (
             WHEN ((rf.description ~~* '%Sócio Montreal%'::text) OR (rf.description ~~* '%Leonardo Assunção%'::text) OR (rf.description ~~* '%Leonardo Assuncao%'::text)) THEN true
             ELSE false
         END AS is_socio,
-        CASE
-            WHEN (rf.description ~~* '%AULA AVULSA%'::text) THEN 'OUTRO'::text
-            WHEN (rf.description ~~* '%INDIVIDUAL%'::text) THEN 'INDIVIDUAL'::text
-            WHEN (rf.description ~~* '%DUPLA%'::text) THEN 'DUPLA'::text
-            WHEN (rf.description ~~* '%TRIO%'::text) THEN 'TRIO'::text
-            WHEN ((rf.description ~~* '%GRUPO%'::text) OR (rf.description ~~* '%QUARTETO%'::text)) THEN 'GRUPO'::text
-            -- Fallback by modular gross price (only for items >= R$ 100 to avoid snacks/drinks matching):
-            WHEN (COALESCE(rf.valor_bruto, rf.valor_faturamento) >= 100::numeric AND (mod(COALESCE(rf.valor_bruto, rf.valor_faturamento), 720::numeric) < 10::numeric OR mod(COALESCE(rf.valor_bruto, rf.valor_faturamento), 720::numeric) > 710::numeric)) THEN 'INDIVIDUAL'::text
-            WHEN (COALESCE(rf.valor_bruto, rf.valor_faturamento) >= 100::numeric AND (mod(COALESCE(rf.valor_bruto, rf.valor_faturamento), 430::numeric) < 10::numeric OR mod(COALESCE(rf.valor_bruto, rf.valor_faturamento), 430::numeric) > 420::numeric)) THEN 'DUPLA'::text
-            WHEN (COALESCE(rf.valor_bruto, rf.valor_faturamento) >= 100::numeric AND (mod(COALESCE(rf.valor_bruto, rf.valor_faturamento), 395::numeric) < 10::numeric OR mod(COALESCE(rf.valor_bruto, rf.valor_faturamento), 395::numeric) > 385::numeric)) THEN 'TRIO'::text
-            WHEN (COALESCE(rf.valor_bruto, rf.valor_faturamento) >= 100::numeric AND (mod(COALESCE(rf.valor_bruto, rf.valor_faturamento), 335::numeric) < 10::numeric OR mod(COALESCE(rf.valor_bruto, rf.valor_faturamento), 335::numeric) > 325::numeric)) THEN 'GRUPO'::text
-            ELSE 'OUTRO'::text
-        END AS plan_class_type,
+        COALESCE(
+            CASE
+                WHEN (rf.description ~~* '%AULA AVULSA%'::text) THEN 'OUTRO'::text
+                WHEN (rf.description ~~* '%INDIVIDUAL%'::text) THEN 'INDIVIDUAL'::text
+                WHEN (rf.description ~~* '%DUPLA%'::text) THEN 'DUPLA'::text
+                WHEN (rf.description ~~* '%TRIO%'::text) THEN 'TRIO'::text
+                WHEN ((rf.description ~~* '%GRUPO%'::text) OR (rf.description ~~* '%QUARTETO%'::text)) THEN 'GRUPO'::text
+                ELSE NULL::text
+            END,
+            -- Smart prorated ratio check fallback:
+            (
+                SELECT bp.plan_class_type
+                FROM (VALUES 
+                    ('INDIVIDUAL'::text, 720::numeric),
+                    ('DUPLA'::text, 430::numeric),
+                    ('TRIO'::text, 395::numeric),
+                    ('GRUPO'::text, 335::numeric)
+                ) AS bp(plan_class_type, base_value)
+                WHERE COALESCE(rf.valor_bruto, rf.valor_faturamento) >= 50::numeric
+                  AND (COALESCE(rf.valor_bruto, rf.valor_faturamento) / bp.base_value) >= 0.15
+                  AND (COALESCE(rf.valor_bruto, rf.valor_faturamento) / bp.base_value) <= 1.05
+                  AND abs(round((COALESCE(rf.valor_bruto, rf.valor_faturamento) / bp.base_value) * 20::numeric) - (COALESCE(rf.valor_bruto, rf.valor_faturamento) / bp.base_value) * 20::numeric) < 0.15
+                ORDER BY abs(round((COALESCE(rf.valor_bruto, rf.valor_faturamento) / bp.base_value) * 20::numeric) - (COALESCE(rf.valor_bruto, rf.valor_faturamento) / bp.base_value) * 20::numeric) ASC
+                LIMIT 1
+            ),
+            'OUTRO'::text
+        ) AS plan_class_type,
         rf.is_avulsa,
         rf.is_avulsa_grupo_fixo,
         CASE WHEN rf.is_avulsa THEN (0)::numeric ELSE rf.valor_faturamento END AS valor_faturamento_monthly,
@@ -224,11 +239,21 @@ WITH booking_min_pay_dates AS (
             ELSE 335
         END AS schedule_weight
     FROM schedules
+), schedules_coverage AS (
+    SELECT s.*,
+        EXISTS (
+            SELECT 1 FROM plan_items p
+            WHERE p.customer_code = s.customer_code 
+              AND p.plan_month = s.plan_month
+              AND p.plan_class_type = s.booking_class_type
+        ) AS is_schedule_covered
+    FROM schedules_with_weights s
 ), schedules_with_sums AS (
     SELECT *,
         SUM(schedule_weight) OVER (PARTITION BY customer_code, plan_month, booking_class_type) AS sum_weight_of_type,
-        SUM(schedule_weight) OVER (PARTITION BY customer_code, plan_month) AS sum_weight_total
-    FROM schedules_with_weights
+        SUM(schedule_weight) OVER (PARTITION BY customer_code, plan_month) AS sum_weight_total,
+        SUM(CASE WHEN NOT is_schedule_covered THEN schedule_weight ELSE 0 END) OVER (PARTITION BY customer_code, plan_month) AS sum_weight_uncovered
+    FROM schedules_coverage
 ), schedule_allocations AS (
     SELECT 
         s.customer_code,
@@ -241,6 +266,8 @@ WITH booking_min_pay_dates AS (
         s.schedule_weight,
         s.sum_weight_of_type,
         s.sum_weight_total,
+        s.sum_weight_uncovered,
+        s.is_schedule_covered,
         p.item_key,
         p.valor_faturamento,
         p.valor_bruto,
@@ -270,7 +297,12 @@ WITH booking_min_pay_dates AS (
                 WHEN has_type_match THEN
                     CASE WHEN is_type_match THEN (valor_faturamento * (schedule_weight::numeric / sum_weight_of_type)) ELSE 0 END
                 ELSE
-                    (valor_faturamento * (schedule_weight::numeric / sum_weight_total))
+                    CASE
+                        WHEN sum_weight_uncovered > 0 THEN
+                            CASE WHEN NOT is_schedule_covered THEN (valor_faturamento * (schedule_weight::numeric / sum_weight_uncovered)) ELSE 0 END
+                        ELSE
+                            (valor_faturamento * (schedule_weight::numeric / sum_weight_total))
+                    END
             END
         ) AS schedule_monthly_value,
         SUM(
@@ -281,10 +313,18 @@ WITH booking_min_pay_dates AS (
                         * (schedule_weight::numeric / sum_weight_of_type)
                     ) ELSE 0 END
                 ELSE
-                    (
-                        CASE WHEN is_socio THEN valor_bruto ELSE valor_faturamento END 
-                        * (schedule_weight::numeric / sum_weight_total)
-                    )
+                    CASE
+                        WHEN sum_weight_uncovered > 0 THEN
+                            CASE WHEN NOT is_schedule_covered THEN (
+                                CASE WHEN is_socio THEN valor_bruto ELSE valor_faturamento END 
+                                * (schedule_weight::numeric / sum_weight_uncovered)
+                            ) ELSE 0 END
+                        ELSE
+                            (
+                                CASE WHEN is_socio THEN valor_bruto ELSE valor_faturamento END 
+                                * (schedule_weight::numeric / sum_weight_total)
+                            )
+                    END
             END
         ) AS schedule_monthly_commission_base,
         bool_or(paid) AS is_paid,
@@ -295,7 +335,12 @@ WITH booking_min_pay_dates AS (
                 WHEN has_type_match THEN
                     CASE WHEN is_type_match THEN (valor_faturamento_monthly * (schedule_weight::numeric / sum_weight_of_type)) ELSE 0 END
                 ELSE
-                    (valor_faturamento_monthly * (schedule_weight::numeric / sum_weight_total))
+                    CASE
+                        WHEN sum_weight_uncovered > 0 THEN
+                            CASE WHEN NOT is_schedule_covered THEN (valor_faturamento_monthly * (schedule_weight::numeric / sum_weight_uncovered)) ELSE 0 END
+                        ELSE
+                            (valor_faturamento_monthly * (schedule_weight::numeric / sum_weight_total))
+                    END
             END
         ) AS schedule_monthly_value_monthly,
         SUM(
@@ -306,10 +351,18 @@ WITH booking_min_pay_dates AS (
                         * (schedule_weight::numeric / sum_weight_of_type)
                     ) ELSE 0 END
                 ELSE
-                    (
-                        CASE WHEN is_socio THEN valor_bruto_monthly ELSE valor_faturamento_monthly END 
-                        * (schedule_weight::numeric / sum_weight_total)
-                    )
+                    CASE
+                        WHEN sum_weight_uncovered > 0 THEN
+                            CASE WHEN NOT is_schedule_covered THEN (
+                                CASE WHEN is_socio THEN valor_bruto_monthly ELSE valor_faturamento_monthly END 
+                                * (schedule_weight::numeric / sum_weight_uncovered)
+                            ) ELSE 0 END
+                        ELSE
+                            (
+                                CASE WHEN is_socio THEN valor_bruto_monthly ELSE valor_faturamento_monthly END 
+                                * (schedule_weight::numeric / sum_weight_total)
+                            )
+                    END
             END
         ) AS schedule_monthly_commission_base_monthly,
         bool_or(is_avulsa) AS is_avulsa,
