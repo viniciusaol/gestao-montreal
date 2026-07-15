@@ -20,6 +20,11 @@ function getAdjustedCommissionBase(row, baseValue) {
   return base;
 }
 
+// Helper to get professor commission rate
+function getRateForTeacher(profName) {
+  return currentCommissionRate;
+}
+
 // ---- Debug Logger ----
 const debugLog = (msg, obj = '') => {
   const div = document.getElementById('debug-log');
@@ -2469,6 +2474,7 @@ async function loadFinancialReports() {
     const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
+    const voucherParams = `description=ilike.*INTENSIV*&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
 
     const occupancyParams = `select=*&ano=eq.${year}&mes=eq.${month}`;
     const efficiencyParams = `select=*&ano=eq.${year}&mes=eq.${month}`;
@@ -2483,7 +2489,7 @@ async function loadFinancialReports() {
     const prevOccupancyParams = `select=*&ano=eq.${prevYear}&mes=eq.${prevMonthStr}`;
     const prevEfficiencyParams = `select=*&ano=eq.${prevYear}&mes=eq.${prevMonthStr}`;
 
-    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData, allProductCostsData, baseCourtOccupancy, baseHourlyEfficiency, prevCourtOccupancy, prevHourlyEfficiency] = await Promise.all([
+    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData, allProductCostsData, baseCourtOccupancy, baseHourlyEfficiency, prevCourtOccupancy, prevHourlyEfficiency, allVouchersData] = await Promise.all([
       supabaseSelect('procfy_lancamentos', procfyParams),
       supabaseSelect('inter_movimentos_processados', interParams),
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
@@ -2495,7 +2501,8 @@ async function loadFinancialReports() {
       supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${monthStart}`),
       supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${monthStart}`),
       supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
-      supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`)
+      supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
+      supabaseSelect('mt_faturamento_vendas', voucherParams)
     ]);
 
     debugLog(`Lançamentos Procfy: ${allProcfyData.length} linhas.`);
@@ -2830,7 +2837,24 @@ async function loadFinancialReports() {
       
       const rawBase = parseFloat(row.booking_commission_base) || (row.is_socio_benefit ? (parseFloat(row.booking_value) * 2) : (parseFloat(row.booking_value) || 0.0));
       const commBase = getAdjustedCommissionBase(row, rawBase);
-      dreData[monthKey].comissao += commBase * (currentCommissionRate / 100);
+      const rate = getRateForTeacher(row.professor);
+      dreData[monthKey].comissao += commBase * (rate / 100);
+    });
+
+    // Populate DRE Vouchers Commissions
+    const filteredVouchers = (allVouchersData || []).filter(v => {
+      const prof = parseVoucherProfessor(v.description || '');
+      return prof && parseFloat(v.total) > 0 && !/anula/i.test(v.description || '');
+    });
+
+    filteredVouchers.forEach(v => {
+      const prof = parseVoucherProfessor(v.description || '');
+      const val = parseFloat(v.total) || 0.0;
+      const monthKey = v.pay_date ? v.pay_date.substring(0, 7) : '';
+      if (!dreData[monthKey]) return;
+
+      const rate = getRateForTeacher(prof);
+      dreData[monthKey].comissao += val * (rate / 100);
     });
 
     // Populate DRE Expenses (Operation cost center)
@@ -3095,6 +3119,7 @@ async function loadFinancialReports() {
       allMpPaymentsData,
       allGlobalPayoutsData,
       allProductCostsData,
+      allVouchersData,
       baseCourtOccupancy,
       baseHourlyEfficiency,
       prevCourtOccupancy,
@@ -4720,6 +4745,7 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
   
   const allCommData = cachedFinancialData.allCommData;
   const allGlobalPayoutsData = cachedFinancialData.allGlobalPayoutsData;
+  const allVouchersData = cachedFinancialData.allVouchersData || [];
   const monthPrefix = `${year}-${month}`;
   
   const classesData = allCommData.filter(row => {
@@ -4728,7 +4754,7 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
     return (bDate && bDate.startsWith(monthPrefix)) || (pDate && pDate.startsWith(monthPrefix));
   });
 
-  let totalPaidCommissionBase = 0.0;
+  let totalPaidCommission = 0.0;
 
   classesData.forEach(row => {
     const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(monthPrefix);
@@ -4737,12 +4763,28 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
       const rawBase = parseFloat(row.booking_commission_base) || val;
       const commBase = getAdjustedCommissionBase(row, rawBase);
       if (val > 0) {
-        totalPaidCommissionBase += commBase;
+        totalPaidCommission += commBase * (getRateForTeacher(row.professor) / 100);
       }
     }
   });
 
-  const paidCommissionVal = totalPaidCommissionBase * (currentCommissionRate / 100);
+  // Add paid Intensivão vouchers commission
+  const filteredVouchers = allVouchersData.filter(v => {
+    const prof = parseVoucherProfessor(v.description || '');
+    return prof && parseFloat(v.total) > 0 && !/anula/i.test(v.description || '');
+  });
+
+  filteredVouchers.forEach(v => {
+    const prof = parseVoucherProfessor(v.description || '');
+    const val = parseFloat(v.total) || 0.0;
+    const payDateStr = v.pay_date ? v.pay_date.substring(0, 7) : '';
+    if (payDateStr === monthPrefix) {
+      const rate = getRateForTeacher(prof);
+      totalPaidCommission += val * (rate / 100);
+    }
+  });
+
+  const paidCommissionVal = totalPaidCommission;
 
   let totalPayouts = 0.0;
   allGlobalPayoutsData.forEach(p => {
@@ -5871,9 +5913,34 @@ function renderReportCommissions() {
       teacherData[prof] = { classesCount: 0, faturamento: 0, commission: 0 };
     }
 
+    const rate = getRateForTeacher(prof);
     teacherData[prof].classesCount += 1;
     teacherData[prof].faturamento += val;
-    teacherData[prof].commission += commBase * (currentCommissionRate / 100);
+    teacherData[prof].commission += commBase * (rate / 100);
+  });
+
+  // Include Intensivão vouchers in monthly report
+  const vouchers = (cachedFinancialData && cachedFinancialData.allVouchersData) || currentVoucherData || [];
+  const filteredVouchers = (vouchers || []).filter(v => {
+    const prof = parseVoucherProfessor(v.description || '');
+    return prof && parseFloat(v.total) > 0 && !/anula/i.test(v.description || '');
+  });
+
+  filteredVouchers.forEach(v => {
+    const prof = parseVoucherProfessor(v.description || '');
+    const val = parseFloat(v.total) || 0;
+    const payDateStr = (v.pay_date || '').split('T')[0];
+    const monthKey = payDateStr ? payDateStr.substring(0, 7) : '';
+    if (monthKey !== baseMonthPrefix) return;
+
+    if (!teacherData[prof]) {
+      teacherData[prof] = { classesCount: 0, faturamento: 0, commission: 0 };
+    }
+
+    const rate = getRateForTeacher(prof);
+    teacherData[prof].classesCount += 1;
+    teacherData[prof].faturamento += val;
+    teacherData[prof].commission += val * (rate / 100);
   });
 
   const teachers = Object.keys(teacherData).sort();
