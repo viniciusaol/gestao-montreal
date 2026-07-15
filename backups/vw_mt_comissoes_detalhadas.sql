@@ -129,11 +129,35 @@ WITH booking_min_pay_dates AS (
         COALESCE(
             CASE
                 WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)
+                WHEN (rf.description ~~* '%janeiro 26%'::text) THEN '2026-01-01'::date
+                WHEN (rf.description ~~* '%fevereiro 26%'::text) THEN '2026-02-01'::date
+                WHEN (rf.description ~~* '%março 26%'::text OR rf.description ~~* '%marco 26%'::text) THEN '2026-03-01'::date
+                WHEN (rf.description ~~* '%abril 26%'::text) THEN '2026-04-01'::date
+                WHEN (rf.description ~~* '%maio 26%'::text) THEN '2026-05-01'::date
+                WHEN (rf.description ~~* '%junho 26%'::text) THEN '2026-06-01'::date
+                WHEN (rf.description ~~* '%julho 26%'::text) THEN '2026-07-01'::date
+                WHEN (rf.description ~~* '%agosto 26%'::text) THEN '2026-08-01'::date
+                WHEN (rf.description ~~* '%setembro 26%'::text) THEN '2026-09-01'::date
+                WHEN (rf.description ~~* '%outubro 26%'::text) THEN '2026-10-01'::date
+                WHEN (rf.description ~~* '%novembro 26%'::text) THEN '2026-11-01'::date
+                WHEN (rf.description ~~* '%dezembro 26%'::text) THEN '2026-12-01'::date
                 ELSE NULL::date
             END, (date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)))::date) AS item_start_date,
         COALESCE(
             CASE
                 WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN to_date((regexp_match(rf.description, '\d{2}/\d{2}/\d{4}-(\d{2}/\d{2}/\d{4})'::text))[1], 'DD/MM/YYYY'::text)
+                WHEN (rf.description ~~* '%janeiro 26%'::text) THEN '2026-01-31'::date
+                WHEN (rf.description ~~* '%fevereiro 26%'::text) THEN '2026-02-28'::date
+                WHEN (rf.description ~~* '%março 26%'::text OR rf.description ~~* '%marco 26%'::text) THEN '2026-03-31'::date
+                WHEN (rf.description ~~* '%abril 26%'::text) THEN '2026-04-30'::date
+                WHEN (rf.description ~~* '%maio 26%'::text) THEN '2026-05-31'::date
+                WHEN (rf.description ~~* '%junho 26%'::text) THEN '2026-06-30'::date
+                WHEN (rf.description ~~* '%julho 26%'::text) THEN '2026-07-31'::date
+                WHEN (rf.description ~~* '%agosto 26%'::text) THEN '2026-08-31'::date
+                WHEN (rf.description ~~* '%setembro 26%'::text) THEN '2026-09-30'::date
+                WHEN (rf.description ~~* '%outubro 26%'::text) THEN '2026-10-31'::date
+                WHEN (rf.description ~~* '%novembro 26%'::text) THEN '2026-11-30'::date
+                WHEN (rf.description ~~* '%dezembro 26%'::text) THEN '2026-12-31'::date
                 ELSE NULL::date
             END, (((date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)) + '1 mon'::interval) - '1 day'::interval))::date) AS item_end_date
     FROM resolved_faturamento rf
@@ -146,7 +170,7 @@ WITH booking_min_pay_dates AS (
 ), plan_items AS (
     SELECT item_key,
         customer_code,
-        COALESCE(date_trunc('month'::text, pay_date)::date, date_trunc('month'::text, item_start_date)::date) AS plan_month,
+        COALESCE(date_trunc('month'::text, item_start_date)::date, date_trunc('month'::text, pay_date)::date) AS plan_month,
         paid,
         pay_date,
         valor_faturamento,
