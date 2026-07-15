@@ -1,7 +1,7 @@
 -- View: public.vw_mt_comissoes_detalhadas
 -- Updated: 2026-07-15
 -- Description: View to calculate detailed commission allocations for teachers based on student schedules and plan weights.
--- Incorporates smart prorated ratio checks and coverage fallback for complement/switch plans.
+-- Incorporates smart prorated ratio checks, coverage fallback for complement/switch plans, and correct is_paid/pay_date tracking based on funding plan items.
 
 CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
 WITH booking_min_pay_dates AS (
@@ -129,45 +129,11 @@ WITH booking_min_pay_dates AS (
         COALESCE(
             CASE
                 WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)
-                WHEN (rf.description ~* '(janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s*(?:20)?(\d{2})'::text) THEN to_date(((
-                CASE lower((regexp_match(rf.description, '(janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s*(?:20)?(\d{2})'::text, 'i'::text))[1])
-                    WHEN 'janeiro'::text THEN '01'::text
-                    WHEN 'fevereiro'::text THEN '02'::text
-                    WHEN 'março'::text THEN '03'::text
-                    WHEN 'marco'::text THEN '03'::text
-                    WHEN 'abril'::text THEN '04'::text
-                    WHEN 'maio'::text THEN '05'::text
-                    WHEN 'junho'::text THEN '06'::text
-                    WHEN 'julho'::text THEN '07'::text
-                    WHEN 'agosto'::text THEN '08'::text
-                    WHEN 'setembro'::text THEN '09'::text
-                    WHEN 'outubro'::text THEN '10'::text
-                    WHEN 'novembro'::text THEN '11'::text
-                    WHEN 'dezembro'::text THEN '12'::text
-                    ELSE NULL::text
-                END || '/'::text) || (regexp_match(rf.description, '(janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s*(?:20)?(\d{2})'::text, 'i'::text))[2]), 'MM/YY'::text)
                 ELSE NULL::date
             END, (date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)))::date) AS item_start_date,
         COALESCE(
             CASE
                 WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN to_date((regexp_match(rf.description, '\d{2}/\d{2}/\d{4}-(\d{2}/\d{2}/\d{4})'::text))[1], 'DD/MM/YYYY'::text)
-                WHEN (rf.description ~* '(janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s*(?:20)?(\d{2})'::text) THEN (((to_date(((
-                CASE lower((regexp_match(rf.description, '(janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s*(?:20)?(\d{2})'::text, 'i'::text))[1])
-                    WHEN 'janeiro'::text THEN '01'::text
-                    WHEN 'fevereiro'::text THEN '02'::text
-                    WHEN 'março'::text THEN '03'::text
-                    WHEN 'marco'::text THEN '03'::text
-                    WHEN 'abril'::text THEN '04'::text
-                    WHEN 'maio'::text THEN '05'::text
-                    WHEN 'junho'::text THEN '06'::text
-                    WHEN 'julho'::text THEN '07'::text
-                    WHEN 'agosto'::text THEN '08'::text
-                    WHEN 'setembro'::text THEN '09'::text
-                    WHEN 'outubro'::text THEN '10'::text
-                    WHEN 'novembro'::text THEN '11'::text
-                    WHEN 'dezembro'::text THEN '12'::text
-                    ELSE NULL::text
-                END || '/'::text) || (regexp_match(rf.description, '(janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s*(?:20)?(\d{2})'::text, 'i'::text))[2]), 'MM/YY'::text) + '1 mon'::interval) - '1 day'::interval))::date
                 ELSE NULL::date
             END, (((date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)) + '1 mon'::interval) - '1 day'::interval))::date) AS item_end_date
     FROM resolved_faturamento rf
@@ -327,8 +293,45 @@ WITH booking_min_pay_dates AS (
                     END
             END
         ) AS schedule_monthly_commission_base,
-        bool_or(paid) AS is_paid,
-        max(pay_date) AS pay_date,
+        COALESCE(
+            bool_and(
+                CASE
+                    WHEN (
+                        CASE
+                            WHEN has_type_match THEN
+                                CASE WHEN is_type_match THEN valor_faturamento ELSE 0 END
+                            ELSE
+                                CASE
+                                    WHEN sum_weight_uncovered > 0 THEN
+                                        CASE WHEN NOT is_schedule_covered THEN valor_faturamento ELSE 0 END
+                                    ELSE
+                                        valor_faturamento
+                                END
+                        END
+                    ) > 0 THEN paid
+                    ELSE NULL::boolean
+                END
+            ),
+            false
+        ) AS is_paid,
+        MAX(
+            CASE
+                WHEN (
+                    CASE
+                        WHEN has_type_match THEN
+                            CASE WHEN is_type_match THEN valor_faturamento ELSE 0 END
+                        ELSE
+                            CASE
+                                WHEN sum_weight_uncovered > 0 THEN
+                                    CASE WHEN NOT is_schedule_covered THEN valor_faturamento ELSE 0 END
+                                ELSE
+                                    valor_faturamento
+                            END
+                    END
+                ) > 0 THEN pay_date
+                ELSE NULL::timestamp without time zone
+            END
+        ) AS pay_date,
         bool_or(is_socio) AS is_socio,
         SUM(
             CASE
