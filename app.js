@@ -1325,33 +1325,50 @@ async function loadOperationalReports() {
   const monthEnd = getEndOfMonth(monthStart);
 
   try {
-    // 1. Fetch data from Supabase views using direct REST Select
-    // Use _pago view to show only real payment methods (excludes cancellations, voids, open items)
-    const payParams = `select=*&mes=eq.${monthStart}`;
-    const payData = await supabaseSelect('vw_mt_resumo_por_forma_pagamento_pago_mes', payParams);
-
-    const subParams = `select=*&mes=eq.${monthStart}`;
-    const subData = await supabaseSelect('vw_mt_ticket_medio_subcategoria_pago_mes', subParams);
-
-    const courtData = await supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${monthStart}`);
-    const effData = await supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${monthStart}`);
-    const freqData = await supabaseSelect('vw_mt_frequencia_clientes_mes', `select=*&mes=eq.${monthStart}`);
-
-    // Also fetch distinct PAYING customers from mt_faturamento_vendas for the correct ticket médio
-    // (freqData includes ALL clients with any booking — paid or pending — which would distort the metric)
     const nextMonthStart = (() => {
       const d = new Date(monthStart + 'T00:00:00');
       d.setMonth(d.getMonth() + 1);
       return d.toISOString().split('T')[0].substring(0, 8) + '01';
     })();
-    const paidVendasData = await supabaseSelect(
-      'mt_faturamento_vendas',
-      `select=customer_code&paid=eq.true&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&is_canceled=eq.false&tipo=neq.refund`
-    );
 
-    // Fetch all paid items for the selected month to run detailed goals calculations
+    // 1. Fetch data from Supabase views concurrently using Promise.allSettled
+    const payParams = `select=*&mes=eq.${monthStart}`;
+    const subParams = `select=*&mes=eq.${monthStart}`;
     const itemsParams = `select=categoria,subcategoria,customer_code,valor_liquido,valor_faturamento,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
-    const itemsData = await supabaseSelect('vw_mt_faturamento_itens_pago', itemsParams);
+
+    const [
+      payDataResult,
+      subDataResult,
+      courtDataResult,
+      effDataResult,
+      freqDataResult,
+      paidVendasResult,
+      itemsDataResult
+    ] = await Promise.allSettled([
+      supabaseSelect('vw_mt_resumo_por_forma_pagamento_pago_mes', payParams),
+      supabaseSelect('vw_mt_ticket_medio_subcategoria_pago_mes', subParams),
+      supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${monthStart}`),
+      supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${monthStart}`),
+      supabaseSelect('vw_mt_frequencia_clientes_mes', `select=*&mes=eq.${monthStart}`),
+      supabaseSelect('mt_faturamento_vendas', `select=customer_code&paid=eq.true&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&is_canceled=eq.false&tipo=neq.refund`),
+      supabaseSelect('vw_mt_faturamento_itens_pago', itemsParams)
+    ]);
+
+    const payData = payDataResult.status === 'fulfilled' ? payDataResult.value : [];
+    const subData = subDataResult.status === 'fulfilled' ? subDataResult.value : [];
+    const courtData = courtDataResult.status === 'fulfilled' ? courtDataResult.value : [];
+    const effData = effDataResult.status === 'fulfilled' ? effDataResult.value : [];
+    const freqData = freqDataResult.status === 'fulfilled' ? freqDataResult.value : [];
+    const paidVendasData = paidVendasResult.status === 'fulfilled' ? paidVendasResult.value : [];
+    const itemsData = itemsDataResult.status === 'fulfilled' ? itemsDataResult.value : [];
+
+    if (payDataResult.status === 'rejected') debugError('Erro ao carregar vw_mt_resumo_por_forma_pagamento_pago_mes', payDataResult.reason);
+    if (subDataResult.status === 'rejected') debugError('Erro ao carregar vw_mt_ticket_medio_subcategoria_pago_mes', subDataResult.reason);
+    if (courtDataResult.status === 'rejected') debugError('Erro ao carregar vw_mt_ocupacao_quadras_mes', courtDataResult.reason);
+    if (effDataResult.status === 'rejected') debugError('Erro ao carregar vw_mt_faturamento_por_hora_ocupada', effDataResult.reason);
+    if (freqDataResult.status === 'rejected') debugError('Erro ao carregar vw_mt_frequencia_clientes_mes', freqDataResult.reason);
+    if (paidVendasResult.status === 'rejected') debugError('Erro ao carregar mt_faturamento_vendas', paidVendasResult.reason);
+    if (itemsDataResult.status === 'rejected') debugError('Erro ao carregar vw_mt_faturamento_itens_pago', itemsDataResult.reason);
 
     // Fetch Mercado Pago payments
     const mpParams = `select=payment_type_id,payment_method_id,transaction_amount&date_approved=gte.${monthStart}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
@@ -2169,8 +2186,7 @@ function calcTotalAvailableHoursForMonth(year, month) {
   let total = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month - 1, d).getDay(); // 0=Sun, 6=Sat
-    if (dow === 0) total += 5;
-    else if (dow === 6) total += 11;
+    if (dow === 0 || dow === 6) total += 11;
     else total += 15;
   }
   return total;
@@ -2489,7 +2505,7 @@ async function loadFinancialReports() {
     const prevOccupancyParams = `select=*&ano=eq.${prevYear}&mes=eq.${prevMonthStr}`;
     const prevEfficiencyParams = `select=*&ano=eq.${prevYear}&mes=eq.${prevMonthStr}`;
 
-    const [allProcfyData, allInterData, allSalesData, allCommData, allPaymentMethodsData, allMpPaymentsData, allGlobalPayoutsData, allProductCostsData, baseCourtOccupancy, baseHourlyEfficiency, prevCourtOccupancy, prevHourlyEfficiency, allVouchersData] = await Promise.all([
+    const results = await Promise.allSettled([
       supabaseSelect('procfy_lancamentos', procfyParams),
       supabaseSelect('inter_movimentos_processados', interParams),
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
@@ -2504,6 +2520,33 @@ async function loadFinancialReports() {
       supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
       supabaseSelect('mt_faturamento_vendas', voucherParams)
     ]);
+
+    const allProcfyData = results[0].status === 'fulfilled' ? results[0].value : [];
+    const allInterData = results[1].status === 'fulfilled' ? results[1].value : [];
+    const allSalesData = results[2].status === 'fulfilled' ? results[2].value : [];
+    const allCommData = results[3].status === 'fulfilled' ? results[3].value : [];
+    const allPaymentMethodsData = results[4].status === 'fulfilled' ? results[4].value : [];
+    const allMpPaymentsData = results[5].status === 'fulfilled' ? results[5].value : [];
+    const allGlobalPayoutsData = results[6].status === 'fulfilled' ? results[6].value : [];
+    const allProductCostsData = results[7].status === 'fulfilled' ? results[7].value : [];
+    const baseCourtOccupancy = results[8].status === 'fulfilled' ? results[8].value : [];
+    const baseHourlyEfficiency = results[9].status === 'fulfilled' ? results[9].value : [];
+    const prevCourtOccupancy = results[10].status === 'fulfilled' ? results[10].value : [];
+    const prevHourlyEfficiency = results[11].status === 'fulfilled' ? results[11].value : [];
+    const allVouchersData = results[12].status === 'fulfilled' ? results[12].value : [];
+
+    results.forEach((res, i) => {
+      if (res.status === 'rejected') {
+        const endpoints = [
+          'procfy_lancamentos', 'inter_movimentos_processados', 'vw_mt_faturamento_itens_pago',
+          'vw_mt_comissoes_detalhadas', 'mt_faturamento_pagamentos', 'mp_pagamentos',
+          'mt_pagamentos_professores', 'mt_custo_produtos', 'vw_mt_ocupacao_quadras_mes (atual)',
+          'vw_mt_faturamento_por_hora_ocupada (atual)', 'vw_mt_ocupacao_quadras_mes (anterior)',
+          'vw_mt_faturamento_por_hora_ocupada (anterior)', 'mt_faturamento_vendas'
+        ];
+        debugError(`Erro ao carregar ${endpoints[i]}`, res.reason);
+      }
+    });
 
     debugLog(`Lançamentos Procfy: ${allProcfyData.length} linhas.`);
     debugLog(`Movimentos Inter: ${allInterData.length} linhas.`);
@@ -5286,6 +5329,7 @@ function calculateAndRenderCurrentMonthProjection() {
 
   // Loop day-by-day
   const dailyProjection = [];
+  let sumProjectedInflows = 0.0;
   
   for (let d = startDay; d <= daysInMonth; d++) {
     const dayStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
@@ -5296,7 +5340,29 @@ function calculateAndRenderCurrentMonthProjection() {
     const chkIncludeInflows = document.getElementById('chk-include-inflows');
     const includeInflows = chkIncludeInflows ? chkIncludeInflows.checked : true;
     // Distribui apenas o RESTANTE a receber (teto - já recebido) pelos dias futuros
-    const totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
+    let totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
+
+    // Custom override for July 2026 starting from July 21st
+    if (selectedYearInt === 2026 && selectedMonthInt === 7) {
+      if (d >= 21) {
+        const julInflows = {
+          21: 1227.94,
+          22: 343.22,
+          23: 503.13,
+          24: 621.77,
+          25: 497.78,
+          26: 1508.72,
+          27: 3061.27,
+          28: 999.42,
+          29: 1874.29,
+          30: 478.95,
+          31: 8820.55
+        };
+        totalInflowDay = includeInflows ? (julInflows[d] || 0.0) : 0.0;
+      }
+    }
+
+    sumProjectedInflows += totalInflowDay;
 
     let outflowOps = round2(dayProvision + dayFees);
     let outflowInv = 0.0;
@@ -5401,13 +5467,18 @@ function calculateAndRenderCurrentMonthProjection() {
   if (summaryEl) {
     const monthsFullBR = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const monthLabel = `${monthsFullBR[parseInt(month, 10) - 1]}/${year}`;
-    const pctReceived = fixedMonthTotal > 0 ? Math.round((alreadyReceived / fixedMonthTotal) * 100) : 0;
+    
+    // Custom logic for July 2026 to show correct sum of custom inputs
+    const dispFixedMonthTotal = (selectedYearInt === 2026 && selectedMonthInt === 7) ? (alreadyReceived + sumProjectedInflows) : fixedMonthTotal;
+    const dispRemainingToReceive = (selectedYearInt === 2026 && selectedMonthInt === 7) ? sumProjectedInflows : remainingToReceive;
+    
+    const pctReceived = dispFixedMonthTotal > 0 ? Math.round((alreadyReceived / dispFixedMonthTotal) * 100) : 0;
     summaryEl.innerHTML = `
       <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; padding:0.75rem 1rem;
                   background:rgba(255,255,255,0.04); border-radius:10px; border:1px solid rgba(255,255,255,0.08);">
         <div style="flex:1; min-width:140px; text-align:center;">
           <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">🏆 Teto Fixo — ${monthLabel}</div>
-          <div style="font-size:1.1rem; font-weight:700; color:#e0e0e0; margin-top:2px;">${formatCurrency(fixedMonthTotal)}</div>
+          <div style="font-size:1.1rem; font-weight:700; color:#e0e0e0; margin-top:2px;">${formatCurrency(dispFixedMonthTotal)}</div>
           <div style="font-size:0.65rem; color:#888; margin-top:1px;">D0 ${monthLabel} + D30 mês anterior</div>
         </div>
         <div style="flex:1; min-width:140px; text-align:center;">
@@ -5417,7 +5488,7 @@ function calculateAndRenderCurrentMonthProjection() {
         </div>
         <div style="flex:1; min-width:140px; text-align:center;">
           <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">📤 A Receber</div>
-          <div style="font-size:1.1rem; font-weight:700; color:#c0b86a; margin-top:2px;">${formatCurrency(remainingToReceive)}</div>
+          <div style="font-size:1.1rem; font-weight:700; color:#c0b86a; margin-top:2px;">${formatCurrency(dispRemainingToReceive)}</div>
           <div style="font-size:0.65rem; color:#888; margin-top:1px;">Projetado nos dias restantes</div>
         </div>
       </div>
