@@ -5195,7 +5195,8 @@ function calculateAndRenderCurrentMonthProjection() {
   let remainingCommP1 = round2(totalProjCommission * 0.70);
   let remainingCommP2 = round2(totalProjCommission * 0.30);
 
-  // Deduct already paid commissions in Procfy for the current month to avoid double counting
+  // Deduct already paid commissions in Procfy for the current month to avoid double counting.
+  // If payments exist, P1 is assumed complete (any unpaid residual is pushed to P2 on day 30).
   if (isCurrentRealMonth) {
     const alreadyPaidCommissionProcfy = allProcfyData
       .filter(tx => 
@@ -5206,10 +5207,14 @@ function calculateAndRenderCurrentMonthProjection() {
       )
       .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
 
-    const originalP1 = remainingCommP1;
-    remainingCommP1 = Math.max(0.0, round2(remainingCommP1 - alreadyPaidCommissionProcfy));
-    const overshoot = Math.max(0.0, round2(alreadyPaidCommissionProcfy - originalP1));
-    remainingCommP2 = Math.max(0.0, round2(remainingCommP2 - overshoot));
+    if (alreadyPaidCommissionProcfy > 0) {
+      const originalP1 = remainingCommP1;
+      const p1Residual = Math.max(0.0, round2(originalP1 - alreadyPaidCommissionProcfy));
+      const overshoot = Math.max(0.0, round2(alreadyPaidCommissionProcfy - originalP1));
+      
+      remainingCommP1 = 0.0;
+      remainingCommP2 = Math.max(0.0, round2((remainingCommP2 + p1Residual) - overshoot));
+    }
   }
 
   let tuitionFees = 0.0;
