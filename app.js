@@ -5192,8 +5192,25 @@ function calculateAndRenderCurrentMonthProjection() {
   }
 
   // Divisão 70% no dia 20 e 30% no dia 30
-  const remainingCommP1 = round2(totalProjCommission * 0.70);
-  const remainingCommP2 = round2(totalProjCommission * 0.30);
+  let remainingCommP1 = round2(totalProjCommission * 0.70);
+  let remainingCommP2 = round2(totalProjCommission * 0.30);
+
+  // Deduct already paid commissions in Procfy for the current month to avoid double counting
+  if (isCurrentRealMonth) {
+    const alreadyPaidCommissionProcfy = allProcfyData
+      .filter(tx => 
+        tx.paid &&
+        tx.due_date && tx.due_date.startsWith(baseMonthPrefix) &&
+        tx.transaction_type !== 'revenue' &&
+        (tx.category_name && (tx.category_name.toLowerCase().includes('comissão') || tx.category_name.toLowerCase().includes('comissao')))
+      )
+      .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+
+    const originalP1 = remainingCommP1;
+    remainingCommP1 = Math.max(0.0, round2(remainingCommP1 - alreadyPaidCommissionProcfy));
+    const overshoot = Math.max(0.0, round2(alreadyPaidCommissionProcfy - originalP1));
+    remainingCommP2 = Math.max(0.0, round2(remainingCommP2 - overshoot));
+  }
 
   let tuitionFees = 0.0;
   tuitionFees += tuitionReceivedD30 * 0.025; 
