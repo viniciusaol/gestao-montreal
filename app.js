@@ -2921,7 +2921,8 @@ async function loadFinancialReports() {
         dreData[monthKey].energia += amount;
       } else {
         // Skip 'Estoque Bar/Lanchonete' from Procfy in DRE because we calculate it via COGS/CMV from sales
-        if (category === 'Estoque Bar/Lanchonete') {
+        // Skip 'Simples - Imposto' because we already calculate it pro-forma under Gross Revenue
+        if (category === 'Estoque Bar/Lanchonete' || category === 'Simples - Imposto') {
           return;
         }
         dreData[monthKey].despesasOperacionais += amount;
