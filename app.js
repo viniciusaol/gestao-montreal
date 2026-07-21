@@ -3753,6 +3753,14 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
       calculateAndRenderProjection();
     });
   }
+
+  const chkIncludeOutflowProvisions = document.getElementById('chk-include-outflow-provisions');
+  if (chkIncludeOutflowProvisions) {
+    chkIncludeOutflowProvisions.addEventListener('change', () => {
+      calculateAndRenderCurrentMonthProjection();
+      calculateAndRenderProjection();
+    });
+  }
 }
 
 // ---- Combined Filter Change Handler ----
@@ -5320,7 +5328,11 @@ function calculateAndRenderCurrentMonthProjection() {
   const elSafety = document.getElementById('proj-input-safety');
   const safetyRate = elSafety ? parseFloat(elSafety.value) / 100 : 0.05;
   const safetyProvision = (scheduledOpsTotalForMonth + baseProvision) * safetyRate;
-  const totalFixedProvision = round2(baseProvision + safetyProvision);
+  
+  const chkIncludeOutflowProvisions = document.getElementById('chk-include-outflow-provisions');
+  const includeOutflowProvisions = chkIncludeOutflowProvisions ? chkIncludeOutflowProvisions.checked : true;
+  
+  const totalFixedProvision = includeOutflowProvisions ? round2(baseProvision + safetyProvision) : 0.0;
   const dayProvision = round2(totalFixedProvision / daysInMonth);
 
   const overdueInflowTotal = 0.0; // Inflows are perfectly matched by the totalInflow calculation!

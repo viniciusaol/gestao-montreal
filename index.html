@@ -855,11 +855,19 @@
           <div class="card">
             <h3 class="card-title" style="margin-bottom: 0.5rem;">Projeção de Caixa — Mês Atual (A partir de Hoje)</h3>
             
-            <div class="no-print" style="margin-bottom: 1.25rem; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-include-inflows" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--color-saibro);">
-              <label for="chk-include-inflows" style="font-size: 0.88rem; color: var(--text-main); font-weight: 500; cursor: pointer; user-select: none;">
-                Incluir Entradas Projetadas (Mensalidades/Avulsas e Variáveis estimadas)
-              </label>
+            <div class="no-print" style="margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="chk-include-inflows" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--color-saibro);">
+                <label for="chk-include-inflows" style="font-size: 0.88rem; color: var(--text-main); font-weight: 500; cursor: pointer; user-select: none;">
+                  Incluir Entradas Projetadas (Mensalidades/Avulsas e Variáveis estimadas)
+                </label>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="chk-include-outflow-provisions" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--color-saibro);">
+                <label for="chk-include-outflow-provisions" style="font-size: 0.88rem; color: var(--text-main); font-weight: 500; cursor: pointer; user-select: none;">
+                  Incluir Provisões de Saídas Operacionais (Despesas adicionais estimadas do mês)
+                </label>
+              </div>
             </div>
             
             <!-- Barra de resumo: Teto Fixo | Já Recebido | A Receber -->
