@@ -4028,6 +4028,7 @@ function calculateAndRenderProjection() {
     allCommData,
     allPaymentMethodsData,
     allMpPaymentsData,
+    allImportedReceivablesData,
     monthStart,
     monthEnd,
     year,
