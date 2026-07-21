@@ -5123,15 +5123,6 @@ function calculateAndRenderCurrentMonthProjection() {
   const variableReceivedD0 = round2(projectedVarRevenue * baseD0Ratio);
   const variableReceivedD30 = juneVariableRevenueBaseline * baseD30Ratio;
   
-  const totalInflow = round2(tuitionReceivedD0 + tuitionReceivedD30 + variableReceivedD0 + variableReceivedD30);
-
-  // ── TETO FIXO DO MÊS ─────────────────────────────────────────────
-  // totalInflow já é o teto correto (D0 mês atual + D30 mês anterior),
-  // calculado com os mesmos ratios do DFC mensal.
-  // Subtraímos o que já entrou no banco (allSalesData do mês atual)
-  // e projetamos apenas o restante nos dias futuros.
-  const fixedMonthTotal = totalInflow;
-
   // Já recebido no mês = receitas Procfy pagas no mês atual
   // Mesma fonte do DFC mensal (allProcfyData paid revenues)
   // Captura apenas o que fisicamente entrou no banco — exclui
@@ -5147,6 +5138,39 @@ function calculateAndRenderCurrentMonthProjection() {
       .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0)
   );
 
+  let totalInflow = round2(tuitionReceivedD0 + tuitionReceivedD30 + variableReceivedD0 + variableReceivedD30);
+  let remainingD0ToReceive = tuitionReceivedD0 + variableReceivedD0;
+
+  // Ajuste do totalInflow e D-0 se houver agenda importada para conciliar com as entradas reais e futuras
+  const mKey = `${year}-${month}`;
+  const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
+  
+  let totalImportedForRemainingDays = 0.0;
+  if (importedForMonth.length > 0) {
+    // Pegar apenas os recebíveis da agenda futura (do dia de hoje em diante)
+    totalImportedForRemainingDays = importedForMonth
+      .filter(r => {
+        const dNum = parseInt(r.data_liberacao.split('-')[2], 10);
+        return dNum >= startDay;
+      })
+      .reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
+
+    if (isCurrentRealMonth) {
+      // Faturamento real acumulado no mês (Competência)
+      const actualRevenueAcum = allSalesData
+        .filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix))
+        .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
+
+      const totalProjectedRevenue = tuitionGenerated + projectedVarRevenue;
+      const residualRevenue = Math.max(0, totalProjectedRevenue - actualRevenueAcum);
+      remainingD0ToReceive = residualRevenue * baseD0Ratio;
+    }
+    
+    const remainingToReceiveOverride = round2(totalImportedForRemainingDays + remainingD0ToReceive);
+    totalInflow = round2(alreadyReceived + remainingToReceiveOverride);
+  }
+
+  const fixedMonthTotal = totalInflow;
   const remainingToReceive = round2(Math.max(0, fixedMonthTotal - alreadyReceived));
 
   // Exact Outflows matching Monthly DFC
@@ -5396,7 +5420,7 @@ function calculateAndRenderCurrentMonthProjection() {
     if (importedForMonth.length > 0) {
       // Use imported exact D-30 for this day + estimated proportional D-0 (Pix/Debit) for this day
       const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
-      const dayD0 = includeInflows ? round2((tuitionReceivedD0 + variableReceivedD0) * (dayWeight / totalMonthWeight)) : 0.0;
+      const dayD0 = includeInflows ? round2(remainingD0ToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
       totalInflowDay = round2(dayD0 + importedForDay);
     } else {
       // Fallback: distribute remaining to receive proportionally over remaining days
@@ -6281,18 +6305,60 @@ async function supabaseUpsert(table, row) {
   return true;
 }
 
+async function supabaseDeleteByMonth(table, yearMonth) {
+  const monthStart = `${yearMonth}-01`;
+  const monthEnd = getEndOfMonth(monthStart);
+  const url = `${SUPABASE_URL}/rest/v1/${table}?data_liberacao=gte.${monthStart}&data_liberacao=lte.${monthEnd}`;
+  debugLog(`[REST] DELETE (MONTH) ${url}`);
+  const token = getUserToken() || SUPABASE_KEY;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Supabase REST delete month error ${res.status}: ${body}`);
+  }
+  return true;
+}
+
 function initReceivablesUpload() {
   const fileInput = document.getElementById('receivables-file-input');
   const btnTrigger = document.getElementById('btn-trigger-upload');
-  const selectCredenciadora = document.getElementById('upload-credenciadora');
+  const btnClear = document.getElementById('btn-clear-receivables');
   const statusMsg = document.getElementById('upload-status-msg');
 
-  if (!fileInput || !btnTrigger || !selectCredenciadora || !statusMsg) return;
+  if (!fileInput || !btnTrigger || !statusMsg) return;
 
   btnTrigger.addEventListener('click', () => {
     fileInput.value = '';
     fileInput.click();
   });
+
+  if (btnClear) {
+    btnClear.addEventListener('click', async () => {
+      const year = selectYear.value;
+      const month = selectMonth.value;
+      const yearMonth = `${year}-${month}`;
+      
+      showUploadStatus(`Limpando importações de ${yearMonth}...`, 'info');
+      
+      try {
+        await supabaseDeleteByMonth('mt_agenda_recebiveis_importada', yearMonth);
+        showUploadStatus(`Sucesso! Importações de recebíveis limpas para o período ${yearMonth}.`, 'success');
+        
+        if (typeof handleFilterChange === 'function') {
+          await handleFilterChange();
+        }
+      } catch (err) {
+        showUploadStatus(`Erro ao limpar: ${err.message}`, 'error');
+      }
+    });
+  }
 
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -6349,7 +6415,7 @@ function initReceivablesUpload() {
           throw new Error("Não foi possível identificar as colunas de 'Data' e 'Valor' no arquivo.");
         }
 
-        const credenciadora = selectCredenciadora.value;
+        const credenciadora = 'consolidado';
         const dailyData = {};
 
         for (let i = headerIndex + 1; i < rows.length; i++) {
@@ -6388,7 +6454,7 @@ function initReceivablesUpload() {
           await supabaseUpsert('mt_agenda_recebiveis_importada', batch);
         }
 
-        showUploadStatus(`Sucesso! ${dates.length} datas importadas para ${credenciadora.toUpperCase()}.`, 'success');
+        showUploadStatus(`Sucesso! ${dates.length} datas importadas de recebíveis consolidada.`, 'success');
         
         if (typeof handleFilterChange === 'function') {
           await handleFilterChange();
