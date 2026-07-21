@@ -2491,6 +2491,7 @@ async function loadFinancialReports() {
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
     const voucherParams = `description=ilike.*INTENSIV*&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
+    const receivablesParams = `data_liberacao=gte.${firstMonth}&data_liberacao=lte.${projectionEnd}`;
 
     const occupancyParams = `select=*&ano=eq.${year}&mes=eq.${month}`;
     const efficiencyParams = `select=*&ano=eq.${year}&mes=eq.${month}`;
@@ -2518,7 +2519,8 @@ async function loadFinancialReports() {
       supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${monthStart}`),
       supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
       supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
-      supabaseSelect('mt_faturamento_vendas', voucherParams)
+      supabaseSelect('mt_faturamento_vendas', voucherParams),
+      supabaseSelect('mt_agenda_recebiveis_importada', receivablesParams)
     ]);
 
     const allProcfyData = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -2534,6 +2536,7 @@ async function loadFinancialReports() {
     const prevCourtOccupancy = results[10].status === 'fulfilled' ? results[10].value : [];
     const prevHourlyEfficiency = results[11].status === 'fulfilled' ? results[11].value : [];
     const allVouchersData = results[12].status === 'fulfilled' ? results[12].value : [];
+    const allImportedReceivablesData = results[13].status === 'fulfilled' ? results[13].value : [];
 
     results.forEach((res, i) => {
       if (res.status === 'rejected') {
@@ -2542,7 +2545,7 @@ async function loadFinancialReports() {
           'vw_mt_comissoes_detalhadas', 'mt_faturamento_pagamentos', 'mp_pagamentos',
           'mt_pagamentos_professores', 'mt_custo_produtos', 'vw_mt_ocupacao_quadras_mes (atual)',
           'vw_mt_faturamento_por_hora_ocupada (atual)', 'vw_mt_ocupacao_quadras_mes (anterior)',
-          'vw_mt_faturamento_por_hora_ocupada (anterior)', 'mt_faturamento_vendas'
+          'vw_mt_faturamento_por_hora_ocupada (anterior)', 'mt_faturamento_vendas', 'mt_agenda_recebiveis_importada'
         ];
         debugError(`Erro ao carregar ${endpoints[i]}`, res.reason);
       }
@@ -2554,6 +2557,7 @@ async function loadFinancialReports() {
     debugLog(`Agendamentos Comissões: ${allCommData.length} linhas.`);
     debugLog(`Lançamentos Pagamentos (MatchPoint): ${allPaymentMethodsData.length} linhas.`);
     debugLog(`Lançamentos Mercado Pago: ${allMpPaymentsData.length} linhas.`);
+    debugLog(`Agenda Recebíveis Importada: ${allImportedReceivablesData.length} linhas.`);
 
     // 1. Filter current month data locally
     const currentMonthKey = `${year}-${month}`;
@@ -3164,6 +3168,7 @@ async function loadFinancialReports() {
       allGlobalPayoutsData,
       allProductCostsData,
       allVouchersData,
+      allImportedReceivablesData,
       baseCourtOccupancy,
       baseHourlyEfficiency,
       prevCourtOccupancy,
@@ -3594,6 +3599,7 @@ const cardDre = document.getElementById('fin-dre-card');
 const cardRoi = document.getElementById('fin-roi-card');
 const cardProjection = document.getElementById('fin-projection-card');
 const cardProjectionCurrent = document.getElementById('fin-projection-current-card');
+const receivablesUploadCard = document.getElementById('receivables-upload-card');
 
 if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjectionCurrent && 
     cardDfc && cardDre && cardRoi && cardProjection && cardProjectionCurrent) {
@@ -3608,6 +3614,7 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'none';
     cardProjectionCurrent.style.display = 'none';
+    if (receivablesUploadCard) receivablesUploadCard.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-dfc');
@@ -3629,6 +3636,7 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'none';
     cardProjectionCurrent.style.display = 'none';
+    if (receivablesUploadCard) receivablesUploadCard.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-dre');
@@ -3650,6 +3658,7 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
     cardRoi.style.display = 'block';
     cardProjection.style.display = 'none';
     cardProjectionCurrent.style.display = 'none';
+    if (receivablesUploadCard) receivablesUploadCard.style.display = 'none';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-roi');
@@ -3674,6 +3683,7 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'block';
     cardProjectionCurrent.style.display = 'none';
+    if (receivablesUploadCard) receivablesUploadCard.style.display = 'block';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-projection');
@@ -3698,6 +3708,7 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'none';
     cardProjectionCurrent.style.display = 'block';
+    if (receivablesUploadCard) receivablesUploadCard.style.display = 'block';
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-projection-current');
@@ -4573,10 +4584,22 @@ function calculateAndRenderProjection() {
     let varD30 = round2(projectedVarRevenue * baseD30Ratio);
 
     const tuitionReceivedD0 = tuitionD0;
-    const tuitionReceivedD30 = prevD30Tuition;
-
     const variableReceivedD0 = varD0;
-    const variableReceivedD30 = prevD30Variable;
+
+    let tuitionReceivedD30 = prevD30Tuition;
+    let variableReceivedD30 = prevD30Variable;
+
+    // Apply imported receivables agenda as D-30 override if available for this month
+    const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
+    if (importedForMonth.length > 0) {
+      const totalImportedForMonth = importedForMonth.reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
+      const totalPlannedD30 = prevD30Tuition + prevD30Variable;
+      const tuitionShare = totalPlannedD30 > 0 ? (prevD30Tuition / totalPlannedD30) : 0.84;
+      
+      tuitionReceivedD30 = round2(totalImportedForMonth * tuitionShare);
+      variableReceivedD30 = round2(totalImportedForMonth * (1 - tuitionShare));
+      debugLog(`[PROJ MENSAL] Override de agenda aplicado para ${mKey}: R$ ${totalImportedForMonth.toFixed(2)} (Aulas: R$ ${tuitionReceivedD30.toFixed(2)}, Locações: R$ ${variableReceivedD30.toFixed(2)})`);
+    }
 
     const totalInflow = round2(tuitionReceivedD0 + tuitionReceivedD30 + variableReceivedD0 + variableReceivedD30);
 
@@ -4858,6 +4881,7 @@ function calculateAndRenderCurrentMonthProjection() {
     allMpPaymentsData,
     allGlobalPayoutsData,
     allVouchersData,
+    allImportedReceivablesData,
     prevCourtOccupancy,
     prevHourlyEfficiency,
     monthStart,
@@ -5362,26 +5386,40 @@ function calculateAndRenderCurrentMonthProjection() {
     
     const chkIncludeInflows = document.getElementById('chk-include-inflows');
     const includeInflows = chkIncludeInflows ? chkIncludeInflows.checked : true;
-    // Distribui apenas o RESTANTE a receber (teto - já recebido) pelos dias futuros
-    let totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
-
-    // Custom override for July 2026 starting from July 21st
-    if (selectedYearInt === 2026 && selectedMonthInt === 7) {
-      if (d >= 21) {
-        const julInflows = {
-          21: 1227.94,
-          22: 343.22,
-          23: 503.13,
-          24: 621.77,
-          25: 497.78,
-          26: 1508.72,
-          27: 3061.27,
-          28: 999.42,
-          29: 1874.29,
-          30: 478.95,
-          31: 8820.55
-        };
-        totalInflowDay = includeInflows ? (julInflows[d] || 0.0) : 0.0;
+    
+    let totalInflowDay = 0.0;
+    
+    // Check if there is any imported receivables agenda for this month
+    const mKey = `${year}-${month}`;
+    const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
+    
+    if (importedForMonth.length > 0) {
+      // Use imported exact D-30 for this day + estimated proportional D-0 (Pix/Debit) for this day
+      const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
+      const dayD0 = includeInflows ? round2((tuitionReceivedD0 + variableReceivedD0) * (dayWeight / totalMonthWeight)) : 0.0;
+      totalInflowDay = round2(dayD0 + importedForDay);
+    } else {
+      // Fallback: distribute remaining to receive proportionally over remaining days
+      totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
+      
+      // Custom override for July 2026 starting from July 21st (kept for historic compatibility)
+      if (selectedYearInt === 2026 && selectedMonthInt === 7) {
+        if (d >= 21) {
+          const julInflows = {
+            21: 1227.94,
+            22: 343.22,
+            23: 503.13,
+            24: 621.77,
+            25: 497.78,
+            26: 1508.72,
+            27: 3061.27,
+            28: 999.42,
+            29: 1874.29,
+            30: 478.95,
+            31: 8820.55
+          };
+          totalInflowDay = includeInflows ? (julInflows[d] || 0.0) : 0.0;
+        }
       }
     }
 
@@ -6220,5 +6258,231 @@ if (btnExportReportPdf) {
 
 // Initialize comment listeners
 setupCommentSyncHandlers();
+
+// ---- Agenda de Recebíveis Upload & Persistência ----
+async function supabaseUpsert(table, row) {
+  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+  debugLog(`[REST] POST (UPSERT) ${url}`, row);
+  const token = getUserToken() || SUPABASE_KEY;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    },
+    body: JSON.stringify(row)
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Supabase REST upsert error ${res.status}: ${body}`);
+  }
+  return true;
+}
+
+function initReceivablesUpload() {
+  const fileInput = document.getElementById('receivables-file-input');
+  const btnTrigger = document.getElementById('btn-trigger-upload');
+  const selectCredenciadora = document.getElementById('upload-credenciadora');
+  const statusMsg = document.getElementById('upload-status-msg');
+
+  if (!fileInput || !btnTrigger || !selectCredenciadora || !statusMsg) return;
+
+  btnTrigger.addEventListener('click', () => {
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    showUploadStatus('Lendo arquivo...', 'info');
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        if (!rows || rows.length === 0) {
+          throw new Error('O arquivo selecionado está vazio.');
+        }
+
+        // Buscar cabeçalho
+        let headerIndex = -1;
+        let dateColIndex = -1;
+        let valColIndex = -1;
+
+        for (let i = 0; i < Math.min(rows.length, 15); i++) {
+          const row = rows[i];
+          if (!row || !Array.isArray(row)) continue;
+
+          const stringRow = row.map(cell => String(cell || '').toLowerCase().trim());
+
+          const dateIdx = stringRow.findIndex(cell => 
+            cell === 'data' || cell === 'date' || cell === 'data prevista' || 
+            cell === 'prevision_payment_date' || cell === 'data_liberacao' || cell === 'liberacao' ||
+            cell.includes('data previsto') || cell.includes('vencimento')
+          );
+
+          const valIdx = stringRow.findIndex(cell => 
+            cell === 'valor' || cell === 'valor liquido' || cell === 'liquido' || 
+            cell === 'net_amount' || cell === 'valor_recebido' || cell === 'valor_pago' ||
+            cell.includes('valor líq') || cell.includes('líquido') || cell === 'valor_liquido' ||
+            cell === 'valor bruto' || cell === 'bruto' || cell === 'gross_amount' || cell === 'amount'
+          );
+
+          if (dateIdx !== -1 && valIdx !== -1) {
+            headerIndex = i;
+            dateColIndex = dateIdx;
+            valColIndex = valIdx;
+            break;
+          }
+        }
+
+        if (headerIndex === -1) {
+          throw new Error("Não foi possível identificar as colunas de 'Data' e 'Valor' no arquivo.");
+        }
+
+        const credenciadora = selectCredenciadora.value;
+        const dailyData = {};
+
+        for (let i = headerIndex + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row[dateColIndex] === undefined || row[valColIndex] === undefined) continue;
+
+          const rawDate = row[dateColIndex];
+          const rawVal = row[valColIndex];
+
+          const parsedDate = parseRowDate(rawDate);
+          if (!parsedDate) continue;
+
+          const parsedVal = parseRowValue(rawVal);
+          if (isNaN(parsedVal)) continue;
+
+          dailyData[parsedDate] = (dailyData[parsedDate] || 0.0) + parsedVal;
+        }
+
+        const dates = Object.keys(dailyData);
+        if (dates.length === 0) {
+          throw new Error('Nenhum dado válido de Data e Valor foi encontrado nas linhas do arquivo.');
+        }
+
+        showUploadStatus(`Enviando ${dates.length} registros para o Supabase...`, 'info');
+
+        const recordsToUpsert = dates.map(dt => ({
+          data_liberacao: dt,
+          credenciadora: credenciadora,
+          valor: Math.round(dailyData[dt] * 100) / 100,
+          arquivo_origem: file.name
+        }));
+
+        const batchSize = 100;
+        for (let i = 0; i < recordsToUpsert.length; i += batchSize) {
+          const batch = recordsToUpsert.slice(i, i + batchSize);
+          await supabaseUpsert('mt_agenda_recebiveis_importada', batch);
+        }
+
+        showUploadStatus(`Sucesso! ${dates.length} datas importadas para ${credenciadora.toUpperCase()}.`, 'success');
+        
+        if (typeof handleFilterChange === 'function') {
+          await handleFilterChange();
+        }
+
+      } catch (err) {
+        showUploadStatus(err.message, 'error');
+      }
+    };
+
+    reader.onerror = () => {
+      showUploadStatus('Erro ao ler o arquivo físico.', 'error');
+    };
+
+    reader.readAsArrayBuffer(file);
+  });
+
+  function showUploadStatus(msg, type) {
+    statusMsg.innerText = msg;
+    statusMsg.style.display = 'block';
+    
+    if (type === 'error') {
+      statusMsg.style.background = 'rgba(230, 57, 70, 0.15)';
+      statusMsg.style.color = '#e63946';
+      statusMsg.style.border = '1px solid rgba(230, 57, 70, 0.3)';
+    } else if (type === 'success') {
+      statusMsg.style.background = 'rgba(46, 196, 182, 0.15)';
+      statusMsg.style.color = '#2ec4b6';
+      statusMsg.style.border = '1px solid rgba(46, 196, 182, 0.3)';
+    } else { // info
+      statusMsg.style.background = 'rgba(233, 196, 106, 0.1)';
+      statusMsg.style.color = '#e9c46a';
+      statusMsg.style.border = '1px solid rgba(233, 196, 106, 0.2)';
+    }
+  }
+
+  function parseRowDate(dateValue) {
+    if (typeof dateValue === 'number' || !isNaN(Number(dateValue))) {
+      const date = XLSX.SSF.parse_date_code(Number(dateValue));
+      if (date && date.y && date.m && date.d) {
+        const y = date.y;
+        const m = String(date.m).padStart(2, '0');
+        const d = String(date.d).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+    }
+    
+    const str = String(dateValue).trim();
+    const brMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if (brMatch) {
+      let d = brMatch[1].padStart(2, '0');
+      let m = brMatch[2].padStart(2, '0');
+      let y = brMatch[3];
+      if (y.length === 2) y = '20' + y;
+      return `${y}-${m}-${d}`;
+    }
+    
+    const isoMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (isoMatch) {
+      let y = isoMatch[1];
+      let m = isoMatch[2].padStart(2, '0');
+      let d = isoMatch[3].padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    
+    const dObj = new Date(str);
+    if (!isNaN(dObj.getTime())) {
+      const y = dObj.getFullYear();
+      const m = String(dObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dObj.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    
+    return null;
+  }
+
+  function parseRowValue(valValue) {
+    if (typeof valValue === 'number') return valValue;
+    
+    let clean = String(valValue)
+      .replace(/R\$\s?/gi, '')
+      .trim();
+    
+    if (clean.includes(',') && clean.includes('.')) {
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    } else if (clean.includes(',')) {
+      clean = clean.replace(',', '.');
+    }
+    
+    return parseFloat(clean);
+  }
+}
+
+// Iniciar a escuta do upload
+initReceivablesUpload();
 
 

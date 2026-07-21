@@ -657,6 +657,28 @@
           <button id="btn-show-projection-current" class="tab-btn">Projeção – Mês Atual</button>
         </div>
 
+        <!-- Card: Importar Agenda de Recebíveis -->
+        <div id="receivables-upload-card" class="card no-print" style="margin-bottom: 1.5rem; display: none; background: rgba(255,255,255,0.015); border: 1px dashed var(--border); padding: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h3 class="card-title" style="margin-bottom: 0.25rem;">Importar Agenda de Recebíveis</h3>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Suba o arquivo da Stone ou do Mercado Pago contendo as colunas de <strong>Data</strong> e <strong>Valor</strong>.</p>
+            </div>
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <select id="upload-credenciadora" class="btn btn-outline" style="background: #111; color: var(--text-main); font-weight: 600; cursor: pointer; padding: 0.55rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: inherit;">
+                <option value="stone">Stone</option>
+                <option value="mercado_pago">Mercado Pago</option>
+              </select>
+              <input type="file" id="receivables-file-input" accept=".csv,.xlsx" style="display: none;">
+              <button id="btn-trigger-upload" class="btn btn-primary btn-icon" style="height: 38px; display: inline-flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                Selecionar Arquivo
+              </button>
+            </div>
+          </div>
+          <div id="upload-status-msg" style="margin-top: 0.75rem; font-size: 0.82rem; font-weight: 500; display: none; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm);"></div>
+        </div>
+
         <!-- Demonstration of Cash Flow (DFC) -->
         <section id="fin-dfc-card" class="detailed-section printable-section" style="margin-top: 0.5rem; margin-bottom: 2rem;">
           <div class="card">
@@ -1163,6 +1185,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js?v=56"></script>
 </body>
 </html>
