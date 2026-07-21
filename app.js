@@ -1236,19 +1236,20 @@ if (formLogin) {
         email: sessionData.user.email
       }));
 
-      // Hide login screen
-      loginOverlay.style.visibility = 'hidden';
-      loginOverlay.style.opacity = '0';
-
-      // Clear form
-      loginEmail.value = '';
-      loginPassword.value = '';
-
       // Populate professors dynamically
       await populateProfessors();
 
       // Load data
       await loadDashboard();
+
+      // Hide login screen
+      loginOverlay.style.visibility = 'hidden';
+      loginOverlay.style.opacity = '0';
+      loginOverlay.style.display = 'none';
+
+      // Clear form
+      loginEmail.value = '';
+      loginPassword.value = '';
     } catch (err) {
       debugError('Erro de login', err);
       loginError.innerText = err.message || 'Erro ao autenticar. Verifique suas credenciais.';
@@ -5142,7 +5143,6 @@ function calculateAndRenderCurrentMonthProjection() {
   let remainingD0ToReceive = tuitionReceivedD0 + variableReceivedD0;
 
   // Ajuste do totalInflow e D-0 se houver agenda importada para conciliar com as entradas reais e futuras
-  const mKey = `${year}-${month}`;
   const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
   
   let totalImportedForRemainingDays = 0.0;
@@ -5414,7 +5414,6 @@ function calculateAndRenderCurrentMonthProjection() {
     let totalInflowDay = 0.0;
     
     // Check if there is any imported receivables agenda for this month
-    const mKey = `${year}-${month}`;
     const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
     
     if (importedForMonth.length > 0) {
