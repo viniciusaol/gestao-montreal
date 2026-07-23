@@ -2913,6 +2913,15 @@ async function loadFinancialReports() {
       const monthKey = tx.due_date ? tx.due_date.substring(0, 7) : '';
       if (!dreData[monthKey]) return;
 
+      // Exclude Kawane Procfy cash transactions from DRE for July 2026 onwards
+      // as CLT competence (salary + net benefits + FGTS + provisions) is injected separately below
+      if (monthKey >= '2026-07') {
+        const txText = `${tx.name || ''} ${tx.description || ''} ${tx.contact_name || ''} ${tx.payee || ''} ${tx.notes || ''} ${tx.observacao || ''}`.toLowerCase();
+        if (txText.includes('kawane')) {
+          return;
+        }
+      }
+
       const amount = parseFloat(tx.amount) || 0.0;
       const category = tx.category_name || 'Outras Despesas';
 
@@ -2936,6 +2945,50 @@ async function loadFinancialReports() {
         operationalExpenseCategories.add(category);
       }
     });
+
+    // Inject CLT Accrual Expenses for Kawane (starting July 2026) into DRE
+    historicMonths.forEach(({ key }) => {
+      if (key < '2026-07') return;
+      if (!dreData[key]) return;
+
+      let eqOpCost = 0.0;
+      let benCost = 0.0;
+      let encCost = 0.0;
+
+      if (key === '2026-07') {
+        // Proporcional 16 dias (admissão 16/07/2026)
+        eqOpCost = 1123.20; // Salário bruto proporcional
+        benCost = 355.01;   // Custo líquido VT (76,61) + VR (278,40)
+        encCost = 499.36;   // FGTS (89,86) + Prov. Férias (175,50) + Prov. 1/3 (58,50) + Prov. 13º (175,50)
+      } else {
+        // Mês cheio recorrente (Agosto/2026 em diante)
+        eqOpCost = 2106.00; // Salário bruto mensal
+        benCost = 637.64;   // Custo líquido VT (125,64) + VR (512,00)
+        encCost = 577.98;   // FGTS (168,48) + Prov. Férias (175,50) + Prov. 1/3 (58,50) + Prov. 13º (175,50)
+      }
+
+      // 1. Equipe operacional
+      const catEq = 'Equipe operacional';
+      dreData[key].despesasOperacionais += eqOpCost;
+      dreData[key].despesasOperacionaisCategories[catEq] = 
+        (dreData[key].despesasOperacionaisCategories[catEq] || 0.0) + eqOpCost;
+      operationalExpenseCategories.add(catEq);
+
+      // 2. Benefícios Trabalhistas
+      const catBen = 'Benefícios Trabalhistas';
+      dreData[key].despesasOperacionais += benCost;
+      dreData[key].despesasOperacionaisCategories[catBen] = 
+        (dreData[key].despesasOperacionaisCategories[catBen] || 0.0) + benCost;
+      operationalExpenseCategories.add(catBen);
+
+      // 3. Encargos Trabalhistas
+      const catEnc = 'Encargos Trabalhistas';
+      dreData[key].despesasOperacionais += encCost;
+      dreData[key].despesasOperacionaisCategories[catEnc] = 
+        (dreData[key].despesasOperacionaisCategories[catEnc] || 0.0) + encCost;
+      operationalExpenseCategories.add(catEnc);
+    });
+
 
     // Populate DRE processing fees
     allMpPaymentsData.forEach(mp => {
