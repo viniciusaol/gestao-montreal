@@ -3602,6 +3602,30 @@ const cardProjection = document.getElementById('fin-projection-card');
 const cardProjectionCurrent = document.getElementById('fin-projection-current-card');
 const receivablesUploadCard = document.getElementById('receivables-upload-card');
 
+let activeProjectionSubtab = 'projection';
+
+function updateReceivablesCardHeader() {
+  const cardTitle = document.getElementById('receivables-card-title');
+  const cardSubtitle = document.getElementById('receivables-card-subtitle');
+  if (!cardTitle || !cardSubtitle) return;
+
+  const year = selectYear ? selectYear.value : '2026';
+  const month = selectMonth ? selectMonth.value : '07';
+  
+  if (activeProjectionSubtab === 'projection-current') {
+    const monthKey = `${year}-${month}`;
+    cardTitle.innerHTML = `Importar Agenda de Recebíveis — <span style="color: #2ec4b6;">Projeção Diária (${monthKey})</span>`;
+    cardSubtitle.innerHTML = `Suba o arquivo contendo colunas de <strong>Data</strong> e <strong>Valor</strong> para a projeção diária de <strong>${monthKey}</strong>.`;
+  } else {
+    let y = parseInt(year, 10);
+    let m = parseInt(month, 10) + 1;
+    if (m > 12) { m = 1; y += 1; }
+    const nextMonthKey = `${y}-${String(m).padStart(2, '0')}`;
+    cardTitle.innerHTML = `Importar Agenda de Recebíveis — <span style="color: #e9c46a;">Projeção Mensal (${nextMonthKey})</span>`;
+    cardSubtitle.innerHTML = `Suba o arquivo contendo colunas de <strong>Data</strong> e <strong>Valor</strong> para a projeção mensal (${nextMonthKey}).`;
+  }
+}
+
 if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjectionCurrent && 
     cardDfc && cardDre && cardRoi && cardProjection && cardProjectionCurrent) {
   btnShowDfc.addEventListener('click', () => {
@@ -3674,6 +3698,7 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
   });
 
   btnShowProjection.addEventListener('click', () => {
+    activeProjectionSubtab = 'projection';
     btnShowProjection.classList.add('active');
     btnShowDfc.classList.remove('active');
     btnShowDre.classList.remove('active');
@@ -3684,7 +3709,10 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'block';
     cardProjectionCurrent.style.display = 'none';
-    if (receivablesUploadCard) receivablesUploadCard.style.display = 'block';
+    if (receivablesUploadCard) {
+      receivablesUploadCard.style.display = 'block';
+      updateReceivablesCardHeader();
+    }
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-projection');
@@ -3699,6 +3727,7 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
   });
 
   btnShowProjectionCurrent.addEventListener('click', () => {
+    activeProjectionSubtab = 'projection-current';
     btnShowProjectionCurrent.classList.add('active');
     btnShowDfc.classList.remove('active');
     btnShowDre.classList.remove('active');
@@ -3709,7 +3738,10 @@ if (btnShowDfc && btnShowDre && btnShowRoi && btnShowProjection && btnShowProjec
     cardRoi.style.display = 'none';
     cardProjection.style.display = 'none';
     cardProjectionCurrent.style.display = 'block';
-    if (receivablesUploadCard) receivablesUploadCard.style.display = 'block';
+    if (receivablesUploadCard) {
+      receivablesUploadCard.style.display = 'block';
+      updateReceivablesCardHeader();
+    }
 
     if (sectionFinancial) {
       sectionFinancial.classList.add('show-projection-current');
@@ -5437,26 +5469,6 @@ function calculateAndRenderCurrentMonthProjection() {
     } else {
       // Fallback: distribute remaining to receive proportionally over remaining days
       totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
-      
-      // Custom override for July 2026 starting from July 21st (kept for historic compatibility)
-      if (selectedYearInt === 2026 && selectedMonthInt === 7) {
-        if (d >= 21) {
-          const julInflows = {
-            21: 1227.94,
-            22: 343.22,
-            23: 503.13,
-            24: 621.77,
-            25: 497.78,
-            26: 1508.72,
-            27: 3061.27,
-            28: 999.42,
-            29: 1874.29,
-            30: 478.95,
-            31: 8820.55
-          };
-          totalInflowDay = includeInflows ? (julInflows[d] || 0.0) : 0.0;
-        }
-      }
     }
 
     sumProjectedInflows += totalInflowDay;
@@ -5565,9 +5577,8 @@ function calculateAndRenderCurrentMonthProjection() {
     const monthsFullBR = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const monthLabel = `${monthsFullBR[parseInt(month, 10) - 1]}/${year}`;
     
-    // Custom logic for July 2026 to show correct sum of custom inputs
-    const dispFixedMonthTotal = (selectedYearInt === 2026 && selectedMonthInt === 7) ? (alreadyReceived + sumProjectedInflows) : fixedMonthTotal;
-    const dispRemainingToReceive = (selectedYearInt === 2026 && selectedMonthInt === 7) ? sumProjectedInflows : remainingToReceive;
+    const dispFixedMonthTotal = round2(alreadyReceived + sumProjectedInflows);
+    const dispRemainingToReceive = round2(sumProjectedInflows);
     
     const pctReceived = dispFixedMonthTotal > 0 ? Math.round((alreadyReceived / dispFixedMonthTotal) * 100) : 0;
     summaryEl.innerHTML = `
@@ -6296,8 +6307,11 @@ if (btnExportReportPdf) {
 setupCommentSyncHandlers();
 
 // ---- Agenda de Recebíveis Upload & Persistência ----
-async function supabaseUpsert(table, row) {
-  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+async function supabaseUpsert(table, row, onConflictCols = null) {
+  let url = `${SUPABASE_URL}/rest/v1/${table}`;
+  if (onConflictCols) {
+    url += `?on_conflict=${encodeURIComponent(onConflictCols)}`;
+  }
   debugLog(`[REST] POST (UPSERT) ${url}`, row);
   const token = getUserToken() || SUPABASE_KEY;
   const res = await fetch(url, {
@@ -6338,6 +6352,25 @@ async function supabaseDeleteByMonth(table, yearMonth) {
   return true;
 }
 
+async function supabaseDeleteAllReceivables() {
+  const url = `${SUPABASE_URL}/rest/v1/mt_agenda_recebiveis_importada?data_liberacao=gte.2000-01-01`;
+  debugLog(`[REST] DELETE (ALL) ${url}`);
+  const token = getUserToken() || SUPABASE_KEY;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Supabase REST delete all error ${res.status}: ${body}`);
+  }
+  return true;
+}
+
 function initReceivablesUpload() {
   const fileInput = document.getElementById('receivables-file-input');
   const btnTrigger = document.getElementById('btn-trigger-upload');
@@ -6355,16 +6388,30 @@ function initReceivablesUpload() {
     btnClear.addEventListener('click', async () => {
       const year = selectYear.value;
       const month = selectMonth.value;
-      const yearMonth = `${year}-${month}`;
       
-      showUploadStatus(`Limpando importações de ${yearMonth}...`, 'info');
+      let targetMonth = `${year}-${month}`;
+      let reportName = 'Projeção Diária';
+
+      if (activeProjectionSubtab === 'projection') {
+        reportName = 'Projeção Mensal';
+        let y = parseInt(year, 10);
+        let m = parseInt(month, 10) + 1;
+        if (m > 12) { m = 1; y += 1; }
+        targetMonth = `${y}-${String(m).padStart(2, '0')}`;
+      }
+
+      if (!confirm(`Deseja realmente limpar as importações de recebíveis da ${reportName} (período ${targetMonth})?`)) {
+        return;
+      }
+
+      showUploadStatus(`Limpando importações de ${targetMonth} (${reportName})...`, 'info');
       
       try {
-        await supabaseDeleteByMonth('mt_agenda_recebiveis_importada', yearMonth);
-        showUploadStatus(`Sucesso! Importações de recebíveis limpas para o período ${yearMonth}.`, 'success');
+        await supabaseDeleteByMonth('mt_agenda_recebiveis_importada', targetMonth);
+        showUploadStatus(`Sucesso! Importações de recebíveis limpas para ${targetMonth} (${reportName}).`, 'success');
         
-        if (typeof handleFilterChange === 'function') {
-          await handleFilterChange();
+        if (typeof loadFinancialReports === 'function') {
+          await loadFinancialReports();
         }
       } catch (err) {
         showUploadStatus(`Erro ao limpar: ${err.message}`, 'error');
@@ -6451,6 +6498,14 @@ function initReceivablesUpload() {
           throw new Error('Nenhum dado válido de Data e Valor foi encontrado nas linhas do arquivo.');
         }
 
+        // Identificar os meses únicos presentes no arquivo importado
+        const uniqueMonths = Array.from(new Set(dates.map(dt => dt.substring(0, 7))));
+
+        showUploadStatus(`Limpando dados antigos dos meses [${uniqueMonths.join(', ')}]...`, 'info');
+        for (const ym of uniqueMonths) {
+          await supabaseDeleteByMonth('mt_agenda_recebiveis_importada', ym);
+        }
+
         showUploadStatus(`Enviando ${dates.length} registros para o Supabase...`, 'info');
 
         const recordsToUpsert = dates.map(dt => ({
@@ -6463,13 +6518,13 @@ function initReceivablesUpload() {
         const batchSize = 100;
         for (let i = 0; i < recordsToUpsert.length; i += batchSize) {
           const batch = recordsToUpsert.slice(i, i + batchSize);
-          await supabaseUpsert('mt_agenda_recebiveis_importada', batch);
+          await supabaseUpsert('mt_agenda_recebiveis_importada', batch, 'data_liberacao,credenciadora');
         }
 
-        showUploadStatus(`Sucesso! ${dates.length} datas importadas de recebíveis consolidada.`, 'success');
+        showUploadStatus(`Sucesso! ${dates.length} datas importadas/atualizadas para [${uniqueMonths.join(', ')}].`, 'success');
         
-        if (typeof handleFilterChange === 'function') {
-          await handleFilterChange();
+        if (typeof loadFinancialReports === 'function') {
+          await loadFinancialReports();
         }
 
       } catch (err) {
