@@ -3114,7 +3114,7 @@ async function loadFinancialReports() {
         deductible = 378000.0;
       }
 
-      const effectiveRate = rbt12 > 0 ? (rbt12 * nominalRate - deductible) / rbt12 : 0.0;
+      const effectiveRate = rbt12 <= 180000.0 ? nominalRate : (rbt12 * nominalRate - deductible) / rbt12;
       const totalSimples = baseCalculo * Math.max(0.0, effectiveRate);
 
       // Separate IR (4.00%) from Impostos (96.00%)
