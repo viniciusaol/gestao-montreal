@@ -606,17 +606,17 @@
         </section>
 
         <!-- New Section 1: Mix de Ocupação (Evolução 6 Meses + Matriz Comparativa) -->
-        <section class="charts-grid no-print" style="margin-bottom: 2rem;">
-          <div class="card chart-card">
-            <h3 class="card-title">Evolução do Mix de Ocupação — Horas de Quadra (6 Meses)</h3>
-            <div class="chart-container" style="height: 240px;">
+        <section class="charts-grid no-print" style="margin-bottom: 1.25rem;">
+          <div class="card chart-card" style="padding: 1rem;">
+            <h3 class="card-title" style="margin-bottom: 0.5rem; font-size: 0.95rem;">Evolução do Mix de Ocupação — Horas de Quadra (6 Meses)</h3>
+            <div class="chart-container" style="height: 170px;">
               <canvas id="chart-mix-history"></canvas>
             </div>
           </div>
-          <div class="card">
-            <h3 class="card-title">Matriz do Mix de Ocupação (Planejado vs. Real)</h3>
+          <div class="card" style="padding: 1rem;">
+            <h3 class="card-title" style="margin-bottom: 0.5rem; font-size: 0.95rem;">Matriz do Mix de Ocupação (Planejado vs. Real)</h3>
             <div class="table-container">
-              <table class="data-table">
+              <table class="data-table data-table-compact">
                 <thead>
                   <tr>
                     <th>Tipo de Hora</th>
@@ -638,17 +638,17 @@
         </section>
 
         <!-- New Section 2: Valor/Hora Ocupada R$/h (Evolução 6 Meses vs Meta R$ 240/h + Tabela Comparativa) -->
-        <section class="charts-grid no-print" style="margin-bottom: 2rem;">
-          <div class="card chart-card">
-            <h3 class="card-title">Evolução da Rentabilidade por Hora Ocupada (6 Meses vs. Meta R$ 240,00/h)</h3>
-            <div class="chart-container" style="height: 240px;">
+        <section class="charts-grid no-print" style="margin-bottom: 1.25rem;">
+          <div class="card chart-card" style="padding: 1rem;">
+            <h3 class="card-title" style="margin-bottom: 0.5rem; font-size: 0.95rem;">Evolução da Rentabilidade por Hora Ocupada (6 Meses vs. Meta R$ 240,00/h)</h3>
+            <div class="chart-container" style="height: 170px;">
               <canvas id="chart-revenue-per-hour-history"></canvas>
             </div>
           </div>
-          <div class="card">
-            <h3 class="card-title">Comparativo de Valor/Hora Ocupada (R$/h Planejado vs. Real)</h3>
+          <div class="card" style="padding: 1rem;">
+            <h3 class="card-title" style="margin-bottom: 0.5rem; font-size: 0.95rem;">Comparativo de Valor/Hora Ocupada (R$/h Planejado vs. Real)</h3>
             <div class="table-container">
-              <table class="data-table">
+              <table class="data-table data-table-compact">
                 <thead>
                   <tr>
                     <th>Modalidade</th>
@@ -670,52 +670,52 @@
         </section>
 
         <!-- Section 3: Simulador de Impacto Financeiro (EBITDA & Lucro Líquido Real vs. Mix Planejado) -->
-        <section class="card no-print" style="margin-bottom: 2rem;">
-          <h3 class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
+        <section class="card no-print" style="margin-bottom: 1.25rem; padding: 1rem;">
+          <h3 class="card-title" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; font-size: 0.95rem;">
             <span>Simulador de Impacto Financeiro (DRE Real vs. Mix Planejado)</span>
-            <span style="font-size: 0.8rem; font-weight: normal; color: rgba(241, 244, 224, 0.6);">Derivado da DRE Oficial do Mês</span>
+            <span style="font-size: 0.78rem; font-weight: normal; color: rgba(241, 244, 224, 0.6);">Derivado da DRE Oficial do Mês</span>
           </h3>
 
           <!-- KPI Summary Row -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(46, 196, 182, 0.3); border-radius: 8px; padding: 1rem;">
-              <div style="font-size: 0.8rem; color: rgba(241, 244, 224, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">EBITDA (Resultado Operacional)</div>
-              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.5rem;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(46, 196, 182, 0.3); border-radius: 8px; padding: 0.65rem 0.85rem;">
+              <div style="font-size: 0.75rem; color: rgba(241, 244, 224, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">EBITDA (Resultado Operacional)</div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.25rem;">
                 <div>
-                  <span style="font-size: 0.9rem; color: rgba(241, 244, 224, 0.6);">Real: </span>
-                  <strong id="sim-ebitda-real" style="font-size: 1.1rem; color: #f1f4e0;">R$ 0,00</strong>
+                  <span style="font-size: 0.82rem; color: rgba(241, 244, 224, 0.6);">Real: </span>
+                  <strong id="sim-ebitda-real" style="font-size: 1rem; color: #f1f4e0;">R$ 0,00</strong>
                 </div>
                 <div style="text-align: right;">
-                  <span style="font-size: 0.9rem; color: rgba(241, 244, 224, 0.6);">Imaginado: </span>
-                  <strong id="sim-ebitda-sim" style="font-size: 1.2rem; color: #2ec4b6;">R$ 0,00</strong>
+                  <span style="font-size: 0.82rem; color: rgba(241, 244, 224, 0.6);">Imaginado: </span>
+                  <strong id="sim-ebitda-sim" style="font-size: 1.05rem; color: #2ec4b6;">R$ 0,00</strong>
                 </div>
               </div>
-              <div style="margin-top: 0.5rem; text-align: right;">
-                <span id="sim-ebitda-badge" style="background: rgba(46, 196, 182, 0.18); color: #2ec4b6; padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold;">+R$ 0,00 (+0,0%)</span>
+              <div style="margin-top: 0.25rem; text-align: right;">
+                <span id="sim-ebitda-badge" style="background: rgba(46, 196, 182, 0.18); color: #2ec4b6; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">+R$ 0,00 (+0,0%)</span>
               </div>
             </div>
 
-            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(233, 196, 106, 0.3); border-radius: 8px; padding: 1rem;">
-              <div style="font-size: 0.8rem; color: rgba(241, 244, 224, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">Lucro Líquido do Exercício</div>
-              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.5rem;">
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(233, 196, 106, 0.3); border-radius: 8px; padding: 0.65rem 0.85rem;">
+              <div style="font-size: 0.75rem; color: rgba(241, 244, 224, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">Lucro Líquido do Exercício</div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.25rem;">
                 <div>
-                  <span style="font-size: 0.9rem; color: rgba(241, 244, 224, 0.6);">Real: </span>
-                  <strong id="sim-lucro-real" style="font-size: 1.1rem; color: #f1f4e0;">R$ 0,00</strong>
+                  <span style="font-size: 0.82rem; color: rgba(241, 244, 224, 0.6);">Real: </span>
+                  <strong id="sim-lucro-real" style="font-size: 1rem; color: #f1f4e0;">R$ 0,00</strong>
                 </div>
                 <div style="text-align: right;">
-                  <span style="font-size: 0.9rem; color: rgba(241, 244, 224, 0.6);">Imaginado: </span>
-                  <strong id="sim-lucro-sim" style="font-size: 1.2rem; color: #e9c46a;">R$ 0,00</strong>
+                  <span style="font-size: 0.82rem; color: rgba(241, 244, 224, 0.6);">Imaginado: </span>
+                  <strong id="sim-lucro-sim" style="font-size: 1.05rem; color: #e9c46a;">R$ 0,00</strong>
                 </div>
               </div>
-              <div style="margin-top: 0.5rem; text-align: right;">
-                <span id="sim-lucro-badge" style="background: rgba(233, 196, 106, 0.18); color: #e9c46a; padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold;">+R$ 0,00 (+0,0%)</span>
+              <div style="margin-top: 0.25rem; text-align: right;">
+                <span id="sim-lucro-badge" style="background: rgba(233, 196, 106, 0.18); color: #e9c46a; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">+R$ 0,00 (+0,0%)</span>
               </div>
             </div>
           </div>
 
           <!-- DRE Comparativa Table -->
           <div class="table-container">
-            <table class="data-table">
+            <table class="data-table data-table-compact">
               <thead>
                 <tr>
                   <th>Categoria / Conta DRE</th>

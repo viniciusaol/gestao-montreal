@@ -1946,5 +1946,14 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
+/* Compact Table Utilities */
+.data-table-compact th,
+.data-table-compact td {
+  padding: 0.4rem 0.6rem !important;
+  font-size: 0.82rem !important;
+  line-height: 1.25 !important;
+}
+
+
 
 
