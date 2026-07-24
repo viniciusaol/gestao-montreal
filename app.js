@@ -1935,6 +1935,7 @@ function renderChartMixHistory(historicMonths, histEffData) {
         { label: 'Aulas de Grupo', data: getSeriesData('Aulas - Adulto - Grupo'), borderColor: '#e63946', backgroundColor: 'rgba(230,57,70,0.1)', tension: 0.3, fill: false },
         { label: 'Aulas Individuais', data: getSeriesData('Aulas - Adulto - Individual'), borderColor: '#4895ef', backgroundColor: 'rgba(72,149,239,0.1)', tension: 0.3, fill: false },
         { label: 'Aulas em Dupla', data: getSeriesData('Aulas - Adulto - Dupla'), borderColor: '#ff9f1c', backgroundColor: 'rgba(255,159,28,0.1)', tension: 0.3, fill: false },
+        { label: 'Aulas em Trio', data: getSeriesData('Aulas - Adulto - Trio'), borderColor: '#e9c46a', backgroundColor: 'rgba(233,196,106,0.1)', tension: 0.3, fill: false },
         { label: 'Mensalistas', data: getSeriesData('Locação - Reserva Mensal'), borderColor: '#7209b7', backgroundColor: 'rgba(114,9,183,0.1)', tension: 0.3, fill: false }
       ]
     },
