@@ -2153,6 +2153,9 @@ function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-histo
       animations: canvasId.includes('report') ? false : {},
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: { top: 25, right: 15 }
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -2168,6 +2171,7 @@ function renderChartTicketHistory(labels, values, canvasId = 'chart-ticket-histo
         },
         y: {
           min: 0,
+          suggestedMax: Math.ceil((Math.max(...values, 100) * 1.25) / 50) * 50,
           grid: { color: gridColor },
           ticks: {
             color: textColor,
