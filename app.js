@@ -3047,9 +3047,49 @@ async function loadFinancialReports() {
         return;
       }
 
-      // Calculate Simples Nacional based on (Gross Revenue - Commission)
+      // Calculate Simples Nacional based on (Gross Revenue - Commission) following Receita Federal RBT12 rules
       const baseCalculo = Math.max(0.0, d.receitaBruta - d.comissao);
-      const rbt12 = baseCalculo * 12;
+
+      // Gather prior months since company opening (2025-12) to calculate historical RBT12 (LC 123/2006)
+      const priorMonthKeys = [];
+      let startYear = 2025;
+      let startMonth = 12;
+      while (true) {
+        const k = `${startYear}-${String(startMonth).padStart(2, '0')}`;
+        if (k >= key) break;
+        priorMonthKeys.push(k);
+        startMonth++;
+        if (startMonth > 12) {
+          startMonth = 1;
+          startYear++;
+        }
+      }
+
+      const numPriorMonths = priorMonthKeys.length;
+      let rbt12 = 0.0;
+
+      if (numPriorMonths === 0) {
+        // 1st month of operation
+        rbt12 = baseCalculo * 12;
+      } else if (numPriorMonths < 12) {
+        // Less than 12 months of operation (Proportional RBT12 - Início de atividade)
+        const sumPriorBases = priorMonthKeys.reduce((acc, k) => {
+          const priorData = dreData[k];
+          if (!priorData) return acc;
+          const priorBase = Math.max(0.0, (priorData.receitaBruta || 0.0) - (priorData.comissao || 0.0));
+          return acc + priorBase;
+        }, 0.0);
+        rbt12 = (sumPriorBases / numPriorMonths) * 12;
+      } else {
+        // 12 or more months of operation (Actual sum of past 12 months)
+        const last12Keys = priorMonthKeys.slice(-12);
+        rbt12 = last12Keys.reduce((acc, k) => {
+          const priorData = dreData[k];
+          if (!priorData) return acc;
+          const priorBase = Math.max(0.0, (priorData.receitaBruta || 0.0) - (priorData.comissao || 0.0));
+          return acc + priorBase;
+        }, 0.0);
+      }
 
       let nominalRate = 0.0;
       let deductible = 0.0;
