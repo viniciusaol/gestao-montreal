@@ -2002,6 +2002,12 @@ function renderChartRevenuePerHourHistory(historicMonths, histEffData) {
       },
       scales: {
         x: { grid: { color: 'rgba(241,244,224,0.05)' }, ticks: { color: 'rgba(241,244,224,0.7)', font: { family: 'Hanken Grotesk' } } },
+        y: { grid: { color: 'rgba(241,244,224,0.05)' }, ticks: { color: 'rgba(241,244,224,0.7)', font: { family: 'Hanken Grotesk' }, callback: v => 'R$ ' + v } }
+      }
+    }
+  });
+}
+
 let cachedDreData = null;
 
 function renderOperationalSimulator(monthKey, effData) {
