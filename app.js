@@ -1566,7 +1566,7 @@ async function loadOperationalReports() {
       }
     }
 
-    // Rebuild subcategory dataset on the client side using the smart classification from itemsData
+    // Rebuild subcategory dataset on the client side using official DB classifications
     const groupedSubcategories = {
       'Aulas - Regular': { name: 'Aulas - Regular', clients: new Set(), total: 0 },
       'Aulas - Avulsas': { name: 'Aulas - Avulsas', clients: new Set(), total: 0 },
@@ -1578,21 +1578,24 @@ async function loadOperationalReports() {
     itemsData.forEach(item => {
       const desc = (item.item_description || '').toLowerCase();
       const cat = (item.categoria || '').toLowerCase();
+      const sub = (item.subcategoria || '').toLowerCase();
       const prod = (item.produto_padronizado || '').toLowerCase();
       const val = parseFloat(item.valor_faturamento) || 0;
       const client = item.customer_code;
 
-      const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
-      const isRental = cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva');
+      const isReservaMensal = sub.includes('reserva mensal') || prod.includes('reserva mensal');
+      const isQuadraAvulsa = cat === 'locação' || desc.includes('vouchers desconto 1º reserva') || desc.includes('voucher desconto 1º reserva');
+      const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby');
 
-      if (isLesson) {
-        const isAvulsa = desc.includes('avulsa');
+      if (isReservaMensal) {
+        groupedSubcategories['Locação - Reserva Mensal'].total += val;
+        if (client) groupedSubcategories['Locação - Reserva Mensal'].clients.add(client);
+      } else if (isQuadraAvulsa) {
+        groupedSubcategories['Locação - Quadra Avulsa'].total += val;
+        if (client) groupedSubcategories['Locação - Quadra Avulsa'].clients.add(client);
+      } else if (isLesson) {
+        const isAvulsa = desc.includes('avulsa') || sub.includes('avulsa');
         const subKey = isAvulsa ? 'Aulas - Avulsas' : 'Aulas - Regular';
-        groupedSubcategories[subKey].total += val;
-        if (client) groupedSubcategories[subKey].clients.add(client);
-      } else if (isRental) {
-        const isReserva = desc.includes('reserva') || prod.includes('reserva') || cat.includes('reserva') || (item.subcategoria || '').toLowerCase().includes('reserva');
-        const subKey = isReserva ? 'Locação - Reserva Mensal' : 'Locação - Quadra Avulsa';
         groupedSubcategories[subKey].total += val;
         if (client) groupedSubcategories[subKey].clients.add(client);
       } else {
@@ -1619,6 +1622,10 @@ async function loadOperationalReports() {
       if (processedSubData.length === 0) {
         subcategoryRows.innerHTML = `<tr><td colspan="4" class="empty-state">Sem dados de subcategoria para este mês.</td></tr>`;
       } else {
+        const totalLiquidoSum = processedSubData.reduce((acc, item) => acc + item.valor_liquido_total, 0);
+        const totalClientsCount = payingClientsCount; // Total distinct paying clients
+        const overallTicketMedio = totalClientsCount > 0 ? (totalLiquidoSum / totalClientsCount) : 0;
+
         subcategoryRows.innerHTML = processedSubData.map(item => `
           <tr>
             <td>${item.subcategoria}</td>
@@ -1626,7 +1633,14 @@ async function loadOperationalReports() {
             <td class="text-right">${formatCurrency(item.valor_liquido_total)}</td>
             <td class="text-right font-semibold">${formatCurrency(item.ticket_medio_por_cliente)}</td>
           </tr>
-        `).join('');
+        `).join('') + `
+          <tr style="border-top: 2px solid rgba(241, 244, 224, 0.2); font-weight: bold; background: rgba(255, 255, 255, 0.04);">
+            <td>TOTAL GERAL</td>
+            <td class="text-center">${totalClientsCount}</td>
+            <td class="text-right">${formatCurrency(totalLiquidoSum)}</td>
+            <td class="text-right font-semibold" style="color: #2ec4b6;">${formatCurrency(overallTicketMedio)}</td>
+          </tr>
+        `;
       }
     }
 
@@ -5980,18 +5994,20 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
   itemsData.forEach(item => {
     const desc = (item.item_description || '').toLowerCase();
     const cat = (item.categoria || '').toLowerCase();
+    const sub = (item.subcategoria || '').toLowerCase();
     const prod = (item.produto_padronizado || '').toLowerCase();
     const val = parseFloat(item.valor_faturamento) || 0;
     
-    const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
-    const isRental = cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva');
+    const isReservaMensal = sub.includes('reserva mensal') || prod.includes('reserva mensal');
+    const isQuadraAvulsa = cat === 'locação' || desc.includes('vouchers desconto 1º reserva') || desc.includes('voucher desconto 1º reserva');
+    const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby');
 
     if (isLesson) {
       aulasRevenue += val;
       if (item.customer_code) {
         studentsSet.add(item.customer_code);
       }
-    } else if (isRental) {
+    } else if (isReservaMensal || isQuadraAvulsa) {
       locacaoRevenue += val;
     }
     
