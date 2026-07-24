@@ -604,6 +604,70 @@
             </div>
           </div>
         </section>
+
+        <!-- New Section 1: Mix de Ocupação (Evolução 6 Meses + Matriz Comparativa) -->
+        <section class="charts-grid no-print" style="margin-bottom: 2rem;">
+          <div class="card chart-card">
+            <h3 class="card-title">Evolução do Mix de Ocupação — Horas de Quadra (6 Meses)</h3>
+            <div class="chart-container" style="height: 240px;">
+              <canvas id="chart-mix-history"></canvas>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Matriz do Mix de Ocupação (Planejado vs. Real)</h3>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Tipo de Hora</th>
+                    <th class="text-center">Meta (%)</th>
+                    <th class="text-center">Real Mês (%)</th>
+                    <th class="text-right">Horas</th>
+                    <th class="text-right">Desvio</th>
+                    <th class="text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="op-table-mix-rows">
+                  <tr>
+                    <td colspan="6" class="empty-state">Carregando matriz do mix...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- New Section 2: Valor/Hora Ocupada R$/h (Evolução 6 Meses vs Meta R$ 240/h + Tabela Comparativa) -->
+        <section class="charts-grid no-print" style="margin-bottom: 2rem;">
+          <div class="card chart-card">
+            <h3 class="card-title">Evolução da Rentabilidade por Hora Ocupada (6 Meses vs. Meta R$ 240,00/h)</h3>
+            <div class="chart-container" style="height: 240px;">
+              <canvas id="chart-revenue-per-hour-history"></canvas>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Comparativo de Valor/Hora Ocupada (R$/h Planejado vs. Real)</h3>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Modalidade</th>
+                    <th class="text-right">Planejado/h</th>
+                    <th class="text-right">Real Bruto/h</th>
+                    <th class="text-right">Real Líq. Arena/h</th>
+                    <th class="text-right">Desvio Bruto</th>
+                    <th>Diagnóstico de Ocupação</th>
+                  </tr>
+                </thead>
+                <tbody id="op-table-hourly-rate-rows">
+                  <tr>
+                    <td colspan="6" class="empty-state">Carregando comparativo R$/h...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       </div>
 
       <!-- Section: Relatórios Financeiros -->

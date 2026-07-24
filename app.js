@@ -1667,9 +1667,10 @@ async function loadOperationalReports() {
     const firstMonth = historicMonths[0].monthStart;
     const lastMonth = historicMonths[historicMonths.length - 1].monthStart;
 
-    const [histSubData, histPaidVendasData] = await Promise.all([
+    const [histSubData, histPaidVendasData, histEffData] = await Promise.all([
       supabaseSelect('vw_mt_ticket_medio_subcategoria_pago_mes', `select=mes,valor_liquido_total&mes=gte.${firstMonth}&mes=lte.${lastMonth}`),
-      supabaseSelect('mt_faturamento_vendas', `select=customer_code,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&tipo=neq.refund`)
+      supabaseSelect('mt_faturamento_vendas', `select=customer_code,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&tipo=neq.refund`),
+      supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=gte.${firstMonth}&mes=lte.${lastMonth}`)
     ]);
 
     // Aggregate revenue by month
@@ -1754,9 +1755,256 @@ async function loadOperationalReports() {
     renderChartOccupancyHistory(monthsLabels, occupancyHistoryPct);
     renderChartTicketHistory(monthsLabels, ticketMedioHistory);
 
+    // Render new Mix & Hourly Rate sections
+    renderMixMatrix(effData);
+    renderHourlyRateComparison(effData);
+    renderChartMixHistory(historicMonths, histEffData);
+    renderChartRevenuePerHourHistory(historicMonths, histEffData);
+
   } catch (err) {
     debugError('Erro ao carregar relatórios operacionais', err);
   }
+}
+
+// ---- Mix Matrix & Hourly Rate Tables & Charts ----
+
+function renderMixMatrix(effData) {
+  const rowsEl = document.getElementById('op-table-mix-rows');
+  if (!rowsEl) return;
+
+  let totalHours = 0;
+  effData.forEach(d => {
+    const tipo = (d.tipo_operacional || '').toLowerCase();
+    if (!tipo.includes('manutenção') && !tipo.includes('bloqueio') && !tipo.includes('manutencao')) {
+      totalHours += parseFloat(d.horas_ocupadas) || 0;
+    }
+  });
+
+  const MIX_TARGETS = [
+    { key: 'Locação - Quadra Avulsa', label: 'Locação Avulsa', targetPct: 5.0 },
+    { key: 'Aulas - Adulto - Grupo', label: 'Aulas de Grupo (4 al)', targetPct: 40.0 },
+    { key: 'Aulas - Adulto - Individual', label: 'Aulas Individuais', targetPct: 20.0 },
+    { key: 'Aulas - Adulto - Dupla', label: 'Aulas em Dupla', targetPct: 15.0 },
+    { key: 'Locação - Reserva Mensal', label: 'Mensalistas Fixos', targetPct: 10.0 },
+    { key: 'Aulas - Adulto - Trio', label: 'Aulas em Trio', targetPct: 10.0 }
+  ];
+
+  if (!effData || effData.length === 0) {
+    rowsEl.innerHTML = `<tr><td colspan="6" class="empty-state">Sem dados de mix para este mês.</td></tr>`;
+    return;
+  }
+
+  rowsEl.innerHTML = MIX_TARGETS.map(t => {
+    const item = effData.find(d => d.tipo_operacional === t.key);
+    const hrs = item ? parseFloat(item.horas_ocupadas) || 0 : 0;
+    const realPct = totalHours > 0 ? (hrs / totalHours) * 100 : 0;
+    const desvio = realPct - t.targetPct;
+    const desvioStr = (desvio >= 0 ? '+' : '') + desvio.toFixed(1).replace('.', ',') + 'pp';
+
+    let badgeHtml = '';
+    if (desvio >= 10) {
+      badgeHtml = `<span style="background:rgba(255,159,28,0.18);color:#ff9f1c;padding:3px 8px;border-radius:12px;font-size:0.72rem;font-weight:600;">[MUITO ACIMA]</span>`;
+    } else if (desvio <= -10) {
+      badgeHtml = `<span style="background:rgba(230,57,70,0.18);color:#e63946;padding:3px 8px;border-radius:12px;font-size:0.72rem;font-weight:600;">[MUITO ABAIXO]</span>`;
+    } else if (desvio <= -3) {
+      badgeHtml = `<span style="background:rgba(230,57,70,0.12);color:#e63946;padding:3px 8px;border-radius:12px;font-size:0.72rem;">[ABAIXO]</span>`;
+    } else if (desvio >= 3) {
+      badgeHtml = `<span style="background:rgba(255,159,28,0.12);color:#ff9f1c;padding:3px 8px;border-radius:12px;font-size:0.72rem;">[ACIMA]</span>`;
+    } else {
+      badgeHtml = `<span style="background:rgba(46,196,182,0.18);color:#2ec4b6;padding:3px 8px;border-radius:12px;font-size:0.72rem;font-weight:600;">[NO ALVO]</span>`;
+    }
+
+    return `
+      <tr>
+        <td class="font-medium">${t.label}</td>
+        <td class="text-center">${t.targetPct.toFixed(1).replace('.', ',')}%</td>
+        <td class="text-center font-semibold">${realPct.toFixed(1).replace('.', ',')}%</td>
+        <td class="text-right">${hrs.toFixed(1)}h</td>
+        <td class="text-right" style="color: ${desvio >= 0 ? '#2ec4b6' : '#e63946'}; font-weight: 600;">${desvioStr}</td>
+        <td class="text-center">${badgeHtml}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderHourlyRateComparison(effData) {
+  const rowsEl = document.getElementById('op-table-hourly-rate-rows');
+  if (!rowsEl) return;
+
+  const HOURLY_RATE_TARGETS = [
+    { key: 'Aulas - Adulto - Grupo', label: 'Grupo (4 alunos)', plannedGross: 335.0, isLesson: true, diag: 'Média de ~2,2 alunos por turma' },
+    { key: 'Aulas - Adulto - Trio', label: 'Trio (3 alunos)', plannedGross: 296.0, isLesson: true, diag: 'Média de ~2,5 alunos por turma' },
+    { key: 'Aulas - Adulto - Dupla', label: 'Dupla (2 alunos)', plannedGross: 215.0, isLesson: true, diag: 'Turmas incompletas (1 aluno) ou descontos' },
+    { key: 'Aulas - Adulto - Individual', label: 'Individual (1 aluno)', plannedGross: 180.0, isLesson: true, diag: 'Desconto de Hora Light (12% off-peak)' },
+    { key: 'Locação - Quadra Avulsa', label: 'Locação Avulsa', plannedGross: 100.0, isLesson: false, diag: 'Concessão de cupons de 1ª reserva' },
+    { key: 'Locação - Reserva Mensal', label: 'Mensalistas Fixos', plannedGross: 90.0, isLesson: false, diag: 'Bate 100% com o planejado' }
+  ];
+
+  if (!effData || effData.length === 0) {
+    rowsEl.innerHTML = `<tr><td colspan="6" class="empty-state">Sem dados comparativos R$/h para este mês.</td></tr>`;
+    return;
+  }
+
+  let totalHoursSum = 0;
+  let totalFatBrutoSum = 0;
+  let totalFatLiqArenaSum = 0;
+
+  const rowsHtml = HOURLY_RATE_TARGETS.map(t => {
+    const item = effData.find(d => d.tipo_operacional === t.key);
+    const hrs = item ? parseFloat(item.horas_ocupadas) || 0 : 0;
+    const fat = item ? parseFloat(item.valor_faturado) || 0 : 0;
+
+    totalHoursSum += hrs;
+    totalFatBrutoSum += fat;
+
+    const realGross = hrs > 0 ? fat / hrs : 0;
+    const realNet = t.isLesson ? realGross * (1 - currentCommissionRate / 100) : realGross;
+    const fatLiqArena = hrs * realNet;
+    totalFatLiqArenaSum += fatLiqArena;
+
+    const desvioBruto = realGross - t.plannedGross;
+    const desvioStr = (desvioBruto >= 0 ? '+' : '') + formatCurrency(desvioBruto);
+
+    return `
+      <tr>
+        <td class="font-medium">${t.label}</td>
+        <td class="text-right">${formatCurrency(t.plannedGross)}</td>
+        <td class="text-right font-semibold">${formatCurrency(realGross)}</td>
+        <td class="text-right">${formatCurrency(realNet)}</td>
+        <td class="text-right" style="color: ${desvioBruto >= 0 ? '#2ec4b6' : '#e63946'}; font-weight: 600;">${desvioStr}</td>
+        <td style="font-size: 0.8rem; color: rgba(241,244,224,0.65);">${t.diag}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const overallRealGross = totalHoursSum > 0 ? totalFatBrutoSum / totalHoursSum : 0;
+  const overallRealNet = totalHoursSum > 0 ? totalFatLiqArenaSum / totalHoursSum : 0;
+  const overallDesvioBruto = overallRealGross - 240.0;
+  const overallDesvioStr = (overallDesvioBruto >= 0 ? '+' : '') + formatCurrency(overallDesvioBruto);
+
+  const totalRowHtml = `
+    <tr style="border-top: 2px solid rgba(241, 244, 224, 0.2); font-weight: bold; background: rgba(255, 255, 255, 0.04);">
+      <td>TOTAL / MÉDIA PONDERADA</td>
+      <td class="text-right">${formatCurrency(240.0)}</td>
+      <td class="text-right font-semibold">${formatCurrency(overallRealGross)}</td>
+      <td class="text-right">${formatCurrency(overallRealNet)}</td>
+      <td class="text-right" style="color: ${overallDesvioBruto >= 0 ? '#2ec4b6' : '#e63946'};">${overallDesvioStr}</td>
+      <td style="font-size: 0.8rem; color: #2ec4b6; font-weight: 600;">Impacto combinado do mix e ocupação</td>
+    </tr>
+  `;
+
+  rowsEl.innerHTML = rowsHtml + totalRowHtml;
+}
+
+function renderChartMixHistory(historicMonths, histEffData) {
+  destroyChart('mixHistory');
+  const canvas = document.getElementById('chart-mix-history');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const monthsMap = {};
+  histEffData.forEach(row => {
+    const k = row.mes ? row.mes.split('T')[0].substring(0, 7) : null;
+    if (!k) return;
+    if (!monthsMap[k]) monthsMap[k] = { totalHours: 0, byType: {} };
+    const hrs = parseFloat(row.horas_ocupadas) || 0;
+    const tipo = (row.tipo_operacional || '').toLowerCase();
+    if (!tipo.includes('manutenção') && !tipo.includes('bloqueio') && !tipo.includes('manutencao')) {
+      monthsMap[k].totalHours += hrs;
+      monthsMap[k].byType[row.tipo_operacional] = (monthsMap[k].byType[row.tipo_operacional] || 0) + hrs;
+    }
+  });
+
+  const labels = historicMonths.map(m => m.label);
+
+  const getSeriesData = (key) => historicMonths.map(({ monthStart: ms }) => {
+    const k = ms.substring(0, 7);
+    const mData = monthsMap[k];
+    if (!mData || mData.totalHours === 0) return 0;
+    const hrs = mData.byType[key] || 0;
+    return parseFloat(((hrs / mData.totalHours) * 100).toFixed(1));
+  });
+
+  chartInstances['mixHistory'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Locação Avulsa', data: getSeriesData('Locação - Quadra Avulsa'), borderColor: '#2ec4b6', backgroundColor: 'rgba(46,196,182,0.1)', tension: 0.3, fill: false },
+        { label: 'Aulas de Grupo', data: getSeriesData('Aulas - Adulto - Grupo'), borderColor: '#e63946', backgroundColor: 'rgba(230,57,70,0.1)', tension: 0.3, fill: false },
+        { label: 'Aulas Individuais', data: getSeriesData('Aulas - Adulto - Individual'), borderColor: '#4895ef', backgroundColor: 'rgba(72,149,239,0.1)', tension: 0.3, fill: false },
+        { label: 'Aulas em Dupla', data: getSeriesData('Aulas - Adulto - Dupla'), borderColor: '#ff9f1c', backgroundColor: 'rgba(255,159,28,0.1)', tension: 0.3, fill: false },
+        { label: 'Mensalistas', data: getSeriesData('Locação - Reserva Mensal'), borderColor: '#7209b7', backgroundColor: 'rgba(114,9,183,0.1)', tension: 0.3, fill: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { color: 'rgba(241,244,224,0.8)', font: { family: 'Hanken Grotesk', size: 10 } } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.raw}%` } }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(241,244,224,0.05)' }, ticks: { color: 'rgba(241,244,224,0.7)', font: { family: 'Hanken Grotesk' } } },
+        y: { grid: { color: 'rgba(241,244,224,0.05)' }, ticks: { color: 'rgba(241,244,224,0.7)', font: { family: 'Hanken Grotesk' }, callback: v => v + '%' } }
+      }
+    }
+  });
+}
+
+function renderChartRevenuePerHourHistory(historicMonths, histEffData) {
+  destroyChart('revenuePerHourHistory');
+  const canvas = document.getElementById('chart-revenue-per-hour-history');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const monthsMap = {};
+  histEffData.forEach(row => {
+    const k = row.mes ? row.mes.split('T')[0].substring(0, 7) : null;
+    if (!k) return;
+    if (!monthsMap[k]) monthsMap[k] = { totalHours: 0, totalFat: 0 };
+    const hrs = parseFloat(row.horas_ocupadas) || 0;
+    const fat = parseFloat(row.valor_faturado) || 0;
+    const tipo = (row.tipo_operacional || '').toLowerCase();
+    if (!tipo.includes('manutenção') && !tipo.includes('bloqueio') && !tipo.includes('manutencao')) {
+      monthsMap[k].totalHours += hrs;
+      monthsMap[k].totalFat += fat;
+    }
+  });
+
+  const labels = historicMonths.map(m => m.label);
+
+  const realSeriesData = historicMonths.map(({ monthStart: ms }) => {
+    const k = ms.substring(0, 7);
+    const mData = monthsMap[k];
+    if (!mData || mData.totalHours === 0) return 0;
+    return parseFloat((mData.totalFat / mData.totalHours).toFixed(2));
+  });
+
+  const targetSeriesData = historicMonths.map(() => 240.0);
+
+  chartInstances['revenuePerHourHistory'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Real Bruto R$/h', data: realSeriesData, borderColor: '#2ec4b6', backgroundColor: 'rgba(46,196,182,0.15)', tension: 0.3, fill: true },
+        { label: 'Meta Planejada (R$ 240,00/h)', data: targetSeriesData, borderColor: '#ffb703', borderDash: [6, 6], pointRadius: 0, fill: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { color: 'rgba(241,244,224,0.8)', font: { family: 'Hanken Grotesk', size: 11 } } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: R$ ${c.raw.toFixed(2)}/h` } }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(241,244,224,0.05)' }, ticks: { color: 'rgba(241,244,224,0.7)', font: { family: 'Hanken Grotesk' } } },
+        y: { grid: { color: 'rgba(241,244,224,0.05)' }, ticks: { color: 'rgba(241,244,224,0.7)', font: { family: 'Hanken Grotesk' }, callback: v => 'R$ ' + v } }
+      }
+    }
+  });
 }
 
 // ---- Chart Rendering Handlers ----
