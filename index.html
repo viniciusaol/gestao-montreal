@@ -668,6 +668,71 @@
             </div>
           </div>
         </section>
+
+        <!-- Section 3: Simulador de Impacto Financeiro (EBITDA & Lucro Líquido Real vs. Mix Planejado) -->
+        <section class="card no-print" style="margin-bottom: 2rem;">
+          <h3 class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
+            <span>Simulador de Impacto Financeiro (DRE Real vs. Mix Planejado)</span>
+            <span style="font-size: 0.8rem; font-weight: normal; color: rgba(241, 244, 224, 0.6);">Derivado da DRE Oficial do Mês</span>
+          </h3>
+
+          <!-- KPI Summary Row -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(46, 196, 182, 0.3); border-radius: 8px; padding: 1rem;">
+              <div style="font-size: 0.8rem; color: rgba(241, 244, 224, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">EBITDA (Resultado Operacional)</div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.5rem;">
+                <div>
+                  <span style="font-size: 0.9rem; color: rgba(241, 244, 224, 0.6);">Real: </span>
+                  <strong id="sim-ebitda-real" style="font-size: 1.1rem; color: #f1f4e0;">R$ 0,00</strong>
+                </div>
+                <div style="text-align: right;">
+                  <span style="font-size: 0.9rem; color: rgba(241, 244, 224, 0.6);">Imaginado: </span>
+                  <strong id="sim-ebitda-sim" style="font-size: 1.2rem; color: #2ec4b6;">R$ 0,00</strong>
+                </div>
+              </div>
+              <div style="margin-top: 0.5rem; text-align: right;">
+                <span id="sim-ebitda-badge" style="background: rgba(46, 196, 182, 0.18); color: #2ec4b6; padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold;">+R$ 0,00 (+0,0%)</span>
+              </div>
+            </div>
+
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(233, 196, 106, 0.3); border-radius: 8px; padding: 1rem;">
+              <div style="font-size: 0.8rem; color: rgba(241, 244, 224, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">Lucro Líquido do Exercício</div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.5rem;">
+                <div>
+                  <span style="font-size: 0.9rem; color: rgba(241, 244, 224, 0.6);">Real: </span>
+                  <strong id="sim-lucro-real" style="font-size: 1.1rem; color: #f1f4e0;">R$ 0,00</strong>
+                </div>
+                <div style="text-align: right;">
+                  <span style="font-size: 0.9rem; color: rgba(241, 244, 224, 0.6);">Imaginado: </span>
+                  <strong id="sim-lucro-sim" style="font-size: 1.2rem; color: #e9c46a;">R$ 0,00</strong>
+                </div>
+              </div>
+              <div style="margin-top: 0.5rem; text-align: right;">
+                <span id="sim-lucro-badge" style="background: rgba(233, 196, 106, 0.18); color: #e9c46a; padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold;">+R$ 0,00 (+0,0%)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- DRE Comparativa Table -->
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Categoria / Conta DRE</th>
+                  <th class="text-right">Real DRE</th>
+                  <th class="text-right">Simulado Mix</th>
+                  <th class="text-right">Variação (R$)</th>
+                  <th class="text-right">Variação (%)</th>
+                </tr>
+              </thead>
+              <tbody id="op-table-simulator-rows">
+                <tr>
+                  <td colspan="5" class="empty-state">Calculando simulação de EBITDA e Lucro Líquido...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
 
       <!-- Section: Relatórios Financeiros -->

@@ -1755,11 +1755,12 @@ async function loadOperationalReports() {
     renderChartOccupancyHistory(monthsLabels, occupancyHistoryPct);
     renderChartTicketHistory(monthsLabels, ticketMedioHistory);
 
-    // Render new Mix & Hourly Rate sections
+    // Render new Mix, Hourly Rate & Simulator sections
     renderMixMatrix(effData);
     renderHourlyRateComparison(effData);
     renderChartMixHistory(historicMonths, histEffData);
     renderChartRevenuePerHourHistory(historicMonths, histEffData);
+    renderOperationalSimulator(`${year}-${month}`, effData);
 
   } catch (err) {
     debugError('Erro ao carregar relatórios operacionais', err);
@@ -2001,10 +2002,149 @@ function renderChartRevenuePerHourHistory(historicMonths, histEffData) {
       },
       scales: {
         x: { grid: { color: 'rgba(241,244,224,0.05)' }, ticks: { color: 'rgba(241,244,224,0.7)', font: { family: 'Hanken Grotesk' } } },
-        y: { grid: { color: 'rgba(241,244,224,0.05)' }, ticks: { color: 'rgba(241,244,224,0.7)', font: { family: 'Hanken Grotesk' }, callback: v => 'R$ ' + v } }
-      }
+let cachedDreData = null;
+
+function renderOperationalSimulator(monthKey, effData) {
+  const rowsEl = document.getElementById('op-table-simulator-rows');
+  if (!rowsEl) return;
+
+  const dreMonthData = cachedDreData && cachedDreData[monthKey] ? cachedDreData[monthKey] : null;
+
+  // Baseline DRE values (fallback to July 2026 baseline if DRE for that month is not cached yet)
+  const realRecBruta = dreMonthData && dreMonthData.receitaBruta > 0 ? dreMonthData.receitaBruta : 125661.44;
+  const realImpostos = dreMonthData && dreMonthData.impostos > 0 ? dreMonthData.impostos : 4768.74;
+  const realRecLiquida = dreMonthData && dreMonthData.receitaLiquida > 0 ? dreMonthData.receitaLiquida : 120892.70;
+  const realCogs = dreMonthData ? dreMonthData.cogs : 2128.19;
+  const realComissao = dreMonthData && dreMonthData.comissao > 0 ? dreMonthData.comissao : 42870.78;
+  const realEnergia = dreMonthData && dreMonthData.energia > 0 ? dreMonthData.energia : 1672.73;
+  const realTaxas = dreMonthData && dreMonthData.taxasProcessamento > 0 ? dreMonthData.taxasProcessamento : 3161.96;
+  const realLucroBruto = dreMonthData && dreMonthData.lucroBruto > 0 ? dreMonthData.lucroBruto : 71059.04;
+  const realDespOp = dreMonthData && dreMonthData.despesasOperacionais > 0 ? dreMonthData.despesasOperacionais : 40986.15;
+  const realEbitda = dreMonthData && dreMonthData.ebitda > 0 ? dreMonthData.ebitda : 30072.89;
+  const realDepreciacao = dreMonthData ? dreMonthData.depreciacao : 7666.67;
+  const realEbit = dreMonthData && dreMonthData.ebit > 0 ? dreMonthData.ebit : 22406.22;
+  const realIr = dreMonthData && dreMonthData.ir > 0 ? dreMonthData.ir : 198.70;
+  const realLucroLiquido = dreMonthData && dreMonthData.lucroLiquido > 0 ? dreMonthData.lucroLiquido : 22207.52;
+
+  // Calculate Total Occupied Hours & Real Court Revenue from effData
+  let totalHours = 0;
+  let realCourtGrossRev = 0;
+
+  (effData || []).forEach(d => {
+    const hrs = parseFloat(d.horas_ocupadas) || 0;
+    const fat = parseFloat(d.valor_faturado) || 0;
+    const tipo = (d.tipo_operacional || '').toLowerCase();
+    if (!tipo.includes('manutenção') && !tipo.includes('bloqueio') && !tipo.includes('manutencao')) {
+      totalHours += hrs;
+      realCourtGrossRev += fat;
     }
   });
+
+  // Target Mix Rates & Hours
+  const simGrupoFat = (totalHours * 0.40) * 335.0;
+  const simIndivFat = (totalHours * 0.20) * 180.0;
+  const simDuplaFat = (totalHours * 0.15) * 215.0;
+  const simTrioFat  = (totalHours * 0.10) * 296.0;
+  const simMensalFat = (totalHours * 0.10) * 90.0;
+  const simAvulsaFat = (totalHours * 0.05) * 100.0;
+
+  const simCourtGrossRev = simGrupoFat + simIndivFat + simDuplaFat + simTrioFat + simMensalFat + simAvulsaFat;
+  const simLessonGrossRev = simGrupoFat + simIndivFat + simDuplaFat + simTrioFat;
+
+  // Non-court revenue (Lanchonete/Outros)
+  const nonCourtRev = Math.max(0, realRecBruta - (realCourtGrossRev || 120159.19));
+  const simRecBruta = simCourtGrossRev + nonCourtRev;
+
+  // Variable Rates derived from Real DRE
+  const taxRate = realRecBruta > 0 ? (realImpostos / realRecBruta) : 0.03795;
+  const procFeeRate = realRecBruta > 0 ? (realTaxas / realRecBruta) : 0.02516;
+  const irRate = realRecBruta > 0 ? (realIr / realRecBruta) : 0.00158;
+
+  const simImpostos = simRecBruta * taxRate;
+  const simRecLiquida = simRecBruta - simImpostos;
+  const simCogs = realCogs; // Fixed
+  const simComissao = simLessonGrossRev * (currentCommissionRate / 100);
+  const simEnergia = realEnergia; // Fixed
+  const simTaxas = simRecBruta * procFeeRate;
+
+  const simLucroBruto = simRecLiquida - simCogs - simComissao - simEnergia - simTaxas;
+  const simDespOp = realDespOp; // Fixed
+  const simEbitda = simLucroBruto - simDespOp;
+  const simDepreciacao = realDepreciacao; // Fixed
+  const simEbit = simEbitda - simDepreciacao;
+  const simIr = simRecBruta * irRate;
+  const simLucroLiquido = simEbit - simIr;
+
+  // Update KPI Summaries
+  const ebitdaDiff = simEbitda - realEbitda;
+  const ebitdaPct = realEbitda > 0 ? (ebitdaDiff / realEbitda) * 100 : 0;
+  const ebitdaBadgeStr = `${ebitdaDiff >= 0 ? '+' : ''}${formatCurrency(ebitdaDiff)} (${ebitdaDiff >= 0 ? '+' : ''}${ebitdaPct.toFixed(1).replace('.', ',')}%)`;
+
+  const lucroDiff = simLucroLiquido - realLucroLiquido;
+  const lucroPct = realLucroLiquido > 0 ? (lucroDiff / realLucroLiquido) * 100 : 0;
+  const lucroBadgeStr = `${lucroDiff >= 0 ? '+' : ''}${formatCurrency(lucroDiff)} (${lucroDiff >= 0 ? '+' : ''}${lucroPct.toFixed(1).replace('.', ',')}%)`;
+
+  const elEbitdaReal = document.getElementById('sim-ebitda-real');
+  const elEbitdaSim = document.getElementById('sim-ebitda-sim');
+  const elEbitdaBadge = document.getElementById('sim-ebitda-badge');
+  const elLucroReal = document.getElementById('sim-lucro-real');
+  const elLucroSim = document.getElementById('sim-lucro-sim');
+  const elLucroBadge = document.getElementById('sim-lucro-badge');
+
+  if (elEbitdaReal) elEbitdaReal.textContent = formatCurrency(realEbitda);
+  if (elEbitdaSim) elEbitdaSim.textContent = formatCurrency(simEbitda);
+  if (elEbitdaBadge) elEbitdaBadge.textContent = ebitdaBadgeStr;
+  if (elLucroReal) elLucroReal.textContent = formatCurrency(realLucroLiquido);
+  if (elLucroSim) elLucroSim.textContent = formatCurrency(simLucroLiquido);
+  if (elLucroBadge) elLucroBadge.textContent = lucroBadgeStr;
+
+  // Render DRE Table Rows
+  const items = [
+    { title: 'Receita Bruta', real: realRecBruta, sim: simRecBruta, isHeader: false },
+    { title: 'Impostos (Simples Nacional)', real: -realImpostos, sim: -simImpostos, isHeader: false },
+    { title: 'Receita Líquida', real: realRecLiquida, sim: simRecLiquida, isHeader: true },
+    { title: 'CPV (Lanchonete)', real: -realCogs, sim: -simCogs, isHeader: false },
+    { title: 'Comissão Professores', real: -realComissao, sim: -simComissao, isHeader: false },
+    { title: 'Energia (Elétrica)', real: -realEnergia, sim: -simEnergia, isHeader: false },
+    { title: 'Taxas de processamento', real: -realTaxas, sim: -simTaxas, isHeader: false },
+    { title: 'Lucro Bruto', real: realLucroBruto, sim: simLucroBruto, isHeader: true },
+    { title: 'Despesas Operacionais Fixas', real: -realDespOp, sim: -simDespOp, isHeader: false },
+    { title: 'EBITDA', real: realEbitda, sim: simEbitda, isHeader: true, isHighlight: true },
+    { title: 'Depreciação (Quadra)', real: -realDepreciacao, sim: -simDepreciacao, isHeader: false },
+    { title: 'EBIT', real: realEbit, sim: simEbit, isHeader: true },
+    { title: 'Imposto de Renda (IR)', real: -realIr, sim: -simIr, isHeader: false },
+    { title: 'Lucro Líquido', real: realLucroLiquido, sim: simLucroLiquido, isHeader: true, isHighlightGold: true }
+  ];
+
+  rowsEl.innerHTML = items.map(row => {
+    const diff = row.sim - row.real;
+    const absReal = Math.abs(row.real);
+    const pct = absReal > 0 ? (diff / absReal) * 100 : 0;
+    const diffStr = (diff >= 0 ? '+' : '') + formatCurrency(diff);
+    const pctStr = (diff >= 0 ? '+' : '') + pct.toFixed(1).replace('.', ',') + '%';
+
+    let rowStyle = '';
+    let titleClass = '';
+    if (row.isHighlight) {
+      rowStyle = 'background: rgba(46,196,182,0.08); font-weight: bold; border-top: 1px solid rgba(46,196,182,0.3); border-bottom: 1px solid rgba(46,196,182,0.3);';
+    } else if (row.isHighlightGold) {
+      rowStyle = 'background: rgba(233,196,106,0.08); font-weight: bold; border-top: 1px solid rgba(233,196,106,0.3); border-bottom: 1px solid rgba(233,196,106,0.3);';
+    } else if (row.isHeader) {
+      rowStyle = 'font-weight: bold; background: rgba(255,255,255,0.03);';
+    } else {
+      titleClass = 'font-medium';
+    }
+
+    return `
+      <tr style="${rowStyle}">
+        <td class="${titleClass}">${row.title}</td>
+        <td class="text-right">${formatCurrency(row.real)}</td>
+        <td class="text-right font-semibold">${formatCurrency(row.sim)}</td>
+        <td class="text-right" style="color: ${diff >= 0 ? '#2ec4b6' : '#e63946'}; font-weight: 600;">${diffStr}</td>
+        <td class="text-right" style="color: ${diff >= 0 ? '#2ec4b6' : '#e63946'};">${pctStr}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // ---- Chart Rendering Handlers ----
@@ -3481,6 +3621,9 @@ async function loadFinancialReports() {
     if (dreBody) {
       dreBody.innerHTML = dreBodyHtml;
     }
+
+    // Cache DRE data globally for simulator access
+    cachedDreData = dreData;
 
     // 6. Register collapse event handlers for both DFC and DRE
     document.querySelectorAll('#fin-dfc-table .flow-header-row').forEach(row => {
