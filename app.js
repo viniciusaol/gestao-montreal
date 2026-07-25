@@ -2900,8 +2900,8 @@ async function loadFinancialReports() {
 
     const procfyParams = `or=(and(due_date.gte.${firstMonth},due_date.lte.${projectionEnd}),and(paid.eq.false,due_date.lt.${firstMonth}))`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
-    const salesParams = `select=valor_faturamento,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
-    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))`;
+    const salesParams = `select=valor_faturamento,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&order=pay_date.asc`;
+    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))&order=booking_date.asc`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
     const voucherParams = `description=ilike.*INTENSIV*&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
