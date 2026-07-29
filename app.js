@@ -958,6 +958,7 @@ function renderDashboardUI() {
   let globalLocacoesVal = 0;
   let globalConsumosVal = 0;
   let globalVoucherComissionavel = 0; // Vouchers de intensivão com professor identificado
+  let globalAulasAvulsasBalcaoVal = 0; // Aulas avulsas de balcão categorizadas equivocadamente como locação
 
   const salesData = currentSalesData || [];
   salesData.forEach(row => {
@@ -981,11 +982,16 @@ function renderDashboardUI() {
       return;
     }
 
-    const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('tenis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
-    const isRental = cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva');
+    const hasAulaInDesc = desc.includes('aula');
+    const isLesson = hasAulaInDesc || cat === 'aulas' || desc.includes('tênis') || desc.includes('tenis') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
+    const isRental = !hasAulaInDesc && (cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva'));
 
-    if (isLesson) {
-      // Already handled by globalComissionableBase
+    if (hasAulaInDesc && cat === 'locação') {
+      // Venda avulsa no balcão cuja descrição contém "AULA", mas a categoria interna do Tiebreak veio como "Locação".
+      // Direciona automaticamente para o faturamento de Aulas Comissionáveis.
+      globalAulasAvulsasBalcaoVal += val;
+    } else if (isLesson) {
+      // Já contabilizado por competência na grade global (globalComissionableBase)
     } else if (isRental) {
       globalLocacoesVal += val;
     } else {
@@ -993,9 +999,9 @@ function renderDashboardUI() {
     }
   });
 
-  const globalComissionableVal = globalComissionableBase + globalVoucherComissionavel;
+  const globalComissionableVal = globalComissionableBase + globalVoucherComissionavel + globalAulasAvulsasBalcaoVal;
   const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal);
-  debugLog(`[Conciliação] comissionableBase=${globalComissionableBase.toFixed(2)}, vouchers=${globalVoucherComissionavel.toFixed(2)}, total=${globalComissionableVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
+  debugLog(`[Conciliação] comissionableBase=${globalComissionableBase.toFixed(2)}, vouchers=${globalVoucherComissionavel.toFixed(2)}, avulsasBalcao=${globalAulasAvulsasBalcaoVal.toFixed(2)}, total=${globalComissionableVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
 
   // Update DOM elements for Global Cash Reconciliation Card
   const elGlobalComissionavel = document.getElementById('global-rec-comissionavel');
