@@ -5771,8 +5771,7 @@ function calculateAndRenderCurrentMonthProjection() {
       }
     });
 
-    const UNPAID_RECOVERY_RATE = 0.90;
-    totalProjCommission = round2(actualPaidCommission + (pendingCommissionBase * UNPAID_RECOVERY_RATE));
+    totalProjCommission = round2(actualPaidCommission);
   } else {
     // Para outros meses, utiliza o cálculo teórico do teto
     totalProjCommission = round2(tuitionGenerated * commissionRate);
