@@ -5794,13 +5794,19 @@ function calculateAndRenderCurrentMonthProjection() {
       )
       .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
 
-    if (alreadyPaidCommissionProcfy > 0) {
+    const alreadyPaidCommissionGlobal = (allGlobalPayoutsData || [])
+      .filter(p => p.reference_period && p.reference_period.startsWith(baseMonthPrefix))
+      .reduce((sum, p) => sum + (parseFloat(p.amount) || 0.0), 0.0);
+
+    const alreadyPaidCommissionTotal = Math.max(alreadyPaidCommissionProcfy, alreadyPaidCommissionGlobal);
+
+    if (alreadyPaidCommissionTotal > 0) {
       const originalP1 = remainingCommP1;
-      const p1Residual = Math.max(0.0, round2(originalP1 - alreadyPaidCommissionProcfy));
-      const overshoot = Math.max(0.0, round2(alreadyPaidCommissionProcfy - originalP1));
+      const p1Residual = Math.max(0.0, round2(originalP1 - alreadyPaidCommissionTotal));
+      const overshoot = Math.max(0.0, round2(alreadyPaidCommissionTotal - originalP1));
       
-      remainingCommP1 = 0.0;
-      remainingCommP2 = Math.max(0.0, round2((remainingCommP2 + p1Residual) - overshoot));
+      remainingCommP1 = p1Residual;
+      remainingCommP2 = Math.max(0.0, round2(remainingCommP2 - overshoot));
     }
   }
 
