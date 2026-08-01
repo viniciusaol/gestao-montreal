@@ -5799,7 +5799,17 @@ function calculateAndRenderCurrentMonthProjection() {
 
     const alreadyPaidCommissionTotal = Math.max(alreadyPaidCommissionProcfy, alreadyPaidCommissionGlobal);
 
-    if (alreadyPaidCommissionTotal > 0) {
+    const hasP1Payout = (allGlobalPayoutsData || []).some(p => p.reference_period && p.reference_period.startsWith(baseMonthPrefix) && p.period_type === 'ate_dia_20');
+    const hasP2Payout = (allGlobalPayoutsData || []).some(p => p.reference_period && p.reference_period.startsWith(baseMonthPrefix) && p.period_type === 'apos_dia_20');
+
+    if (hasP1Payout) {
+      remainingCommP1 = 0.0;
+    }
+    if (hasP2Payout) {
+      remainingCommP2 = 0.0;
+    }
+
+    if (alreadyPaidCommissionTotal > 0 && !hasP2Payout) {
       const originalP1 = remainingCommP1;
       const p1Residual = Math.max(0.0, round2(originalP1 - alreadyPaidCommissionTotal));
       const overshoot = Math.max(0.0, round2(alreadyPaidCommissionTotal - originalP1));
