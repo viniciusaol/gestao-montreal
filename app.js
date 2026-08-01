@@ -1225,6 +1225,9 @@ if (formLogin) {
         email: sessionData.user.email
       }));
 
+      // Ensure app wrapper is visible and login overlay is hidden
+      checkSession();
+
       // Populate professors dynamically
       await populateProfessors();
 
@@ -6230,7 +6233,6 @@ function calculateAndRenderCurrentMonthProjection() {
       `).join('');
     }
     upcomingTbody.innerHTML = upcomingHtml;
-  }
   } catch (err) {
     console.error("Erro na projeção diária:", err);
     const tbody = document.getElementById('fin-proj-current-body');
