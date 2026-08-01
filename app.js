@@ -5517,8 +5517,8 @@ function calculateAndRenderCurrentMonthProjection() {
   }
   const totalBaseFaturamento = localCredit + localTarjeta + localDebit + localEfectivo + localTransfer + onlineTotal;
   const totalBaseD30 = localCredit + localTarjeta + onlineCredit;
-  const baseD30Ratio = totalBaseFaturamento > 0 ? (totalBaseD30 / totalBaseFaturamento) : 0.70;
-  const baseD0Ratio = 1 - baseD30Ratio;
+  const baseD30Ratio = 0.70; // 70% Cartão D-30
+  const baseD0Ratio = 0.30;  // 30% Pix/Débito D-0
 
   // ── PREV MONTH (base for projection) ──────────────────────────────
 
