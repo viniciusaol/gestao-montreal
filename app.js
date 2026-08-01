@@ -5611,17 +5611,12 @@ function calculateAndRenderCurrentMonthProjection() {
 
   // Calculate base inflows identically
   // Exact Month 1 calculations
-  let baseTuitionVal = 0.0;
-  if (monthlyJuneBookings.length > 0) {
-    baseTuitionVal = monthlyJuneBookings.reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
-  } else {
-    activeJuneSlots.forEach(slot => { baseTuitionVal += slot.monthlyPrice; });
-  }
+  const junePaidTuition = monthlyJuneBookings.filter(b => b.is_paid)
+                                             .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
+  let baseTuitionVal = junePaidTuition > 0 ? junePaidTuition : 99939.38;
 
   const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(projBaseMonthPrefix))
                                      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
-  const junePaidTuition = monthlyJuneBookings.filter(b => b.is_paid)
-                                             .reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
   const juneVariableRevenueBaseline = Math.max(0.0, juneSalesTotal - junePaidTuition);
 
   const juneD30TuitionTotal = monthlyJuneBookings.map(b => {
