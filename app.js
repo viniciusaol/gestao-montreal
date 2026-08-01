@@ -5771,52 +5771,30 @@ function calculateAndRenderCurrentMonthProjection() {
       }
     });
 
-    totalProjCommission = round2(actualPaidCommission);
+    const expectedMonthCommission = round2(tuitionGenerated * commissionRate);
+    totalProjCommission = Math.max(actualPaidCommission, expectedMonthCommission);
   } else {
-    // Para outros meses, utiliza o cálculo teórico do teto
     totalProjCommission = round2(tuitionGenerated * commissionRate);
   }
 
-  // Divisão 70% no dia 20 e 30% no dia 30
+  // Divisão 70% no dia 20 e 30% no fim do mês
   let remainingCommP1 = round2(totalProjCommission * 0.70);
   let remainingCommP2 = round2(totalProjCommission * 0.30);
 
-  // Deduct already paid commissions in Procfy for the current month to avoid double counting.
-  // If payments exist, P1 is assumed complete (any unpaid residual is pushed to P2 on day 30).
-  if (isCurrentRealMonth) {
-    const alreadyPaidCommissionProcfy = allProcfyData
-      .filter(tx => 
-        tx.paid &&
-        tx.due_date && tx.due_date.startsWith(baseMonthPrefix) &&
-        tx.transaction_type !== 'revenue' &&
-        (tx.category_name && (tx.category_name.toLowerCase().includes('comissão') || tx.category_name.toLowerCase().includes('comissao')))
-      )
-      .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0);
+  // Descontar repasses já efetuados em cada período (mt_pagamentos_professores)
+  const paidP1Amount = (allGlobalPayoutsData || [])
+    .filter(p => p.reference_period && p.reference_period.startsWith(baseMonthPrefix) && p.period_type === 'ate_dia_20')
+    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0.0), 0.0);
 
-    const alreadyPaidCommissionGlobal = (allGlobalPayoutsData || [])
-      .filter(p => p.reference_period && p.reference_period.startsWith(baseMonthPrefix))
-      .reduce((sum, p) => sum + (parseFloat(p.amount) || 0.0), 0.0);
+  const paidP2Amount = (allGlobalPayoutsData || [])
+    .filter(p => p.reference_period && p.reference_period.startsWith(baseMonthPrefix) && p.period_type === 'apos_dia_20')
+    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0.0), 0.0);
 
-    const alreadyPaidCommissionTotal = Math.max(alreadyPaidCommissionProcfy, alreadyPaidCommissionGlobal);
-
-    const hasP1Payout = (allGlobalPayoutsData || []).some(p => p.reference_period && p.reference_period.startsWith(baseMonthPrefix) && p.period_type === 'ate_dia_20');
-    const hasP2Payout = (allGlobalPayoutsData || []).some(p => p.reference_period && p.reference_period.startsWith(baseMonthPrefix) && p.period_type === 'apos_dia_20');
-
-    if (hasP1Payout) {
-      remainingCommP1 = 0.0;
-    }
-    if (hasP2Payout) {
-      remainingCommP2 = 0.0;
-    }
-
-    if (alreadyPaidCommissionTotal > 0 && !hasP2Payout) {
-      const originalP1 = remainingCommP1;
-      const p1Residual = Math.max(0.0, round2(originalP1 - alreadyPaidCommissionTotal));
-      const overshoot = Math.max(0.0, round2(alreadyPaidCommissionTotal - originalP1));
-      
-      remainingCommP1 = p1Residual;
-      remainingCommP2 = Math.max(0.0, round2(remainingCommP2 - overshoot));
-    }
+  if (paidP1Amount > 0) {
+    remainingCommP1 = Math.max(0.0, round2(remainingCommP1 - paidP1Amount));
+  }
+  if (paidP2Amount > 0) {
+    remainingCommP2 = Math.max(0.0, round2(remainingCommP2 - paidP2Amount));
   }
 
   let tuitionFees = 0.0;
@@ -6010,7 +5988,7 @@ function calculateAndRenderCurrentMonthProjection() {
     if (d === 20 && startDay <= 20) {
       outflowOps += remainingCommP1;
     }
-    if (d === 30) {
+    if (d === daysInMonth) {
       outflowOps += remainingCommP2;
       if (startDay > 20) {
         outflowOps += remainingCommP1;
@@ -6125,7 +6103,7 @@ function calculateAndRenderCurrentMonthProjection() {
     let commLabel = 'Comissões de Professores (Total Pendente)';
     
     if (isCurrentRealMonth) {
-      if (startDay > 30) {
+      if (startDay > daysInMonth) {
         overdueCommissions = remainingCommP1 + remainingCommP2;
       } else if (startDay > 20) {
         overdueCommissions = remainingCommP1;
@@ -6167,11 +6145,6 @@ function calculateAndRenderCurrentMonthProjection() {
   const upcomingTbody = document.getElementById('fin-proj-current-upcoming-rows');
   if (upcomingTbody) {
     let upcomingHtml = '';
-    const hasCommP1 = (startDay <= 20) && remainingCommP1 > 0;
-    const hasCommP2 = (remainingCommP2 + (startDay > 20 ? remainingCommP1 : 0.0)) > 0;
-    
-    let pendingCommissions = 0.0;
-    if (!isCurrentRealMonth) {
       pendingCommissions = calculateGlobalPendingCommissionsForMonth(year, month);
     }
     
