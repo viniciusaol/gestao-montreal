@@ -6148,6 +6148,11 @@ function calculateAndRenderCurrentMonthProjection() {
   const upcomingTbody = document.getElementById('fin-proj-current-upcoming-rows');
   if (upcomingTbody) {
     let upcomingHtml = '';
+    const hasCommP1 = (startDay <= 20) && remainingCommP1 > 0;
+    const hasCommP2 = (startDay <= daysInMonth) && remainingCommP2 > 0;
+    
+    let pendingCommissions = 0.0;
+    if (!isCurrentRealMonth) {
       pendingCommissions = calculateGlobalPendingCommissionsForMonth(year, month);
     }
     
@@ -6167,19 +6172,19 @@ function calculateAndRenderCurrentMonthProjection() {
         if (hasCommP1 && day >= 20 && !commP1Added) {
           rows.push({
             date: `${year}-${month}-20`,
-            name: 'Comissões de Professores (1º Período)',
+            name: 'Comissões de Professores (1º Período - 70%)',
             flow: 'Operação',
             amount: remainingCommP1
           });
           commP1Added = true;
         }
         
-        if (hasCommP2 && day >= 30 && !commP2Added) {
+        if (hasCommP2 && day >= daysInMonth && !commP2Added) {
           rows.push({
-            date: `${year}-${month}-30`,
-            name: 'Comissões de Professores (2º Período)',
+            date: `${year}-${month}-${String(daysInMonth).padStart(2, '0')}`,
+            name: 'Comissões de Professores (2º Período - 30%)',
             flow: 'Operação',
-            amount: remainingCommP2 + (startDay > 20 ? remainingCommP1 : 0.0)
+            amount: remainingCommP2
           });
           commP2Added = true;
         }
@@ -6195,17 +6200,17 @@ function calculateAndRenderCurrentMonthProjection() {
       if (hasCommP1 && !commP1Added) {
         rows.push({
           date: `${year}-${month}-20`,
-          name: 'Comissões de Professores (1º Período)',
+          name: 'Comissões de Professores (1º Período - 70%)',
           flow: 'Operação',
           amount: remainingCommP1
         });
       }
       if (hasCommP2 && !commP2Added) {
         rows.push({
-          date: `${year}-${month}-30`,
-          name: 'Comissões de Professores (2º Período)',
+          date: `${year}-${month}-${String(daysInMonth).padStart(2, '0')}`,
+          name: 'Comissões de Professores (2º Período - 30%)',
           flow: 'Operação',
-          amount: remainingCommP2 + (startDay > 20 ? remainingCommP1 : 0.0)
+          amount: remainingCommP2
         });
       }
       
@@ -6233,6 +6238,7 @@ function calculateAndRenderCurrentMonthProjection() {
       `).join('');
     }
     upcomingTbody.innerHTML = upcomingHtml;
+  }
   } catch (err) {
     console.error("Erro na projeção diária:", err);
     const tbody = document.getElementById('fin-proj-current-body');
