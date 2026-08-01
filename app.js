@@ -5612,7 +5612,11 @@ function calculateAndRenderCurrentMonthProjection() {
   // Calculate base inflows identically
   // Exact Month 1 calculations
   let baseTuitionVal = 0.0;
-  activeJuneSlots.forEach(slot => { baseTuitionVal += slot.monthlyPrice; });
+  if (monthlyJuneBookings.length > 0) {
+    baseTuitionVal = monthlyJuneBookings.reduce((sum, b) => sum + (parseFloat(b.booking_value) || 0.0), 0.0);
+  } else {
+    activeJuneSlots.forEach(slot => { baseTuitionVal += slot.monthlyPrice; });
+  }
 
   const juneSalesTotal = allSalesData.filter(s => s.pay_date && s.pay_date.startsWith(projBaseMonthPrefix))
                                      .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
