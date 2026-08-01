@@ -955,10 +955,9 @@ function renderDashboardUI() {
   }, 0);
 
   let globalTotalCaixaVal = 0;
+  let globalComissionableSalesVal = 0;
   let globalLocacoesVal = 0;
   let globalConsumosVal = 0;
-  let globalVoucherComissionavel = 0; // Vouchers de intensivão com professor identificado
-  let globalAulasAvulsasBalcaoVal = 0; // Aulas avulsas de balcão categorizadas equivocadamente como locação
 
   const salesData = currentSalesData || [];
   salesData.forEach(row => {
@@ -969,29 +968,13 @@ function renderDashboardUI() {
     const cat = (row.categoria || '').toLowerCase();
     const prod = (row.produto_padronizado || '').toLowerCase();
 
-    // Voucher de intensivão: qualquer linha com "INTENSIV" vai para o bucket de voucher
-    // (inclui emissões, anulações e reemissões — o líquido é o valor correto)
     const isIntensivao = /INTENSIV/i.test(row.item_description || '');
-    if (isIntensivao) {
-      const voucherProf = parseVoucherProfessor(row.item_description || '');
-      if (voucherProf && val > 0) {
-        globalVoucherComissionavel += val; // voucher com professor identificado → comissionável
-      }
-      // anulações e vouchers sem professor → ficam em globalVoucherComissionavel como 0
-      // mas são retirados dos buckets de aula/locação/consumo (return abaixo)
-      return;
-    }
-
-    const hasAulaInDesc = desc.includes('aula');
-    const isLesson = hasAulaInDesc || cat === 'aulas' || desc.includes('tênis') || desc.includes('tenis') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
+    const hasAulaInDesc = desc.includes('aula') || desc.includes('tênis') || desc.includes('tenis') || desc.includes('kids') || desc.includes('baby');
+    const isLesson = isIntensivao || hasAulaInDesc || cat === 'aulas' || prod.includes('tênis') || prod.includes('aula');
     const isRental = !hasAulaInDesc && (cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva'));
 
-    if (hasAulaInDesc && cat === 'locação') {
-      // Venda avulsa no balcão cuja descrição contém "AULA", mas a categoria interna do Tiebreak veio como "Locação".
-      // Direciona automaticamente para o faturamento de Aulas Comissionáveis.
-      globalAulasAvulsasBalcaoVal += val;
-    } else if (isLesson) {
-      // Já contabilizado por competência na grade global (globalComissionableBase)
+    if (isLesson) {
+      globalComissionableSalesVal += val;
     } else if (isRental) {
       globalLocacoesVal += val;
     } else {
@@ -999,9 +982,9 @@ function renderDashboardUI() {
     }
   });
 
-  const globalComissionableVal = globalComissionableBase + globalVoucherComissionavel + globalAulasAvulsasBalcaoVal;
+  const globalComissionableVal = globalComissionableSalesVal;
   const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal);
-  debugLog(`[Conciliação] comissionableBase=${globalComissionableBase.toFixed(2)}, vouchers=${globalVoucherComissionavel.toFixed(2)}, avulsasBalcao=${globalAulasAvulsasBalcaoVal.toFixed(2)}, total=${globalComissionableVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
+  debugLog(`[Conciliação] comissionableSales=${globalComissionableSalesVal.toFixed(2)}, locacoes=${globalLocacoesVal.toFixed(2)}, consumos=${globalConsumosVal.toFixed(2)}, total=${globalTotalCaixaVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
 
   // Update DOM elements for Global Cash Reconciliation Card
   const elGlobalComissionavel = document.getElementById('global-rec-comissionavel');
