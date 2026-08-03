@@ -1443,14 +1443,6 @@ async function loadOperationalReports() {
       totalFaturamentoLiquido += parseFloat(item.valor_liquido_total) || 0;
     });
 
-    const paymentsResult = await supabaseSelect('mt_faturamento_pagamentos', `select=amount&payment_date=gte.${monthStart}&payment_date=lt.${nextMonthStart}`);
-    if (paymentsResult && paymentsResult.length > 0) {
-      const sumPmts = paymentsResult.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-      if (sumPmts > totalFaturamentoLiquido) {
-        totalFaturamentoLiquido = round2(sumPmts);
-      }
-    }
-
     // Calculate discounts from itemsData
     let totalDesconto = 0;
     let totalBruto = 0;
