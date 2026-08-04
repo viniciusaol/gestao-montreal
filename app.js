@@ -5959,6 +5959,16 @@ if (isCurrentRealMonth) {
       totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
     }
 
+    if (d === startDay) {
+      // Abater do dia de hoje as receitas que já caíram no banco hoje (pois já estão no Saldo Inicial)
+      const alreadyReceivedToday = round2(
+        allProcfyData
+          .filter(tx => tx.paid && tx.due_date && tx.due_date.startsWith(dayStr) && tx.transaction_type === 'revenue')
+          .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0)
+      );
+      totalInflowDay = round2(Math.max(0.0, totalInflowDay - alreadyReceivedToday));
+    }
+
     sumProjectedInflows += totalInflowDay;
 
     let outflowOps = round2(dayProvision + dayFees);
