@@ -5705,7 +5705,7 @@ function calculateAndRenderCurrentMonthProjection() {
   const d30Remaining = d30PlanilhaTotal > 0 ? totalImportedForRemainingDays : round2(d30Base * remainingRatio);
   const d0Remaining = round2(d0Base * remainingRatio);
 
-  const remainingToReceive = round2(d30Remaining + d0Remaining);
+  const remainingToReceive = round2(Math.max(0, fixedMonthTotal - alreadyReceived));
 
 // Exact Outflows matching Monthly DFC
 let totalProjCommission = 0.0;
