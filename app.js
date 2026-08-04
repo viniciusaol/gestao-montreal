@@ -6064,8 +6064,8 @@ if (isCurrentRealMonth) {
     const monthsFullBR = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const monthLabel = `${monthsFullBR[parseInt(month, 10) - 1]}/${year}`;
     
-    const dispRemainingToReceive = round2(sumProjectedInflows);
-    const dispFixedMonthTotal = round2(alreadyReceived + dispRemainingToReceive);
+    const dispFixedMonthTotal = fixedMonthTotal;
+    const dispRemainingToReceive = round2(Math.max(0, fixedMonthTotal - alreadyReceived));
     
     const pctReceived = dispFixedMonthTotal > 0 ? Math.round((alreadyReceived / dispFixedMonthTotal) * 100) : 0;
     summaryEl.innerHTML = `
