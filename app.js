@@ -5683,36 +5683,29 @@ function calculateAndRenderCurrentMonthProjection() {
   let totalInflow = round2(tuitionReceivedD0 + tuitionReceivedD30 + variableReceivedD0 + variableReceivedD30);
   let remainingD0ToReceive = tuitionReceivedD0 + variableReceivedD0;
 
-  // Ajuste do totalInflow e D-0 se houver agenda importada para conciliar com as entradas reais e futuras
+  // ── FIXATION & NON-DUPLICATION OF CASH INFLOWS ──────────────────────
   const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
-  
-  let totalImportedForRemainingDays = 0.0;
-  if (importedForMonth.length > 0) {
-    // Pegar apenas os recebíveis da agenda futura (do dia de hoje em diante)
-    totalImportedForRemainingDays = importedForMonth
-      .filter(r => {
-        const dNum = parseInt(r.data_liberacao.split('-')[2], 10);
-        return dNum >= startDay;
-      })
-      .reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
+  const d30PlanilhaTotal = importedForMonth.reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
 
-    if (isCurrentRealMonth) {
-      // Faturamento real acumulado no mês (Competência)
-      const actualRevenueAcum = allSalesData
-        .filter(s => s.pay_date && s.pay_date.startsWith(baseMonthPrefix))
-        .reduce((sum, s) => sum + (parseFloat(s.valor_faturamento) || 0.0), 0.0);
+  const d30Base = d30PlanilhaTotal > 0 ? d30PlanilhaTotal : round2(juneD30TuitionTotal + variableReceivedD30);
+  const totalProjectedRevenue = round2(tuitionGenerated + projectedVarRevenue);
+  const d0Base = round2(totalProjectedRevenue * baseD0Ratio);
 
-    const totalProjectedRevenue = tuitionGenerated + projectedVarRevenue;
-    const residualRevenue = Math.max(0, totalProjectedRevenue - actualRevenueAcum);
-    remainingD0ToReceive = round2(totalProjectedRevenue * 0.30);
-  }
-  
-  const remainingToReceiveOverride = round2(totalImportedForRemainingDays + remainingD0ToReceive);
-  totalInflow = round2(alreadyReceived + remainingToReceiveOverride);
-}
+  // Teto Fixo Total Estático de Agosto (R$ 125.668,23)
+  const fixedMonthTotal = round2(d30Base + d0Base);
 
-const fixedMonthTotal = totalInflow;
-const remainingToReceive = round2(Math.max(0, fixedMonthTotal - alreadyReceived));
+  // Cálculo do "Falta Receber" a partir de HOJE (dias restantes)
+  const elapsedRatio = Math.min(1.0, Math.max(0.0, (startDay - 1) / daysInMonth));
+  const remainingRatio = 1.0 - elapsedRatio;
+
+  const totalImportedForRemainingDays = importedForMonth
+    .filter(r => parseInt(r.data_liberacao.split('-')[2], 10) >= startDay)
+    .reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
+
+  const d30Remaining = d30PlanilhaTotal > 0 ? totalImportedForRemainingDays : round2(d30Base * remainingRatio);
+  const d0Remaining = round2(d0Base * remainingRatio);
+
+  const remainingToReceive = round2(d30Remaining + d0Remaining);
 
 // Exact Outflows matching Monthly DFC
 let totalProjCommission = 0.0;
