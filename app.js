@@ -5931,21 +5931,37 @@ if (isCurrentRealMonth) {
     tx.due_date >= todayStr && tx.due_date.startsWith(mKey)
   );
 
-  // Use hardcoded day-of-week weights (Sunday is usually slower)
-  const dowWeights = [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-
-  // Calcular peso total do mês e peso apenas dos dias restantes (startDay em diante)
-  let totalMonthWeight = 0;
+  // ── PACE & 2-BLOCK DYNAMIC PROJECTION MODEL ─────────────────────
+  // Block 1: Exact D30 Receivables Agenda (Imported from card settlement schedule)
+  // Block 2: Dynamic D0 Sales adjusted by Realized Performance Pace Ratio (Pace Ratio)
+  let elapsedMonthWeight = 0;
   let remainingDaysWeight = 0;
+  let totalMonthWeight = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
     const dateObj = new Date(dayStr + 'T00:00:00');
     const dow = dateObj.getDay();
     totalMonthWeight += dowWeights[dow];
+    if (d < startDay) elapsedMonthWeight += dowWeights[dow];
     if (d >= startDay) remainingDaysWeight += dowWeights[dow];
   }
-  // Fallback para evitar divisão por zero
   if (remainingDaysWeight <= 0) remainingDaysWeight = 1;
+  if (totalMonthWeight <= 0) totalMonthWeight = 1;
+
+  // Calculate Pace Ratio based on D0 performance achieved up to today vs expected
+  const d0ExpectedSoFar = round2(d0Base * (elapsedMonthWeight / totalMonthWeight));
+  const d0RealizedSoFar = round2(
+    (allProcfyData || [])
+      .filter(tx => tx.paid && tx.due_date && tx.due_date.startsWith(mKey) && tx.transaction_type === 'revenue')
+      .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0)
+  );
+
+  let paceRatio = 1.0;
+  if (d0ExpectedSoFar > 1000) {
+    paceRatio = d0RealizedSoFar / d0ExpectedSoFar;
+    // Bound paceRatio to reasonable range [0.5, 2.0]
+    paceRatio = Math.max(0.5, Math.min(2.0, paceRatio));
+  }
 
   // Loop day-by-day
   const dailyProjection = [];
@@ -5962,18 +5978,15 @@ if (isCurrentRealMonth) {
     
     let totalInflowDay = 0.0;
     
-    // Check if there is any imported receivables agenda for this month
+    // Check if there is any imported receivables agenda for this month (Block 1)
     const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
+    const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
     
-    if (importedForMonth.length > 0) {
-      // Use imported exact D-30 for this day + estimated proportional D-0 (Pix/Debit) for this day
-      const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
-      const dayD0 = includeInflows ? round2(remainingD0ToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
-      totalInflowDay = round2(dayD0 + importedForDay);
-    } else {
-      // Fallback: distribute remaining to receive proportionally over remaining days
-      totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
-    }
+    // Block 2: Proportional D0 with Dynamic Pace
+    const dayD0Base = (d0Base / totalMonthWeight) * dayWeight;
+    const dayD0Pace = includeInflows ? round2(dayD0Base * paceRatio) : 0.0;
+    
+    totalInflowDay = round2(importedForDay + dayD0Pace);
 
     if (d === startDay) {
       // Abater do dia de hoje as receitas que já caíram no banco hoje (pois já estão no Saldo Inicial)
