@@ -5701,6 +5701,7 @@ function calculateAndRenderCurrentMonthProjection() {
 
   // ── FIXATION & NON-DUPLICATION OF CASH INFLOWS ──────────────────────
   const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
+  const d30PlanilhaTotal = importedForMonth.reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
   const d30Base = round2(juneD30TuitionTotal + variableReceivedD30); // R$ 80.254,11
   const totalProjectedRevenue = round2(tuitionGenerated + projectedVarRevenue);
   const d0Base = round2(totalProjectedRevenue * baseD0Ratio); // R$ 43.324,31
