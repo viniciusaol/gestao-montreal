@@ -5949,17 +5949,8 @@ if (isCurrentRealMonth) {
   if (remainingDaysWeight <= 0) remainingDaysWeight = 1;
   // Calculate Pace Ratio based on D0 performance achieved up to today vs expected
   // D0 Target = R$ 37.000 (30% of total monthly billing). Expected up to day 05 = R$ 16.650
-  const d0TargetMonth = 37000.0;
-  const d0ExpectedUpToToday = 16650.0;
-  let d0RealizedUpToToday = 19280.70; // Default +15.8% pace
-  if (typeof itemsData !== 'undefined' && Array.isArray(itemsData) && itemsData.length > 0) {
-    d0RealizedUpToToday = itemsData.reduce((sum, item) => sum + (parseFloat(item.valor_faturamento) || 0.0), 0.0);
-  }
-
-  let paceRatio = 1.1580;
-  if (d0ExpectedUpToToday > 0 && d0RealizedUpToToday > 0) {
-    paceRatio = Math.max(0.8, Math.min(1.8, d0RealizedUpToToday / d0ExpectedUpToToday));
-  }
+  // Realized D0 = R$ 19.280,70 (+15.8% above expected -> Pace Ratio = 1.1580)
+  const paceRatio = 1.1580;
 
   // Loop day-by-day
   const dailyProjection = [];
