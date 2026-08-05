@@ -5952,7 +5952,7 @@ if (isCurrentRealMonth) {
   const d0TargetMonth = 37000.0;
   const d0ExpectedUpToToday = 16650.0;
   let d0RealizedUpToToday = 19280.70; // Default +15.8% pace
-  if (itemsData && itemsData.length > 0) {
+  if (typeof itemsData !== 'undefined' && Array.isArray(itemsData) && itemsData.length > 0) {
     d0RealizedUpToToday = itemsData.reduce((sum, item) => sum + (parseFloat(item.valor_faturamento) || 0.0), 0.0);
   }
 
