@@ -1516,17 +1516,33 @@ async function loadOperationalReports() {
     const opClientesLabel = opClientes ? opClientes.closest('.metric-info')?.querySelector('h3') : null;
     if (opClientesLabel) opClientesLabel.innerText = 'Clientes Faturados';
 
-    // Fetch unique active students (clase_colectiva): enrolled up to monthEnd
-    // Uses updated vw_mt_alunos_ativos_por_mes view, counting all fixed class students enrolled by monthEnd
-    const activeStudentsParams = `select=customer_code,entry_date&mes=gte.2026-06-01`;
-    const activeStudentsData = await supabaseSelect('vw_mt_alunos_ativos_por_mes', activeStudentsParams);
+    // Fetch unique active students for the selected month (monthStart)
+    // Counts students with valid, non-canceled class/tuition enrollment for the selected month specifically
+    const activeStudentsParams = `select=customer_code,entry_date&mes=eq.${monthStart}`;
+    let activeStudentsData = [];
+    try {
+      activeStudentsData = await supabaseSelect('vw_mt_alunos_ativos_por_mes', activeStudentsParams);
+    } catch (e) {
+      debugError('Erro ao buscar vw_mt_alunos_ativos_por_mes', e);
+    }
 
     const activeStudentsSet = new Set();
     activeStudentsData.forEach(row => {
-      if (row.customer_code && (!row.entry_date || row.entry_date <= monthEnd)) {
+      if (row.customer_code) {
         activeStudentsSet.add(row.customer_code);
       }
     });
+
+    // Also include students who have non-canceled lesson items for the selected month
+    itemsData.forEach(item => {
+      const cat = (item.categoria || '').toLowerCase();
+      const sub = (item.subcategoria || '').toLowerCase();
+      const desc = (item.item_description || '').toLowerCase();
+      if ((cat === 'aulas' || sub.includes('tênis') || desc.includes('tênis') || desc.includes('aula') || desc.includes('tarifa')) && item.customer_code) {
+        activeStudentsSet.add(item.customer_code);
+      }
+    });
+
     const totalActiveStudents = activeStudentsSet.size;
 
     // Render Acompanhamento de Metas Widget
