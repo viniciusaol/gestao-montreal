@@ -5934,6 +5934,7 @@ if (isCurrentRealMonth) {
   // ── PACE & 2-BLOCK DYNAMIC PROJECTION MODEL ─────────────────────
   // Block 1: Exact D30 Receivables Agenda (Imported from card settlement schedule)
   // Block 2: Dynamic D0 Sales adjusted by Realized Performance Pace Ratio (Pace Ratio)
+  const dowWeights = [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
   let elapsedMonthWeight = 0;
   let remainingDaysWeight = 0;
   let totalMonthWeight = 0;
