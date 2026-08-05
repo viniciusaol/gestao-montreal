@@ -5969,20 +5969,23 @@ if (isCurrentRealMonth) {
     
     // Block 1: Recebimentos D30 das Vendas do Mês Anterior (Julho)
     const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
-    let block1_D30 = 0.0;
-    if (importedForMonth.length > 0) {
-      block1_D30 = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
-    } else {
-      block1_D30 = includeInflows ? round2(d30Remaining * (dayWeight / remainingDaysWeight)) : 0.0;
-    }
     
-    // Block 2: Projeção de Vendas D0 do Próprio Mês Atual (Agosto) com Pace de Desempenho
-    let baseD0ExpectedDay = 504.55;
-    if (d >= 6 && d <= 10) baseD0ExpectedDay = 1850.0;
-    else if (d >= 11 && d <= 20) baseD0ExpectedDay = 555.0;
+    if (importedForMonth.length > 0) {
+      // Se há agenda de cartões importada (R$ 2.176,52), ela já contempla os cartões.
+      // O Bloco 2 adiciona apenas o saldo D0 Pix/Débito/Balcão com Pace Ratio (R$ 894,18).
+      const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
+      const dayD0PixPace = includeInflows ? round2((remainingD0ToReceive * paceRatio) * (dayWeight / remainingDaysWeight)) : 0.0;
+      totalInflowDay = round2(importedForDay + dayD0PixPace);
+    } else {
+      // Sem planilha importada: Bloco 1 (D30 estimado) + Bloco 2 (D0 Pace)
+      let baseD0ExpectedDay = 504.55;
+      if (d >= 6 && d <= 10) baseD0ExpectedDay = 1850.0;
+      else if (d >= 11 && d <= 20) baseD0ExpectedDay = 555.0;
 
-    const block2_D0_Pace = includeInflows ? round2(baseD0ExpectedDay * dayWeight * paceRatio) : 0.0;
-    totalInflowDay = round2(block1_D30 + block2_D0_Pace);
+      const dayD0Pace = includeInflows ? round2(baseD0ExpectedDay * dayWeight * paceRatio) : 0.0;
+      const dayD30Fallback = includeInflows ? round2(d30Remaining * (dayWeight / remainingDaysWeight)) : 0.0;
+      totalInflowDay = round2(dayD30Fallback + dayD0Pace);
+    }
 
     if (d === startDay) {
       // Abater do dia de hoje as receitas que já caíram no banco hoje (pois já estão no Saldo Inicial)
