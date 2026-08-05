@@ -5701,13 +5701,11 @@ function calculateAndRenderCurrentMonthProjection() {
 
   // ── FIXATION & NON-DUPLICATION OF CASH INFLOWS ──────────────────────
   const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
-  const d30PlanilhaTotal = importedForMonth.reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
-
-  const d30Base = d30PlanilhaTotal > 0 ? d30PlanilhaTotal : round2(juneD30TuitionTotal + variableReceivedD30);
+  const d30Base = round2(juneD30TuitionTotal + variableReceivedD30); // R$ 80.254,11
   const totalProjectedRevenue = round2(tuitionGenerated + projectedVarRevenue);
-  const d0Base = round2(totalProjectedRevenue * baseD0Ratio);
+  const d0Base = round2(totalProjectedRevenue * baseD0Ratio); // R$ 43.324,31
 
-  // Teto Fixo Total Estático de Agosto (R$ 125.668,23)
+  // Teto Fixo Total de Agosto (R$ 123.578,42)
   const fixedMonthTotal = round2(d30Base + d0Base);
 
   // Cálculo do "Falta Receber" a partir de HOJE (dias restantes)
