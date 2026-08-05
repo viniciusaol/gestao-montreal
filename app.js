@@ -5949,21 +5949,6 @@ if (isCurrentRealMonth) {
   if (remainingDaysWeight <= 0) remainingDaysWeight = 1;
   if (totalMonthWeight <= 0) totalMonthWeight = 1;
 
-  // Calculate Pace Ratio based on D0 performance achieved up to today vs expected
-  const d0ExpectedSoFar = round2(d0Base * (elapsedMonthWeight / totalMonthWeight));
-  const d0RealizedSoFar = round2(
-    (allProcfyData || [])
-      .filter(tx => tx.paid && tx.due_date && tx.due_date.startsWith(mKey) && tx.transaction_type === 'revenue')
-      .reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0.0), 0.0)
-  );
-
-  let paceRatio = 1.0;
-  if (d0ExpectedSoFar > 1000) {
-    paceRatio = d0RealizedSoFar / d0ExpectedSoFar;
-    // Bound paceRatio to reasonable range [0.5, 2.0]
-    paceRatio = Math.max(0.5, Math.min(2.0, paceRatio));
-  }
-
   // Loop day-by-day
   const dailyProjection = [];
   let sumProjectedInflows = 0.0;
@@ -5981,13 +5966,16 @@ if (isCurrentRealMonth) {
     
     // Check if there is any imported receivables agenda for this month (Block 1)
     const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
-    const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
     
-    // Block 2: Proportional D0 with Dynamic Pace
-    const dayD0Base = (d0Base / totalMonthWeight) * dayWeight;
-    const dayD0Pace = includeInflows ? round2(dayD0Base * paceRatio) : 0.0;
-    
-    totalInflowDay = round2(importedForDay + dayD0Pace);
+    if (importedForMonth.length > 0) {
+      // Block 1 (Exact imported D30) + Block 2 (Proportional D0 remaining)
+      const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
+      const dayD0 = includeInflows ? round2(remainingD0ToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
+      totalInflowDay = round2(importedForDay + dayD0);
+    } else {
+      // Fallback: distribute remaining to receive proportionally over remaining days
+      totalInflowDay = includeInflows ? round2(remainingToReceive * (dayWeight / remainingDaysWeight)) : 0.0;
+    }
 
     if (d === startDay) {
       // Abater do dia de hoje as receitas que já caíram no banco hoje (pois já estão no Saldo Inicial)
