@@ -6103,27 +6103,27 @@ if (isCurrentRealMonth) {
     const monthsFullBR = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const monthLabel = `${monthsFullBR[parseInt(month, 10) - 1]}/${year}`;
     
-    const dispFixedMonthTotal = fixedMonthTotal;
-    const dispRemainingToReceive = remainingToReceive;
+    const dispRemainingToReceive = round2(sumProjectedInflows);
+    const dispFixedMonthTotal = round2(alreadyReceived + dispRemainingToReceive);
     
     const pctReceived = dispFixedMonthTotal > 0 ? Math.round((alreadyReceived / dispFixedMonthTotal) * 100) : 0;
     summaryEl.innerHTML = `
       <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; padding:0.75rem 1rem;
                   background:rgba(255,255,255,0.04); border-radius:10px; border:1px solid rgba(255,255,255,0.08);">
         <div style="flex:1; min-width:140px; text-align:center;">
-          <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">🏆 Teto Fixo — ${monthLabel}</div>
+          <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">🏆 Total Caixa Projetado — ${monthLabel}</div>
           <div style="font-size:1.1rem; font-weight:700; color:#e0e0e0; margin-top:2px;">${formatCurrency(dispFixedMonthTotal)}</div>
-          <div style="font-size:0.65rem; color:#888; margin-top:1px;">D0 ${monthLabel} + D30 mês anterior</div>
+          <div style="font-size:0.65rem; color:#888; margin-top:1px;">Já Recebido + A Receber Tabela</div>
         </div>
         <div style="flex:1; min-width:140px; text-align:center;">
           <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">✅ Já Recebido</div>
           <div style="font-size:1.1rem; font-weight:700; color:#4caf82; margin-top:2px;">${formatCurrency(alreadyReceived)}</div>
-          <div style="font-size:0.65rem; color:#888; margin-top:1px;">${pctReceived}% do teto · DFC realizado</div>
+          <div style="font-size:0.65rem; color:#888; margin-top:1px;">${pctReceived}% do total · DFC realizado</div>
         </div>
         <div style="flex:1; min-width:140px; text-align:center;">
-          <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">📤 A Receber</div>
+          <div style="font-size:0.7rem; color:#aaa; text-transform:uppercase; letter-spacing:0.05em;">📤 A Receber (Tabela)</div>
           <div style="font-size:1.1rem; font-weight:700; color:#c0b86a; margin-top:2px;">${formatCurrency(dispRemainingToReceive)}</div>
-          <div style="font-size:0.65rem; color:#888; margin-top:1px;">Projetado nos dias restantes</div>
+          <div style="font-size:0.65rem; color:#888; margin-top:1px;">Soma exata das entradas restantes</div>
         </div>
       </div>
     `;
