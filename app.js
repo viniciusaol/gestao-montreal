@@ -5969,15 +5969,22 @@ if (isCurrentRealMonth) {
     
     // Check if there is any imported receivables agenda for this month (Block 1)
     const importedForMonth = (allImportedReceivablesData || []).filter(r => r.data_liberacao && r.data_liberacao.startsWith(mKey));
-    const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
     
-    // Block 2: Proportional D0 with Pace Ratio
-    let baseD0ExpectedDay = 504.55;
-    if (d >= 6 && d <= 10) baseD0ExpectedDay = 1850.0;
-    else if (d >= 11 && d <= 20) baseD0ExpectedDay = 555.0;
+    if (importedForMonth.length > 0) {
+      // Block 1 (Exact imported D30 for this day) + Block 2 (D0 remaining with Pace Ratio)
+      const importedForDay = importedForMonth.filter(r => r.data_liberacao === dayStr).reduce((sum, r) => sum + (parseFloat(r.valor) || 0.0), 0.0);
+      const dayD0Pace = includeInflows ? round2((remainingD0ToReceive * paceRatio) * (dayWeight / remainingDaysWeight)) : 0.0;
+      totalInflowDay = round2(importedForDay + dayD0Pace);
+    } else {
+      // Fallback: distribute D30 and D0 proportionally over remaining days with Pace Ratio
+      let baseD0ExpectedDay = 504.55;
+      if (d >= 6 && d <= 10) baseD0ExpectedDay = 1850.0;
+      else if (d >= 11 && d <= 20) baseD0ExpectedDay = 555.0;
 
-    const dayD0Pace = includeInflows ? round2(baseD0ExpectedDay * dayWeight * paceRatio) : 0.0;
-    totalInflowDay = round2(importedForDay + dayD0Pace);
+      const dayD0Pace = includeInflows ? round2(baseD0ExpectedDay * dayWeight * paceRatio) : 0.0;
+      const dayD30Fallback = includeInflows ? round2(d30Remaining * (dayWeight / remainingDaysWeight)) : 0.0;
+      totalInflowDay = round2(dayD30Fallback + dayD0Pace);
+    }
 
     if (d === startDay) {
       // Abater do dia de hoje as receitas que já caíram no banco hoje (pois já estão no Saldo Inicial)
