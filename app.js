@@ -1533,16 +1533,7 @@ async function loadOperationalReports() {
       }
     });
 
-    // Also include students who have non-canceled lesson items for the selected month
-    itemsData.forEach(item => {
-      const cat = (item.categoria || '').toLowerCase();
-      const sub = (item.subcategoria || '').toLowerCase();
-      const desc = (item.item_description || '').toLowerCase();
-      if ((cat === 'aulas' || sub.includes('tênis') || desc.includes('tênis') || desc.includes('aula') || desc.includes('tarifa')) && item.customer_code) {
-        activeStudentsSet.add(item.customer_code);
-      }
-    });
-
+    // totalActiveStudents is based on active class enrollments for the month (vw_mt_alunos_ativos_por_mes)
     const totalActiveStudents = activeStudentsSet.size;
 
     // Render Acompanhamento de Metas Widget
@@ -6429,7 +6420,7 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
     totalRevenue += val;
   });
 
-  const activeStudentsCount = studentsSet.size;
+  const activeStudentsCount = (typeof totalActiveStudents === 'number' && totalActiveStudents > 0) ? totalActiveStudents : studentsSet.size;
   const lanchoneteRevenue = totalRevenue - (aulasRevenue + locacaoRevenue);
   const ticketMedioAulas = activeStudentsCount > 0 ? (aulasRevenue / activeStudentsCount) : 0;
 
