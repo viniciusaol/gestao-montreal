@@ -1,7 +1,7 @@
 -- View: public.vw_mt_comissoes_detalhadas
 -- Updated: 2026-08-07
 -- Description: View to calculate detailed commission allocations for teachers based on student schedules and plan weights.
--- Incorporates 50/50 split for Saturday 10:00-11:00 Kids class between Leandro Bonete and Eliton Sanches.
+-- Incorporates 50/50 split for Saturday 10:00-11:00 Kids class between Leandro Bonete and Elinton Sanches.
 
 CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
  WITH unique_participants AS MATERIALIZED (
@@ -36,7 +36,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                     WHEN (fi.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
                     WHEN ((fi.description ~~* '%Tatiana Araújo%'::text) OR (fi.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
                     WHEN (fi.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
-                    WHEN ((fi.description ~~* '%Eliton Sanches%'::text) OR (fi.description ~~* '%Éliton Sanches%'::text)) THEN 'Eliton Sanches'::text
+                    WHEN ((fi.description ~~* '%Elinton Sanches%'::text) OR (fi.description ~~* '%Élinton Sanches%'::text) OR (fi.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
                     ELSE NULL::text
                 END AS professor
            FROM ((((mt_booking_participantes p
@@ -169,7 +169,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                 CASE
                     WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
                     WHEN (((p.customer_code = '000475'::text) AND ((b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date))) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
-                    WHEN ((b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Eliton Sanches'::text
+                    WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
                     WHEN ((b.description ~~* '%Rodrigo Assunção%'::text) OR (b.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
                     WHEN (b.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
                     WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
@@ -192,7 +192,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                 CASE
                     WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
                     WHEN (((p.customer_code = '000475'::text) AND ((b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date))) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
-                    WHEN ((b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Eliton Sanches'::text
+                    WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
                     WHEN ((b.description ~~* '%Rodrigo Assunção%'::text) OR (b.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
                     WHEN (b.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
                     WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
@@ -424,7 +424,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                 CASE
                     WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
                     WHEN (((p.customer_code = '000475'::text) AND ((b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date))) OR (b.description ~~* '%Julio Souza%'::text) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
-                    WHEN ((b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Eliton Sanches'::text
+                    WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
                     WHEN ((b.description ~~* '%Rodrigo Assunção%'::text) OR (b.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
                     WHEN (b.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
                     WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
@@ -481,7 +481,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                 CASE
                     WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
                     WHEN (((p.customer_code = '000475'::text) AND ((b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date))) OR (b.description ~~* '%Julio Souza%'::text) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
-                    WHEN ((b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Eliton Sanches'::text
+                    WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
                     WHEN ((b.description ~~* '%Rodrigo Assunção%'::text) OR (b.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
                     WHEN (b.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
                     WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
@@ -506,7 +506,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                     WHEN ((rf.description ~~* '%Leandro Bonete%'::text) OR (rf.description ~~* '%Leandro B.%'::text)) THEN 'Leandro Bonete'::text
                     WHEN ((rf.description ~~* '%Tatiana Araújo%'::text) OR (rf.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
                     WHEN (rf.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
-                    WHEN ((rf.description ~~* '%Eliton Sanches%'::text) OR (rf.description ~~* '%Éliton Sanches%'::text)) THEN 'Eliton Sanches'::text
+                    WHEN ((rf.description ~~* '%Elinton Sanches%'::text) OR (rf.description ~~* '%Élinton Sanches%'::text) OR (rf.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
                     ELSE NULL::text
                 END AS professor,
                 CASE
@@ -572,7 +572,7 @@ UNION ALL
     final_bookings.venue,
     final_bookings.resource_name,
     final_bookings.description,
-    'Eliton Sanches' AS professor,
+    'Elinton Sanches' AS professor,
     final_bookings.customer_code,
     final_bookings.participant_name,
     (final_bookings.booking_value / 2.0) AS booking_value,
