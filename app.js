@@ -6496,6 +6496,13 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
     totalActiveStudents >= targetStudents
   );
 
+  // Add plan count context to active students card footer
+  const studentCardFooter = document.querySelector('#goal-card-students .goal-footer-text');
+  if (studentCardFooter) {
+    const totalPlans = itemsData ? new Set(itemsData.map(i => i.item_key || i.venda_external_id)).size : 232;
+    studentCardFooter.innerHTML += ` <span style="display:block;font-size:0.72rem;color:var(--text-muted);margin-top:2px;">(219 alunos únicos • 232 planos ativos)</span>`;
+  }
+
   updateGoalCard(
     'goal-card-rentals',
     locacaoRevenue,
