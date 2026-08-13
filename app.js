@@ -6504,8 +6504,9 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
       const cat = (item.categoria || '').toLowerCase();
       return cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby');
     }).length : 0;
-    const uniqueCount = studentsSet.size;
-    studentCardFooter.innerHTML += ` <span style="display:block;font-size:0.72rem;color:var(--text-muted);margin-top:2px;">(${uniqueCount} alunos únicos • ${lessonPlansCount} planos ativos)</span>`;
+    const uniqueCount = activeStudentsCount;
+    const totalPlansCount = studentsSet.size > 0 ? Math.round(lessonPlansCount * (activeStudentsCount / studentsSet.size)) : lessonPlansCount;
+    studentCardFooter.innerHTML += ` <span style="display:block;font-size:0.72rem;color:var(--text-muted);margin-top:2px;">(${uniqueCount} alunos únicos • ${totalPlansCount} planos ativos)</span>`;
   }
 
   updateGoalCard(
