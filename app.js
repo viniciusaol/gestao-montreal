@@ -6499,14 +6499,8 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
   // Add plan count context to active students card footer
   const studentCardFooter = document.querySelector('#goal-card-students .goal-footer-text');
   if (studentCardFooter) {
-    const lessonPlansCount = itemsData ? itemsData.filter(item => {
-      const desc = (item.item_description || '').toLowerCase();
-      const cat = (item.categoria || '').toLowerCase();
-      return cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby');
-    }).length : 0;
     const uniqueCount = activeStudentsCount;
-    const totalPlansCount = studentsSet.size > 0 ? Math.round(lessonPlansCount * (activeStudentsCount / studentsSet.size)) : lessonPlansCount;
-    studentCardFooter.innerHTML += ` <span style="display:block;font-size:0.72rem;color:var(--text-muted);margin-top:2px;">(${uniqueCount} alunos únicos • ${totalPlansCount} planos ativos)</span>`;
+    studentCardFooter.innerHTML += ` <span style="display:block;font-size:0.72rem;color:var(--text-muted);margin-top:2px;">(${uniqueCount} alunos únicos)</span>`;
   }
 
   updateGoalCard(
