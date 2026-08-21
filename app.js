@@ -5414,6 +5414,214 @@ function calculateGlobalPendingCommissionsForMonth(year, month) {
 }
 
 
+// ── GERENCIADOR DE OVERRIDES DO FLUXO DE CAIXA ─────────────────────
+window.cashFlowOverrides = JSON.parse(localStorage.getItem('mt_cashflow_overrides') || '{}');
+
+async function syncCashFlowOverridesFromSupabase() {
+  if (typeof supabase === 'undefined' || !supabase) return;
+  try {
+    const { data, error } = await supabase.from('mt_fluxo_caixa_overrides').select('*');
+    if (!error && data) {
+      data.forEach(item => {
+        const key = item.original_tx_id || item.id;
+        window.cashFlowOverrides[key] = {
+          id: key,
+          original_tx_id: item.original_tx_id,
+          month_key: item.month_key,
+          custom_due_date: item.custom_due_date,
+          custom_amount: item.custom_amount !== null && item.custom_amount !== undefined ? parseFloat(item.custom_amount) : null,
+          custom_name: item.custom_name,
+          custom_flow: item.custom_flow,
+          is_deleted: !!item.is_deleted,
+          is_manual: !!item.is_manual
+        };
+      });
+      localStorage.setItem('mt_cashflow_overrides', JSON.stringify(window.cashFlowOverrides));
+      if (typeof calculateAndRenderCurrentMonthProjection === 'function') {
+        calculateAndRenderCurrentMonthProjection();
+      }
+    }
+  } catch (err) {
+    console.warn("Aviso ao carregar overrides do Supabase:", err);
+  }
+}
+
+setTimeout(syncCashFlowOverridesFromSupabase, 1000);
+
+window.openCashFlowModalAdd = function() {
+  const elMonth = document.getElementById('proj-select-month');
+  const elYear = document.getElementById('proj-select-year');
+  const month = elMonth ? elMonth.value : String(new Date().getMonth() + 1).padStart(2, '0');
+  const year = elYear ? elYear.value : String(new Date().getFullYear());
+  const defaultDate = `${year}-${month.padStart(2, '0')}-15`;
+
+  document.getElementById('modal-edit-cashflow-title').innerText = "Novo Lançamento Agendado";
+  document.getElementById('cashflow-edit-tx-id').value = "manual_" + Date.now();
+  document.getElementById('cashflow-edit-is-manual').value = "true";
+  document.getElementById('cashflow-edit-description').value = "";
+  document.getElementById('cashflow-edit-date').value = defaultDate;
+  document.getElementById('cashflow-edit-amount').value = "";
+  document.getElementById('cashflow-edit-flow').value = "Operação";
+  document.getElementById('btn-delete-cashflow-item').style.display = "none";
+
+  document.getElementById('modal-edit-cashflow-item').style.display = "flex";
+};
+
+window.openCashFlowModalEdit = function(txId, description, dateStr, amount, flow, isManual) {
+  document.getElementById('modal-edit-cashflow-title').innerText = "Editar Lançamento do Fluxo de Caixa";
+  document.getElementById('cashflow-edit-tx-id').value = txId;
+  document.getElementById('cashflow-edit-is-manual').value = isManual ? "true" : "false";
+  document.getElementById('cashflow-edit-description').value = description || "";
+  document.getElementById('cashflow-edit-date').value = dateStr || "";
+  document.getElementById('cashflow-edit-amount').value = amount || "";
+  document.getElementById('cashflow-edit-flow').value = flow || "Operação";
+  document.getElementById('btn-delete-cashflow-item').style.display = "block";
+
+  document.getElementById('modal-edit-cashflow-item').style.display = "flex";
+};
+
+window.closeCashFlowModal = function() {
+  document.getElementById('modal-edit-cashflow-item').style.display = "none";
+};
+
+window.saveCashFlowItemOverride = async function() {
+  const txId = document.getElementById('cashflow-edit-tx-id').value;
+  const isManual = document.getElementById('cashflow-edit-is-manual').value === "true";
+  const description = document.getElementById('cashflow-edit-description').value.trim();
+  const dateStr = document.getElementById('cashflow-edit-date').value;
+  const amount = parseFloat(document.getElementById('cashflow-edit-amount').value);
+  const flow = document.getElementById('cashflow-edit-flow').value;
+
+  if (!description || !dateStr || isNaN(amount) || amount <= 0) {
+    alert("Por favor, preencha a descrição, data e valor válido (maior que zero).");
+    return;
+  }
+
+  const monthKey = dateStr.substring(0, 7);
+
+  const overrideObj = {
+    id: txId,
+    original_tx_id: txId,
+    month_key: monthKey,
+    custom_due_date: dateStr,
+    custom_amount: amount,
+    custom_name: description,
+    custom_flow: flow,
+    is_deleted: false,
+    is_manual: isManual
+  };
+
+  window.cashFlowOverrides[txId] = overrideObj;
+  localStorage.setItem('mt_cashflow_overrides', JSON.stringify(window.cashFlowOverrides));
+
+  if (typeof supabase !== 'undefined' && supabase) {
+    try {
+      await supabase.from('mt_fluxo_caixa_overrides').upsert({
+        original_tx_id: txId,
+        month_key: monthKey,
+        custom_due_date: dateStr,
+        custom_amount: amount,
+        custom_name: description,
+        custom_flow: flow,
+        is_deleted: false,
+        is_manual: isManual,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'original_tx_id' });
+    } catch (err) {
+      console.warn("Erro ao salvar override no Supabase:", err);
+    }
+  }
+
+  closeCashFlowModal();
+  if (typeof calculateAndRenderCurrentMonthProjection === 'function') {
+    calculateAndRenderCurrentMonthProjection();
+  }
+};
+
+window.deleteCurrentCashFlowItem = async function() {
+  const txId = document.getElementById('cashflow-edit-tx-id').value;
+  if (!txId) return;
+
+  if (!confirm("Tem certeza que deseja excluir este lançamento do fluxo de caixa?")) return;
+
+  const elMonth = document.getElementById('proj-select-month');
+  const elYear = document.getElementById('proj-select-year');
+  const month = elMonth ? elMonth.value : String(new Date().getMonth() + 1).padStart(2, '0');
+  const year = elYear ? elYear.value : String(new Date().getFullYear());
+  const monthKey = `${year}-${month.padStart(2, '0')}`;
+
+  if (window.cashFlowOverrides[txId]) {
+    window.cashFlowOverrides[txId].is_deleted = true;
+  } else {
+    window.cashFlowOverrides[txId] = {
+      id: txId,
+      original_tx_id: txId,
+      month_key: monthKey,
+      is_deleted: true
+    };
+  }
+
+  localStorage.setItem('mt_cashflow_overrides', JSON.stringify(window.cashFlowOverrides));
+
+  if (typeof supabase !== 'undefined' && supabase) {
+    try {
+      await supabase.from('mt_fluxo_caixa_overrides').upsert({
+        original_tx_id: txId,
+        month_key: monthKey,
+        is_deleted: true,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'original_tx_id' });
+    } catch (err) {
+      console.warn("Erro ao salvar exclusão no Supabase:", err);
+    }
+  }
+
+  closeCashFlowModal();
+  if (typeof calculateAndRenderCurrentMonthProjection === 'function') {
+    calculateAndRenderCurrentMonthProjection();
+  }
+};
+
+window.deleteCashFlowItemById = async function(txId) {
+  if (!confirm("Tem certeza que deseja excluir este lançamento?")) return;
+
+  const elMonth = document.getElementById('proj-select-month');
+  const elYear = document.getElementById('proj-select-year');
+  const month = elMonth ? elMonth.value : String(new Date().getMonth() + 1).padStart(2, '0');
+  const year = elYear ? elYear.value : String(new Date().getFullYear());
+  const monthKey = `${year}-${month.padStart(2, '0')}`;
+
+  if (window.cashFlowOverrides[txId]) {
+    window.cashFlowOverrides[txId].is_deleted = true;
+  } else {
+    window.cashFlowOverrides[txId] = {
+      id: txId,
+      original_tx_id: txId,
+      month_key: monthKey,
+      is_deleted: true
+    };
+  }
+
+  localStorage.setItem('mt_cashflow_overrides', JSON.stringify(window.cashFlowOverrides));
+
+  if (typeof supabase !== 'undefined' && supabase) {
+    try {
+      await supabase.from('mt_fluxo_caixa_overrides').upsert({
+        original_tx_id: txId,
+        month_key: monthKey,
+        is_deleted: true,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'original_tx_id' });
+    } catch (err) {
+      console.warn("Erro ao excluir no Supabase:", err);
+    }
+  }
+
+  if (typeof calculateAndRenderCurrentMonthProjection === 'function') {
+    calculateAndRenderCurrentMonthProjection();
+  }
+};
+
 function calculateAndRenderCurrentMonthProjection() {
   if (!cachedFinancialData) {
     debugLog("Sem dados financeiros cacheados para a projeção do mês atual.");
@@ -5423,7 +5631,7 @@ function calculateAndRenderCurrentMonthProjection() {
   try {
 
   const {
-    allProcfyData,
+    allProcfyData: rawAllProcfyData,
     allInterData,
     allSalesData,
     allCommData,
@@ -5468,7 +5676,44 @@ function calculateAndRenderCurrentMonthProjection() {
 
   const daysInMonth = new Date(selectedYearInt, selectedMonthInt, 0).getDate();
   const baseMonthPrefix = `${year}-${month}`;
+  const mKey = `${year}-${month}`;
   const todayStr = `${year}-${month}-${String(startDay).padStart(2, '0')}`;
+
+  const windowOverrides = window.cashFlowOverrides || {};
+
+  let allProcfyData = (rawAllProcfyData || []).map(tx => {
+    const key = tx.id ? String(tx.id) : (tx.name + '_' + tx.due_date);
+    const ov = windowOverrides[key];
+    if (ov && ov.is_deleted) return null;
+    return {
+      ...tx,
+      _overrideKey: key,
+      _isEdited: !!(ov && (ov.custom_due_date || ov.custom_amount || ov.custom_name || ov.custom_flow)),
+      due_date: (ov && ov.custom_due_date) ? ov.custom_due_date : tx.due_date,
+      amount: (ov && ov.custom_amount !== null && ov.custom_amount !== undefined) ? ov.custom_amount : tx.amount,
+      name: (ov && ov.custom_name) ? ov.custom_name : tx.name,
+      cost_center_name: (ov && ov.custom_flow) ? ov.custom_flow : tx.cost_center_name,
+      cost_center_descricao: (ov && ov.custom_flow) ? ov.custom_flow : tx.cost_center_descricao
+    };
+  }).filter(Boolean);
+
+  Object.values(windowOverrides).forEach(ov => {
+    if (ov.is_manual && !ov.is_deleted && ov.month_key === mKey) {
+      allProcfyData.push({
+        id: ov.id,
+        _overrideKey: ov.id,
+        _isManual: true,
+        _isEdited: true,
+        due_date: ov.custom_due_date,
+        amount: ov.custom_amount,
+        name: ov.custom_name,
+        cost_center_name: ov.custom_flow,
+        cost_center_descricao: ov.custom_flow,
+        paid: false,
+        transaction_type: 'expense'
+      });
+    }
+  });
 
   const elGrowth = document.getElementById('proj-input-growth');
   const elCommission = document.getElementById('proj-input-commission');
@@ -6135,16 +6380,24 @@ if (isCurrentRealMonth) {
     }
     
     if (overdueProcfyList.length === 0 && overdueCommissions === 0) {
-      overdueHtml = `<tr><td colspan="4" class="empty-state">Nenhuma conta vencida.</td></tr>`;
+      overdueHtml = `<tr><td colspan="5" class="empty-state">Nenhuma conta vencida.</td></tr>`;
     } else {
       overdueHtml += overdueProcfyList.map(tx => {
         const flow = tx.cost_center_descricao || tx.cost_center_name || 'Operação';
+        const txId = tx._overrideKey || String(tx.id || (tx.name + '_' + tx.due_date));
+        const badge = tx._isEdited ? `<span style="background: rgba(255,193,7,0.2); color: #ffc107; font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">Editado</span>` : '';
+        const escapeDesc = (tx.name || 'Despesa').replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
         return `
           <tr>
             <td>${formatDateBR(tx.due_date)}</td>
-            <td>${tx.name || 'Despesa'}</td>
+            <td>${tx.name || 'Despesa'}${badge}</td>
             <td>${flow}</td>
             <td class="text-right text-outflow">-${formatCurrency(parseFloat(tx.amount) || 0.0)}</td>
+            <td class="text-center">
+              <button type="button" title="Editar" onclick="openCashFlowModalEdit('${txId}', '${escapeDesc}', '${tx.due_date}', ${parseFloat(tx.amount) || 0}, '${flow}', ${tx._isManual ? 'true' : 'false'})" style="background:none; border:none; color:#aaa; cursor:pointer; font-size:0.85rem; padding:1px 3px;">✏️</button>
+              <button type="button" title="Excluir" onclick="deleteCashFlowItemById('${txId}')" style="background:none; border:none; color:#e63946; cursor:pointer; font-size:0.85rem; padding:1px 3px;">🗑️</button>
+            </td>
           </tr>
         `;
       }).join('');
@@ -6156,6 +6409,7 @@ if (isCurrentRealMonth) {
             <td>${commLabel}</td>
             <td>Operação</td>
             <td class="text-right text-outflow">-${formatCurrency(overdueCommissions)}</td>
+            <td class="text-center">-</td>
           </tr>
         `;
       }
@@ -6176,7 +6430,7 @@ if (isCurrentRealMonth) {
     }
     
     if (upcomingProcfyList.length === 0 && !hasCommP1 && !hasCommP2 && pendingCommissions === 0) {
-      upcomingHtml = `<tr><td colspan="4" class="empty-state">Nenhum lançamento agendado.</td></tr>`;
+      upcomingHtml = `<tr><td colspan="5" class="empty-state">Nenhum lançamento agendado.</td></tr>`;
     } else {
       const sortedUpcoming = [...upcomingProcfyList].sort((a, b) => a.due_date.localeCompare(b.due_date));
       let commP1Added = false;
@@ -6187,9 +6441,13 @@ if (isCurrentRealMonth) {
         const flow = tx.cost_center_descricao || tx.cost_center_name || 'Operação';
         const dateStr = tx.due_date;
         const day = parseInt(dateStr.substring(8, 10), 10);
+        const txId = tx._overrideKey || String(tx.id || (tx.name + '_' + tx.due_date));
         
         if (hasCommP1 && day >= 20 && !commP1Added) {
           rows.push({
+            id: `comm_p1_${mKey}`,
+            isEdited: false,
+            isManual: false,
             date: `${year}-${month}-20`,
             name: 'Comissões de Professores (1º Período - 70%)',
             flow: 'Operação',
@@ -6200,6 +6458,9 @@ if (isCurrentRealMonth) {
         
         if (hasCommP2 && day >= daysInMonth && !commP2Added) {
           rows.push({
+            id: `comm_p2_${mKey}`,
+            isEdited: false,
+            isManual: false,
             date: `${year}-${month}-${String(daysInMonth).padStart(2, '0')}`,
             name: 'Comissões de Professores (2º Período - 30%)',
             flow: 'Operação',
@@ -6209,6 +6470,9 @@ if (isCurrentRealMonth) {
         }
         
         rows.push({
+          id: txId,
+          isEdited: tx._isEdited,
+          isManual: tx._isManual,
           date: tx.due_date,
           name: tx.name || 'Despesa',
           flow: flow,
@@ -6218,6 +6482,9 @@ if (isCurrentRealMonth) {
       
       if (hasCommP1 && !commP1Added) {
         rows.push({
+          id: `comm_p1_${mKey}`,
+          isEdited: false,
+          isManual: false,
           date: `${year}-${month}-20`,
           name: 'Comissões de Professores (1º Período - 70%)',
           flow: 'Operação',
@@ -6226,6 +6493,9 @@ if (isCurrentRealMonth) {
       }
       if (hasCommP2 && !commP2Added) {
         rows.push({
+          id: `comm_p2_${mKey}`,
+          isEdited: false,
+          isManual: false,
           date: `${year}-${month}-${String(daysInMonth).padStart(2, '0')}`,
           name: 'Comissões de Professores (2º Período - 30%)',
           flow: 'Operação',
@@ -6238,6 +6508,9 @@ if (isCurrentRealMonth) {
         let nextY = parseInt(year, 10);
         if (nextM > 12) { nextM = 1; nextY++; }
         rows.push({
+          id: null,
+          isEdited: false,
+          isManual: false,
           date: `${nextY}-${String(nextM).padStart(2, '0')}-05`,
           name: 'Comissões a Repassar (Mês Anterior)',
           flow: 'Operação',
@@ -6247,14 +6520,25 @@ if (isCurrentRealMonth) {
       
       rows.sort((a, b) => a.date.localeCompare(b.date));
       
-      upcomingHtml = rows.map(r => `
-        <tr>
-          <td>${formatDateBR(r.date)}</td>
-          <td>${r.name}</td>
-          <td>${r.flow}</td>
-          <td class="text-right text-outflow">-${formatCurrency(r.amount)}</td>
-        </tr>
-      `).join('');
+      upcomingHtml = rows.map(r => {
+        const txId = r.id || (r.name + '_' + r.date);
+        const badge = r.isEdited ? `<span style="background: rgba(255,193,7,0.2); color: #ffc107; font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">Editado</span>` : '';
+        const escapeDesc = (r.name || 'Despesa').replace(/'/g, "\\'").replace(/"/g, "&quot;");
+        const actionsHtml = r.id ? `
+          <button type="button" title="Editar" onclick="openCashFlowModalEdit('${txId}', '${escapeDesc}', '${r.date}', ${parseFloat(r.amount) || 0}, '${r.flow}', ${r.isManual ? 'true' : 'false'})" style="background:none; border:none; color:#aaa; cursor:pointer; font-size:0.85rem; padding:1px 3px;">✏️</button>
+          <button type="button" title="Excluir" onclick="deleteCashFlowItemById('${txId}')" style="background:none; border:none; color:#e63946; cursor:pointer; font-size:0.85rem; padding:1px 3px;">🗑️</button>
+        ` : '-';
+
+        return `
+          <tr>
+            <td>${formatDateBR(r.date)}</td>
+            <td>${r.name}${badge}</td>
+            <td>${r.flow}</td>
+            <td class="text-right text-outflow">-${formatCurrency(r.amount)}</td>
+            <td class="text-center">${actionsHtml}</td>
+          </tr>
+        `;
+      }).join('');
     }
     upcomingTbody.innerHTML = upcomingHtml;
   }

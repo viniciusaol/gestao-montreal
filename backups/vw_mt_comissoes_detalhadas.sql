@@ -1,12 +1,12 @@
 -- View: public.vw_mt_comissoes_detalhadas
--- Updated to support pro-rata monthly equivalence for pro-rated group/individual plans
+-- Atualizada com prioridade de cascata para turmas de 2 horas e inteligência de atribuição de professor via histórico mais próximo de agendamento (Regime de Caixa)
 
 CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
  WITH unique_participants AS MATERIALIZED (
          SELECT DISTINCT ON (mt_booking_participantes.participant_name) mt_booking_participantes.participant_name,
             mt_booking_participantes.customer_code
            FROM mt_booking_participantes
-          WHERE mt_booking_participantes.participant_name IS NOT NULL AND length(mt_booking_participantes.participant_name) > 5
+          WHERE ((mt_booking_participantes.participant_name IS NOT NULL) AND (length(mt_booking_participantes.participant_name) > 5))
         ), booking_min_pay_dates AS (
          SELECT mt_booking_pagamentos.booking_id,
             min(mt_booking_pagamentos.payment_date) AS min_payment_date
@@ -18,33 +18,33 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
             fi.item_key,
             fi.valor_faturamento AS payment_value,
                 CASE
-                    WHEN fi.description ~~* '%Sócio Montreal%'::text THEN COALESCE(fi.valor_bruto, fi.valor_faturamento)
-                    WHEN fi.description ~~* '%Leonardo Assunção%'::text OR fi.description ~~* '%Leonardo Assuncao%'::text THEN fi.valor_faturamento * 2::numeric
+                    WHEN (fi.description ~~* '%Sócio Montreal%'::text) THEN COALESCE(fi.valor_bruto, fi.valor_faturamento)
+                    WHEN ((fi.description ~~* '%Leonardo Assunção%'::text) OR (fi.description ~~* '%Leonardo Assuncao%'::text)) THEN (fi.valor_faturamento * (2)::numeric)
                     ELSE fi.valor_faturamento
                 END AS payment_value_comissao,
                 CASE
-                    WHEN fi.description ~~* '%Sócio Montreal%'::text OR fi.description ~~* '%Leonardo Assunção%'::text OR fi.description ~~* '%Leonardo Assuncao%'::text THEN true
+                    WHEN ((fi.description ~~* '%Sócio Montreal%'::text) OR (fi.description ~~* '%Leonardo Assunção%'::text) OR (fi.description ~~* '%Leonardo Assuncao%'::text)) THEN true
                     ELSE false
                 END AS is_socio,
             fv.paid AS is_paid,
             COALESCE(bmpd.min_payment_date, fv.pay_date) AS pay_date,
                 CASE
-                    WHEN fv.customer_code = '000475'::text AND (fv.pay_date >= '2026-07-01 00:00:00'::timestamp without time zone AND fv.pay_date < '2026-08-01 00:00:00'::timestamp without time zone OR fi.description ~~* '%15/07/2026%'::text) OR fi.description ~~* '%João Assunção%'::text OR fi.description ~~* '%Joao Assuncao%'::text OR fi.description ~~* '%Joao Assunção%'::text OR fi.description ~~* '%João Assuncao%'::text THEN 'João Assunção'::text
-                    WHEN fi.description ~~* '%Rodrigo Assunção%'::text OR fi.description ~~* '%Rodrigo Assuncao%'::text THEN 'Rodrigo Assunção'::text
-                    WHEN fi.description ~~* '%Leandro Bonete%'::text THEN 'Leandro Bonete'::text
-                    WHEN fi.description ~~* '%Tatiana Araújo%'::text OR fi.description ~~* '%Tatiana Araujo%'::text THEN 'Tatiana Araújo'::text
-                    WHEN fi.description ~~* '%Leciane Silva%'::text THEN 'Leciane Silva'::text
-                    WHEN fi.description ~~* '%Elinton Sanches%'::text OR fi.description ~~* '%Eliton Sanches%'::text OR fi.description ~~* '%Élinton Sanches%'::text OR fi.description ~~* '%Éliton Sanches%'::text THEN 'Elinton Sanches'::text
+                    WHEN (((fv.customer_code = '000475'::text) AND (((fv.pay_date >= '2026-07-01 00:00:00'::timestamp without time zone) AND (fv.pay_date < '2026-08-01 00:00:00'::timestamp without time zone)) OR (fi.description ~~* '%15/07/2026%'::text))) OR (fi.description ~~* '%João Assunção%'::text) OR (fi.description ~~* '%Joao Assuncao%'::text) OR (fi.description ~~* '%Joao Assunção%'::text) OR (fi.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
+                    WHEN ((fi.description ~~* '%Rodrigo Assunção%'::text) OR (fi.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+                    WHEN (fi.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
+                    WHEN ((fi.description ~~* '%Tatiana Araújo%'::text) OR (fi.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+                    WHEN (fi.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
+                    WHEN ((fi.description ~~* '%Elinton Sanches%'::text) OR (fi.description ~~* '%Eliton Sanches%'::text) OR (fi.description ~~* '%Élinton Sanches%'::text) OR (fi.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
                     ELSE NULL::text
                 END AS professor
-           FROM mt_booking_participantes p
-             JOIN mt_bookings b ON b.booking_id = p.booking_id
-             LEFT JOIN booking_min_pay_dates bmpd ON bmpd.booking_id = b.booking_id
-             JOIN mt_faturamento_vendas fv ON fv.customer_code = p.customer_code
-             JOIN mt_faturamento_itens fi ON fi.venda_external_id = fv.external_id
-          WHERE b.status = 'ACTIVE'::text AND b.booking_type = 'clase_suelta'::text AND b.description !~~* '%RESERVA MENSAL%'::text AND fi.is_canceled = false AND fv.is_canceled = false AND fi.valor_faturamento > 0::numeric AND (fi.categoria = ANY (ARRAY['Aulas'::text, 'Outros'::text])) AND (fi.description ~~ (('%'::text || to_char(b.booking_date::timestamp with time zone, 'DD/MM/YYYY'::text)) || '%'::text) AND fi.description ~~ (('%'::text || to_char(b.start_time::interval, 'HH24:MI'::text)) || '%'::text) OR (EXISTS ( SELECT 1
+           FROM ((((mt_booking_participantes p
+             JOIN mt_bookings b ON ((b.booking_id = p.booking_id)))
+             LEFT JOIN booking_min_pay_dates bmpd ON ((bmpd.booking_id = b.booking_id)))
+             JOIN mt_faturamento_vendas fv ON ((fv.customer_code = p.customer_code)))
+             JOIN mt_faturamento_itens fi ON ((fi.venda_external_id = fv.external_id)))
+          WHERE ((b.status = 'ACTIVE'::text) AND (b.booking_type = 'clase_suelta'::text) AND (b.description !~~* '%RESERVA MENSAL%'::text) AND (fi.is_canceled = false) AND (fv.is_canceled = false) AND (fi.valor_faturamento > (0)::numeric) AND (fi.categoria = ANY (ARRAY['Aulas'::text, 'Outros'::text])) AND (((fi.description ~~ (('%'::text || to_char((b.booking_date)::timestamp with time zone, 'DD/MM/YYYY'::text)) || '%'::text)) AND (fi.description ~~ (('%'::text || to_char((b.start_time)::interval, 'HH24:MI'::text)) || '%'::text))) OR (EXISTS ( SELECT 1
                    FROM mt_booking_pagamentos bpay
-                  WHERE bpay.booking_id = b.booking_id AND bpay.payment_date = fv.pay_date AND bpay.amount = fi.valor_faturamento)))
+                  WHERE ((bpay.booking_id = b.booking_id) AND (bpay.payment_date = fv.pay_date) AND (bpay.amount = fi.valor_faturamento))))))
         ), resolved_faturamento AS (
          SELECT i.item_key,
             i.valor_faturamento,
@@ -57,18 +57,18 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
             i.subcategoria,
             i.description,
                 CASE
-                    WHEN i.categoria = 'Aulas'::text OR i.categoria = 'Outros'::text AND i.description ~~* '%TÊNIS%'::text AND i.description ~~* '%ADULTO%'::text THEN COALESCE(( SELECT p_1.customer_code
+                    WHEN ((i.categoria = 'Aulas'::text) OR ((i.categoria = 'Outros'::text) AND (i.description ~~* '%TÊNIS%'::text) AND (i.description ~~* '%ADULTO%'::text))) THEN COALESCE(( SELECT p_1.customer_code
                        FROM unique_participants p_1
-                      WHERE i.description ~~* (('%'::text || p_1.participant_name) || '%'::text)
+                      WHERE (i.description ~~* (('%'::text || p_1.participant_name) || '%'::text))
                      LIMIT 1), v.customer_code)
                     ELSE v.customer_code
                 END AS customer_code,
             v.paid,
             v.data_venda,
-            COALESCE(i.description ~~* '%AULA AVULSA%'::text OR i.subcategoria = 'Avulsa - Grupo Fixo'::text OR i.subcategoria = 'Avulsa - Particular'::text, false) AS is_avulsa,
-            COALESCE(i.description ~~* '%AULA AVULSA - GRUPO FIXO%'::text OR i.subcategoria = 'Avulsa - Grupo Fixo'::text, false) AS is_avulsa_grupo_fixo
-           FROM mt_faturamento_itens i
-             JOIN mt_faturamento_vendas v ON v.external_id = i.venda_external_id
+            COALESCE(((i.description ~~* '%AULA AVULSA%'::text) OR (i.subcategoria = 'Avulsa - Grupo Fixo'::text) OR (i.subcategoria = 'Avulsa - Particular'::text)), false) AS is_avulsa,
+            COALESCE(((i.description ~~* '%AULA AVULSA - GRUPO FIXO%'::text) OR (i.subcategoria = 'Avulsa - Grupo Fixo'::text)), false) AS is_avulsa_grupo_fixo
+           FROM (mt_faturamento_itens i
+             JOIN mt_faturamento_vendas v ON ((v.external_id = i.venda_external_id)))
         ), plan_items_raw AS (
          SELECT rf.item_key,
             rf.valor_faturamento,
@@ -77,161 +77,126 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
             rf.customer_code,
             rf.paid,
             rf.data_venda,
+            rf.description,
                 CASE
-                    WHEN rf.description ~~* '%Leonardo Assunção%'::text OR rf.description ~~* '%Leonardo Assuncao%'::text THEN rf.valor_faturamento * 2::numeric
+                    WHEN ((rf.description ~~* '%Leonardo Assunção%'::text) OR (rf.description ~~* '%Leonardo Assuncao%'::text)) THEN (rf.valor_faturamento * (2)::numeric)
                     ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
                 END AS valor_bruto_derived,
                 CASE
-                    WHEN rf.description ~~* '%Sócio Montreal%'::text OR rf.description ~~* '%Leonardo Assunção%'::text OR rf.description ~~* '%Leonardo Assuncao%'::text THEN true
+                    WHEN ((rf.description ~~* '%Sócio Montreal%'::text) OR (rf.description ~~* '%Leonardo Assunção%'::text) OR (rf.description ~~* '%Leonardo Assuncao%'::text)) THEN true
                     ELSE false
                 END AS is_socio,
             COALESCE(
                 CASE
-                    WHEN rf.description ~~* '%AULA AVULSA%'::text THEN 'OUTRO'::text
-                    WHEN rf.description ~~* '%INDIVIDUAL%'::text THEN 'INDIVIDUAL'::text
-                    WHEN rf.description ~~* '%DUPLA%'::text THEN 'DUPLA'::text
-                    WHEN rf.description ~~* '%TRIO%'::text THEN 'TRIO'::text
-                    WHEN rf.description ~~* '%GRUPO%'::text OR rf.description ~~* '%QUARTETO%'::text THEN 'GRUPO'::text
+                    WHEN (rf.description ~~* '%AULA AVULSA%'::text) THEN 'OUTRO'::text
+                    WHEN (rf.description ~~* '%INDIVIDUAL%'::text) THEN 'INDIVIDUAL'::text
+                    WHEN (rf.description ~~* '%DUPLA%'::text) THEN 'DUPLA'::text
+                    WHEN (rf.description ~~* '%TRIO%'::text) THEN 'TRIO'::text
+                    WHEN ((rf.description ~~* '%GRUPO%'::text) OR (rf.description ~~* '%QUARTETO%'::text)) THEN 'GRUPO'::text
                     ELSE NULL::text
                 END, ( SELECT bp.plan_class_type
-                   FROM ( VALUES ('INDIVIDUAL'::text,720::numeric), ('DUPLA'::text,430::numeric), ('TRIO'::text,395::numeric), ('GRUPO'::text,335::numeric), ('GRUPO'::text,245::numeric)) bp(plan_class_type, base_value)
-                  WHERE COALESCE(
-                    CASE 
-                      WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN
-                        ROUND(
-                          COALESCE(rf.valor_bruto, rf.valor_faturamento) * 
-                          ((date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY')) + interval '1 month - 1 day')::date - date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY'))::date + 1)::numeric /
-                          GREATEST((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'))[2], 'DD/MM/YYYY') - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY') + 1), 1)::numeric,
-                          2
-                        )
-                      ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                    END,
-                    COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                  ) >= 50::numeric AND (COALESCE(
-                    CASE 
-                      WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN
-                        ROUND(
-                          COALESCE(rf.valor_bruto, rf.valor_faturamento) * 
-                          ((date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY')) + interval '1 month - 1 day')::date - date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY'))::date + 1)::numeric /
-                          GREATEST((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'))[2], 'DD/MM/YYYY') - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY') + 1), 1)::numeric,
-                          2
-                        )
-                      ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                    END,
-                    COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                  ) / bp.base_value) >= 0.15 AND (COALESCE(
-                    CASE 
-                      WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN
-                        ROUND(
-                          COALESCE(rf.valor_bruto, rf.valor_faturamento) * 
-                          ((date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY')) + interval '1 month - 1 day')::date - date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY'))::date + 1)::numeric /
-                          GREATEST((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'))[2], 'DD/MM/YYYY') - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY') + 1), 1)::numeric,
-                          2
-                        )
-                      ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                    END,
-                    COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                  ) / bp.base_value) <= 1.05 AND abs(round(COALESCE(
-                    CASE 
-                      WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN
-                        ROUND(
-                          COALESCE(rf.valor_bruto, rf.valor_faturamento) * 
-                          ((date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY')) + interval '1 month - 1 day')::date - date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY'))::date + 1)::numeric /
-                          GREATEST((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'))[2], 'DD/MM/YYYY') - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY') + 1), 1)::numeric,
-                          2
-                        )
-                      ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                    END,
-                    COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                  ) / bp.base_value * 20::numeric) - COALESCE(
-                    CASE 
-                      WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN
-                        ROUND(
-                          COALESCE(rf.valor_bruto, rf.valor_faturamento) * 
-                          ((date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY')) + interval '1 month - 1 day')::date - date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY'))::date + 1)::numeric /
-                          GREATEST((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'))[2], 'DD/MM/YYYY') - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY') + 1), 1)::numeric,
-                          2
-                        )
-                      ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                    END,
-                    COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                  ) / bp.base_value * 20::numeric) < 0.15
-                  ORDER BY (abs(round(COALESCE(
-                    CASE 
-                      WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN
-                        ROUND(
-                          COALESCE(rf.valor_bruto, rf.valor_faturamento) * 
-                          ((date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY')) + interval '1 month - 1 day')::date - date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY'))::date + 1)::numeric /
-                          GREATEST((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'))[2], 'DD/MM/YYYY') - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY') + 1), 1)::numeric,
-                          2
-                        )
-                      ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                    END,
-                    COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                  ) / bp.base_value * 20::numeric) - COALESCE(
-                    CASE 
-                      WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN
-                        ROUND(
-                          COALESCE(rf.valor_bruto, rf.valor_faturamento) * 
-                          ((date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY')) + interval '1 month - 1 day')::date - date_trunc('month', to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY'))::date + 1)::numeric /
-                          GREATEST((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'))[2], 'DD/MM/YYYY') - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'))[1], 'DD/MM/YYYY') + 1), 1)::numeric,
-                          2
-                        )
-                      ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                    END,
-                    COALESCE(rf.valor_bruto, rf.valor_faturamento)
-                  ) / bp.base_value * 20::numeric))
+                   FROM ( VALUES ('INDIVIDUAL'::text,(720)::numeric), ('DUPLA'::text,(430)::numeric), ('TRIO'::text,(395)::numeric), ('GRUPO'::text,(335)::numeric), ('GRUPO'::text,(245)::numeric)) bp(plan_class_type, base_value)
+                  WHERE (COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) >= 50) AND (
+                    ((COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / bp.base_value) >= 0.15 AND
+                     (COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / bp.base_value) <= 1.05)
+                    OR
+                    ((COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / (2.0 * bp.base_value)) >= 0.85 AND
+                     (COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / (2.0 * bp.base_value)) <= 1.15)
+                  )
+                  ORDER BY 
+                    CASE WHEN (COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / bp.base_value) <= 1.05 THEN 1 ELSE 2 END,
+                    abs(round((COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / (CASE WHEN (COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / bp.base_value) > 1.3 THEN 2.0 ELSE 1.0 END * bp.base_value)) * 20) - (COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / (CASE WHEN (COALESCE(
+                        CASE
+                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round(((COALESCE(rf.valor_bruto, rf.valor_faturamento) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
+                            ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
+                        END, COALESCE(rf.valor_bruto, rf.valor_faturamento)) / bp.base_value) > 1.3 THEN 2.0 ELSE 1.0 END * bp.base_value)) * 20)
                  LIMIT 1), 'OUTRO'::text) AS plan_class_type,
             rf.is_avulsa,
             rf.is_avulsa_grupo_fixo,
                 CASE
-                    WHEN rf.is_avulsa THEN 0::numeric
+                    WHEN rf.is_avulsa THEN (0)::numeric
                     ELSE rf.valor_faturamento
                 END AS valor_faturamento_monthly,
                 CASE
-                    WHEN rf.is_avulsa THEN 0::numeric
+                    WHEN rf.is_avulsa THEN (0)::numeric
                     ELSE COALESCE(rf.valor_bruto, rf.valor_faturamento)
                 END AS valor_bruto_monthly,
             COALESCE(
                 CASE
-                    WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)
-                    WHEN rf.description ~~* '%janeiro 26%'::text THEN '2026-01-01'::date
-                    WHEN rf.description ~~* '%fevereiro 26%'::text THEN '2026-02-01'::date
-                    WHEN rf.description ~~* '%março 26%'::text OR rf.description ~~* '%marco 26%'::text THEN '2026-03-01'::date
-                    WHEN rf.description ~~* '%abril 26%'::text THEN '2026-04-01'::date
-                    WHEN rf.description ~~* '%maio 26%'::text THEN '2026-05-01'::date
-                    WHEN rf.description ~~* '%junho 26%'::text THEN '2026-06-01'::date
-                    WHEN rf.description ~~* '%julho 26%'::text THEN '2026-07-01'::date
-                    WHEN rf.description ~~* '%agosto 26%'::text THEN '2026-08-01'::date
-                    WHEN rf.description ~~* '%setembro 26%'::text THEN '2026-09-01'::date
-                    WHEN rf.description ~~* '%outubro 26%'::text THEN '2026-10-01'::date
-                    WHEN rf.description ~~* '%novembro 26%'::text THEN '2026-11-01'::date
-                    WHEN rf.description ~~* '%dezembro 26%'::text THEN '2026-12-01'::date
+                    WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)
+                    WHEN (rf.description ~~* '%janeiro 26%'::text) THEN '2026-01-01'::date
+                    WHEN (rf.description ~~* '%fevereiro 26%'::text) THEN '2026-02-01'::date
+                    WHEN ((rf.description ~~* '%março 26%'::text) OR (rf.description ~~* '%marco 26%'::text)) THEN '2026-03-01'::date
+                    WHEN (rf.description ~~* '%abril 26%'::text) THEN '2026-04-01'::date
+                    WHEN (rf.description ~~* '%maio 26%'::text) THEN '2026-05-01'::date
+                    WHEN (rf.description ~~* '%junho 26%'::text) THEN '2026-06-01'::date
+                    WHEN (rf.description ~~* '%julho 26%'::text) THEN '2026-07-01'::date
+                    WHEN (rf.description ~~* '%agosto 26%'::text) THEN '2026-08-01'::date
+                    WHEN (rf.description ~~* '%setembro 26%'::text) THEN '2026-09-01'::date
+                    WHEN (rf.description ~~* '%outubro 26%'::text) THEN '2026-10-01'::date
+                    WHEN (rf.description ~~* '%novembro 26%'::text) THEN '2026-11-01'::date
+                    WHEN (rf.description ~~* '%dezembro 26%'::text) THEN '2026-12-31'::date
                     ELSE NULL::date
-                END, date_trunc('month'::text, COALESCE(rf.pay_date, rf.data_venda::timestamp without time zone))::date) AS item_start_date,
+                END, (date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)))::date) AS item_start_date,
             COALESCE(
                 CASE
-                    WHEN rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}' THEN to_date((regexp_match(rf.description, '\d{2}/\d{2}/\d{4}-(\d{2}/\d{2}/\d{4})'::text))[1], 'DD/MM/YYYY'::text)
-                    WHEN rf.description ~~* '%janeiro 26%'::text THEN '2026-01-31'::date
-                    WHEN rf.description ~~* '%fevereiro 26%'::text THEN '2026-02-28'::date
-                    WHEN rf.description ~~* '%março 26%'::text OR rf.description ~~* '%marco 26%'::text THEN '2026-03-31'::date
-                    WHEN rf.description ~~* '%abril 26%'::text THEN '2026-04-30'::date
-                    WHEN rf.description ~~* '%maio 26%'::text THEN '2026-05-31'::date
-                    WHEN rf.description ~~* '%junho 26%'::text THEN '2026-06-30'::date
-                    WHEN rf.description ~~* '%julho 26%'::text THEN '2026-07-31'::date
-                    WHEN rf.description ~~* '%agosto 26%'::text THEN '2026-08-31'::date
-                    WHEN rf.description ~~* '%setembro 26%'::text THEN '2026-09-30'::date
-                    WHEN rf.description ~~* '%outubro 26%'::text THEN '2026-10-31'::date
-                    WHEN rf.description ~~* '%novembro 26%'::text THEN '2026-11-30'::date
-                    WHEN rf.description ~~* '%dezembro 26%'::text THEN '2026-12-31'::date
+                    WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN to_date((regexp_match(rf.description, '\d{2}/\d{2}/\d{4}-(\d{2}/\d{2}/\d{4})'::text))[1], 'DD/MM/YYYY'::text)
+                    WHEN (rf.description ~~* '%janeiro 26%'::text) THEN '2026-01-31'::date
+                    WHEN (rf.description ~~* '%fevereiro 26%'::text) THEN '2026-02-28'::date
+                    WHEN ((rf.description ~~* '%março 26%'::text) OR (rf.description ~~* '%marco 26%'::text)) THEN '2026-03-31'::date
+                    WHEN (rf.description ~~* '%abril 26%'::text) THEN '2026-04-30'::date
+                    WHEN (rf.description ~~* '%maio 26%'::text) THEN '2026-05-31'::date
+                    WHEN (rf.description ~~* '%junho 26%'::text) THEN '2026-06-30'::date
+                    WHEN (rf.description ~~* '%julho 26%'::text) THEN '2026-07-31'::date
+                    WHEN (rf.description ~~* '%agosto 26%'::text) THEN '2026-08-31'::date
+                    WHEN (rf.description ~~* '%setembro 26%'::text) THEN '2026-09-30'::date
+                    WHEN (rf.description ~~* '%outubro 26%'::text) THEN '2026-10-31'::date
+                    WHEN (rf.description ~~* '%novembro 26%'::text) THEN '2026-11-30'::date
+                    WHEN (rf.description ~~* '%dezembro 26%'::text) THEN '2026-12-31'::date
                     ELSE NULL::date
-                END, (date_trunc('month'::text, COALESCE(rf.pay_date, rf.data_venda::timestamp without time zone)) + '1 mon'::interval - '1 day'::interval)::date) AS item_end_date
+                END, (((date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)) + '1 mon'::interval) - '1 day'::interval))::date) AS item_end_date
            FROM resolved_faturamento rf
-          WHERE rf.item_canceled = false AND rf.sale_canceled = false AND COALESCE(rf.sale_type, ''::text) <> 'refund'::text AND rf.valor_faturamento > 0::numeric AND (rf.subcategoria IS NULL OR rf.subcategoria <> 'Avulsa - Particular'::text) AND rf.is_avulsa = false AND (rf.categoria = 'Aulas'::text OR rf.categoria = 'Outros'::text AND rf.description ~~* '%TÊNIS%'::text AND rf.description ~~* '%ADULTO%'::text)
+          WHERE ((rf.item_canceled = false) AND (rf.sale_canceled = false) AND (COALESCE(rf.sale_type, ''::text) <> 'refund'::text) AND (rf.valor_faturamento > (0)::numeric) AND ((rf.subcategoria IS NULL) OR (rf.subcategoria <> 'Avulsa - Particular'::text)) AND (rf.is_avulsa = false) AND ((rf.categoria = 'Aulas'::text) OR ((rf.categoria = 'Outros'::text) AND (rf.description ~~* '%TÊNIS%'::text) AND (rf.description ~~* '%ADULTO%'::text))))
         ), plan_items AS (
          SELECT plan_items_raw.item_key,
             plan_items_raw.customer_code,
-            COALESCE(date_trunc('month'::text, plan_items_raw.item_start_date::timestamp with time zone)::date, date_trunc('month'::text, plan_items_raw.pay_date)::date) AS plan_month,
+            COALESCE((date_trunc('month'::text, (plan_items_raw.item_start_date)::timestamp with time zone))::date, (date_trunc('month'::text, plan_items_raw.pay_date))::date) AS plan_month,
             plan_items_raw.paid,
             plan_items_raw.pay_date,
             plan_items_raw.valor_faturamento,
@@ -245,64 +210,64 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
            FROM plan_items_raw
         ), schedules AS (
          SELECT p.customer_code,
-            date_trunc('month'::text, b.booking_date::timestamp with time zone)::date AS plan_month,
+            (date_trunc('month'::text, (b.booking_date)::timestamp with time zone))::date AS plan_month,
             EXTRACT(isodow FROM b.booking_date) AS day_of_week,
             b.start_time,
                 CASE
-                    WHEN b.booking_id = 4725 THEN 'Rodrigo Assunção'::text
-                    WHEN p.customer_code = '000475'::text AND b.booking_date >= '2026-07-01'::date AND b.booking_date <= '2026-07-31'::date OR b.description ~~* '%João Assunção%'::text OR b.description ~~* '%Joao Assuncao%'::text OR b.description ~~* '%Joao Assunção%'::text OR b.description ~~* '%João Assuncao%'::text THEN 'João Assunção'::text
-                    WHEN b.description ~~* '%Elinton Sanches%'::text OR b.description ~~* '%Eliton Sanches%'::text OR b.description ~~* '%Élinton Sanches%'::text OR b.description ~~* '%Éliton Sanches%'::text THEN 'Elinton Sanches'::text
-                    WHEN b.description ~~* '%Rodrigo Assunção%'::text OR b.description ~~* '%Rodrigo Assuncao%'::text THEN 'Rodrigo Assunção'::text
-                    WHEN b.description ~~* '%Leandro Bonete%'::text THEN 'Leandro Bonete'::text
-                    WHEN b.description ~~* '%Tatiana Araújo%'::text OR b.description ~~* '%Tatiana Araujo%'::text THEN 'Tatiana Araújo'::text
-                    WHEN b.description ~~* '%Leciane Silva%'::text THEN 'Leciane Silva'::text
+                    WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
+                    WHEN (((p.customer_code = '000475'::text) AND (b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date)) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
+                    WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
+                    WHEN ((b.description ~~* '%Rodrigo Assunção%'::text) OR (b.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+                    WHEN (b.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
+                    WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+                    WHEN (b.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
                     ELSE NULLIF(TRIM(BOTH FROM regexp_replace(COALESCE("substring"(b.description, '(?i)prof[:.]?[[:space:]]*([^.(]+)'::text), ''::text), '[[:space:]]+'::text, ' '::text, 'g'::text)), ''::text)
                 END AS professor,
                 CASE
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*1\s*\)'::text THEN 'INDIVIDUAL'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*2\s*\)'::text THEN 'DUPLA'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*3\s*\)'::text THEN 'TRIO'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text THEN 'GRUPO'::text
-                    WHEN b.booking_type = 'clase_suelta'::text THEN 'INDIVIDUAL'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*1\s*\)'::text) THEN 'INDIVIDUAL'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*2\s*\)'::text) THEN 'DUPLA'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*3\s*\)'::text) THEN 'TRIO'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text) THEN 'GRUPO'::text
+                    WHEN (b.booking_type = 'clase_suelta'::text) THEN 'INDIVIDUAL'::text
                     ELSE 'GRUPO'::text
                 END AS booking_class_type,
             count(*) AS bookings_count
-           FROM mt_booking_participantes p
-             JOIN mt_bookings b ON b.booking_id = p.booking_id
-          WHERE b.status = 'ACTIVE'::text AND b.booking_type = 'clase_colectiva'::text AND b.description !~~* '%RESERVA MENSAL%'::text
-          GROUP BY p.customer_code, (date_trunc('month'::text, b.booking_date::timestamp with time zone)::date), (EXTRACT(isodow FROM b.booking_date)), b.start_time, (
+           FROM (mt_booking_participantes p
+             JOIN mt_bookings b ON ((b.booking_id = p.booking_id)))
+          WHERE ((b.status = 'ACTIVE'::text) AND (b.booking_type = 'clase_colectiva'::text) AND (b.description !~~* '%RESERVA MENSAL%'::text))
+          GROUP BY p.customer_code, ((date_trunc('month'::text, (b.booking_date)::timestamp with time zone))::date), (EXTRACT(isodow FROM b.booking_date)), b.start_time,
                 CASE
-                    WHEN b.booking_id = 4725 THEN 'Rodrigo Assunção'::text
-                    WHEN p.customer_code = '000475'::text AND b.booking_date >= '2026-07-01'::date AND b.booking_date <= '2026-07-31'::date OR b.description ~~* '%João Assunção%'::text OR b.description ~~* '%Joao Assuncao%'::text OR b.description ~~* '%Joao Assunção%'::text OR b.description ~~* '%João Assuncao%'::text THEN 'João Assunção'::text
-                    WHEN b.description ~~* '%Elinton Sanches%'::text OR b.description ~~* '%Eliton Sanches%'::text OR b.description ~~* '%Élinton Sanches%'::text OR b.description ~~* '%Éliton Sanches%'::text THEN 'Elinton Sanches'::text
-                    WHEN b.description ~~* '%Rodrigo Assunção%'::text OR b.description ~~* '%Rodrigo Assuncao%'::text THEN 'Rodrigo Assunção'::text
-                    WHEN b.description ~~* '%Leandro Bonete%'::text THEN 'Leandro Bonete'::text
-                    WHEN b.description ~~* '%Tatiana Araújo%'::text OR b.description ~~* '%Tatiana Araujo%'::text THEN 'Tatiana Araújo'::text
-                    WHEN b.description ~~* '%Leciane Silva%'::text THEN 'Leciane Silva'::text
+                    WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
+                    WHEN (((p.customer_code = '000475'::text) AND (b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date)) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
+                    WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
+                    WHEN ((b.description ~~* '%Rodrigo Assunção%'::text) OR (b.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+                    WHEN (b.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
+                    WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+                    WHEN (b.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
                     ELSE NULLIF(TRIM(BOTH FROM regexp_replace(COALESCE("substring"(b.description, '(?i)prof[:.]?[[:space:]]*([^.(]+)'::text), ''::text), '[[:space:]]+'::text, ' '::text, 'g'::text)), ''::text)
-                END), (
+                END,
                 CASE
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*1\s*\)'::text THEN 'INDIVIDUAL'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*2\s*\)'::text THEN 'DUPLA'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*3\s*\)'::text THEN 'TRIO'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text THEN 'GRUPO'::text
-                    WHEN b.booking_type = 'clase_suelta'::text THEN 'INDIVIDUAL'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*1\s*\)'::text) THEN 'INDIVIDUAL'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*2\s*\)'::text) THEN 'DUPLA'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*3\s*\)'::text) THEN 'TRIO'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text) THEN 'GRUPO'::text
+                    WHEN (b.booking_type = 'clase_suelta'::text) THEN 'INDIVIDUAL'::text
                     ELSE 'GRUPO'::text
-                END)
+                END
         ), schedules_with_weights AS (
          SELECT schedules.customer_code,
             schedules.plan_month,
-            schedules.day_of_week,
+                schedules.day_of_week,
             schedules.start_time,
             schedules.professor,
             schedules.booking_class_type,
             schedules.bookings_count,
-                CASE
-                    WHEN schedules.booking_class_type = 'INDIVIDUAL'::text THEN 720
-                    WHEN schedules.booking_class_type = 'DUPLA'::text THEN 430
-                    WHEN schedules.booking_class_type = 'TRIO'::text THEN 395
-                    ELSE 335
-                END AS schedule_weight
+            (CASE
+                WHEN (schedules.booking_class_type = 'INDIVIDUAL'::text) THEN 720
+                WHEN (schedules.booking_class_type = 'DUPLA'::text) THEN 430
+                WHEN (schedules.booking_class_type = 'TRIO'::text) THEN 395
+                ELSE 335
+            END * (CASE WHEN schedules.customer_code = '000602' THEN schedules.bookings_count ELSE 1 END)) AS schedule_weight
            FROM schedules
         ), schedules_coverage AS (
          SELECT s.customer_code,
@@ -315,7 +280,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
             s.schedule_weight,
             (EXISTS ( SELECT 1
                    FROM plan_items p
-                  WHERE p.customer_code = s.customer_code AND p.plan_month = s.plan_month AND p.plan_class_type = s.booking_class_type)) AS is_schedule_covered
+                  WHERE ((p.customer_code = s.customer_code) AND (p.plan_month = s.plan_month) AND (p.plan_class_type = s.booking_class_type)))) AS is_schedule_covered
            FROM schedules_with_weights s
         ), schedules_with_sums AS (
          SELECT schedules_coverage.customer_code,
@@ -331,7 +296,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
             sum(schedules_coverage.schedule_weight) OVER (PARTITION BY schedules_coverage.customer_code, schedules_coverage.plan_month) AS sum_weight_total,
             sum(
                 CASE
-                    WHEN NOT schedules_coverage.is_schedule_covered THEN schedules_coverage.schedule_weight
+                    WHEN (NOT schedules_coverage.is_schedule_covered) THEN schedules_coverage.schedule_weight
                     ELSE 0
                 END) OVER (PARTITION BY schedules_coverage.customer_code, schedules_coverage.plan_month) AS sum_weight_uncovered
            FROM schedules_coverage
@@ -359,14 +324,14 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
             p.is_avulsa_grupo_fixo,
             p.valor_faturamento_monthly,
             p.valor_bruto_monthly,
-            p.plan_class_type = s.booking_class_type AS is_type_match,
-            max(
+            (p.plan_class_type = s.booking_class_type) AS is_type_match,
+            (max(
                 CASE
-                    WHEN p.plan_class_type = s.booking_class_type THEN 1
+                    WHEN (p.plan_class_type = s.booking_class_type) THEN 1
                     ELSE 0
-                END) OVER (PARTITION BY p.item_key) = 1 AS has_type_match
-           FROM schedules_with_sums s
-             JOIN plan_items p ON p.customer_code = s.customer_code AND p.plan_month = s.plan_month
+                END) OVER (PARTITION BY p.item_key) = 1) AS has_type_match
+           FROM (schedules_with_sums s
+             JOIN plan_items p ON (((p.customer_code = s.customer_code) AND (p.plan_month = s.plan_month))))
         ), schedule_totals AS (
          SELECT schedule_allocations.customer_code,
             schedule_allocations.plan_month,
@@ -379,68 +344,68 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                 CASE
                     WHEN schedule_allocations.has_type_match THEN
                     CASE
-                        WHEN schedule_allocations.is_type_match THEN schedule_allocations.valor_faturamento * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_of_type::numeric)
-                        ELSE 0::numeric
+                        WHEN schedule_allocations.is_type_match THEN (schedule_allocations.valor_faturamento * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_of_type)::numeric))
+                        ELSE (0)::numeric
                     END
                     ELSE
                     CASE
-                        WHEN schedule_allocations.sum_weight_uncovered > 0 THEN
+                        WHEN (schedule_allocations.sum_weight_uncovered > 0) THEN
                         CASE
-                            WHEN NOT schedule_allocations.is_schedule_covered THEN schedule_allocations.valor_faturamento * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_uncovered::numeric)
-                            ELSE 0::numeric
+                            WHEN (NOT schedule_allocations.is_schedule_covered) THEN (schedule_allocations.valor_faturamento * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_uncovered)::numeric))
+                            ELSE (0)::numeric
                         END
-                        ELSE schedule_allocations.valor_faturamento * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_total::numeric)
+                        ELSE (schedule_allocations.valor_faturamento * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_total)::numeric))
                     END
                 END) AS schedule_monthly_value,
             sum(
                 CASE
                     WHEN schedule_allocations.has_type_match THEN
                     CASE
-                        WHEN schedule_allocations.is_type_match THEN
+                        WHEN schedule_allocations.is_type_match THEN (
                         CASE
                             WHEN schedule_allocations.is_socio THEN schedule_allocations.valor_bruto
                             ELSE schedule_allocations.valor_faturamento
-                        END * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_of_type::numeric)
-                        ELSE 0::numeric
+                        END * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_of_type)::numeric))
+                        ELSE (0)::numeric
                     END
                     ELSE
                     CASE
-                        WHEN schedule_allocations.sum_weight_uncovered > 0 THEN
+                        WHEN (schedule_allocations.sum_weight_uncovered > 0) THEN
                         CASE
-                            WHEN NOT schedule_allocations.is_schedule_covered THEN
+                            WHEN (NOT schedule_allocations.is_schedule_covered) THEN (
                             CASE
                                 WHEN schedule_allocations.is_socio THEN schedule_allocations.valor_bruto
                                 ELSE schedule_allocations.valor_faturamento
-                            END * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_uncovered::numeric)
-                            ELSE 0::numeric
+                            END * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_uncovered)::numeric))
+                            ELSE (0)::numeric
                         END
-                        ELSE
+                        ELSE (
                         CASE
                             WHEN schedule_allocations.is_socio THEN schedule_allocations.valor_bruto
                             ELSE schedule_allocations.valor_faturamento
-                        END * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_total::numeric)
+                        END * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_total)::numeric))
                     END
                 END) AS schedule_monthly_commission_base,
             COALESCE(schedule_allocations.paid, false) AS is_paid,
             max(
                 CASE
-                    WHEN
+                    WHEN (
                     CASE
                         WHEN schedule_allocations.has_type_match THEN
                         CASE
                             WHEN schedule_allocations.is_type_match THEN schedule_allocations.valor_faturamento
-                            ELSE 0::numeric
+                            ELSE (0)::numeric
                         END
                         ELSE
                         CASE
-                            WHEN schedule_allocations.sum_weight_uncovered > 0 THEN
+                            WHEN (schedule_allocations.sum_weight_uncovered > 0) THEN
                             CASE
-                                WHEN NOT schedule_allocations.is_schedule_covered THEN schedule_allocations.valor_faturamento
-                                ELSE 0::numeric
+                                WHEN (NOT schedule_allocations.is_schedule_covered) THEN schedule_allocations.valor_faturamento
+                                ELSE (0)::numeric
                             END
                             ELSE schedule_allocations.valor_faturamento
                         END
-                    END > 0::numeric THEN schedule_allocations.pay_date
+                    END > (0)::numeric) THEN schedule_allocations.pay_date
                     ELSE NULL::timestamp without time zone
                 END) AS pay_date,
             bool_or(schedule_allocations.is_socio) AS is_socio,
@@ -448,46 +413,46 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                 CASE
                     WHEN schedule_allocations.has_type_match THEN
                     CASE
-                        WHEN schedule_allocations.is_type_match THEN schedule_allocations.valor_faturamento_monthly * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_of_type::numeric)
-                        ELSE 0::numeric
+                        WHEN schedule_allocations.is_type_match THEN (schedule_allocations.valor_faturamento_monthly * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_of_type)::numeric))
+                        ELSE (0)::numeric
                     END
                     ELSE
                     CASE
-                        WHEN schedule_allocations.sum_weight_uncovered > 0 THEN
+                        WHEN (schedule_allocations.sum_weight_uncovered > 0) THEN
                         CASE
-                            WHEN NOT schedule_allocations.is_schedule_covered THEN schedule_allocations.valor_faturamento_monthly * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_uncovered::numeric)
-                            ELSE 0::numeric
+                            WHEN (NOT schedule_allocations.is_schedule_covered) THEN (schedule_allocations.valor_faturamento_monthly * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_uncovered)::numeric))
+                            ELSE (0)::numeric
                         END
-                        ELSE schedule_allocations.valor_faturamento_monthly * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_total::numeric)
+                        ELSE (schedule_allocations.valor_faturamento_monthly * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_total)::numeric))
                     END
                 END) AS schedule_monthly_value_monthly,
             sum(
                 CASE
                     WHEN schedule_allocations.has_type_match THEN
                     CASE
-                        WHEN schedule_allocations.is_type_match THEN
+                        WHEN schedule_allocations.is_type_match THEN (
                         CASE
                             WHEN schedule_allocations.is_socio THEN schedule_allocations.valor_bruto_monthly
                             ELSE schedule_allocations.valor_faturamento_monthly
-                        END * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_of_type::numeric)
-                        ELSE 0::numeric
+                        END * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_of_type)::numeric))
+                        ELSE (0)::numeric
                     END
                     ELSE
                     CASE
-                        WHEN schedule_allocations.sum_weight_uncovered > 0 THEN
+                        WHEN (schedule_allocations.sum_weight_uncovered > 0) THEN
                         CASE
-                            WHEN NOT schedule_allocations.is_schedule_covered THEN
+                            WHEN (NOT schedule_allocations.is_schedule_covered) THEN (
                             CASE
                                 WHEN schedule_allocations.is_socio THEN schedule_allocations.valor_bruto_monthly
                                 ELSE schedule_allocations.valor_faturamento_monthly
-                            END * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_uncovered::numeric)
-                            ELSE 0::numeric
+                            END * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_uncovered)::numeric))
+                            ELSE (0)::numeric
                         END
-                        ELSE
+                        ELSE (
                         CASE
                             WHEN schedule_allocations.is_socio THEN schedule_allocations.valor_bruto_monthly
-                            ELSE schedule_allocations.valor_faturamento_monthly
-                        END * (schedule_allocations.schedule_weight::numeric / schedule_allocations.sum_weight_total::numeric)
+                            ELSE schedule_allocations.valor_bruto_monthly
+                        END * ((schedule_allocations.schedule_weight)::numeric / (schedule_allocations.sum_weight_total)::numeric))
                     END
                 END) AS schedule_monthly_commission_base_monthly,
             bool_or(schedule_allocations.is_avulsa) AS is_avulsa,
@@ -504,73 +469,73 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
             b.description,
             COALESCE(
                 CASE
-                    WHEN b.booking_id = 4725 THEN 'Rodrigo Assunção'::text
-                    WHEN p.customer_code = '000475'::text AND b.booking_date >= '2026-07-01'::date AND b.booking_date <= '2026-07-31'::date OR b.description ~~* '%Julio Souza%'::text OR b.description ~~* '%João Assunção%'::text OR b.description ~~* '%Joao Assuncao%'::text OR b.description ~~* '%Joao Assunção%'::text OR b.description ~~* '%João Assuncao%'::text THEN 'João Assunção'::text
-                    WHEN b.description ~~* '%Elinton Sanches%'::text OR b.description ~~* '%Eliton Sanches%'::text OR b.description ~~* '%Élinton Sanches%'::text OR b.description ~~* '%Éliton Sanches%'::text THEN 'Elinton Sanches'::text
-                    WHEN b.description ~~* '%Rodrigo Assunção%'::text OR b.description ~~* '%Rodrigo Assuncao%'::text THEN 'Rodrigo Assunção'::text
-                    WHEN b.description ~~* '%Leandro Bonete%'::text THEN 'Leandro Bonete'::text
-                    WHEN b.description ~~* '%Tatiana Araújo%'::text OR b.description ~~* '%Tatiana Araujo%'::text THEN 'Tatiana Araújo'::text
-                    WHEN b.description ~~* '%Leciane Silva%'::text THEN 'Leciane Silva'::text
+                    WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
+                    WHEN (((p.customer_code = '000475'::text) AND (b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date)) OR (b.description ~~* '%Julio Souza%'::text) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
+                    WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
+                    WHEN ((b.description ~~* '%Rodrigo Assunção%'::text) OR (b.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+                    WHEN (b.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
+                    WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+                    WHEN (b.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
                     ELSE NULLIF(TRIM(BOTH FROM regexp_replace(COALESCE("substring"(b.description, '(?i)prof[:.]?[[:space:]]*([^.(]+)'::text), ''::text), '[[:space:]]+'::text, ' '::text, 'g'::text)), ''::text)
                 END, lcm.professor, 'Sem professor'::text) AS professor,
             p.customer_code,
             p.participant_name,
                 CASE
-                    WHEN b.booking_type = 'clase_suelta'::text THEN COALESCE(lcm.payment_value, 0::numeric)
-                    ELSE COALESCE(st.schedule_monthly_value / NULLIF(st.bookings_count, 0)::numeric, 0::numeric)
+                    WHEN (b.booking_type = 'clase_suelta'::text) THEN COALESCE(lcm.payment_value, (0)::numeric)
+                    ELSE COALESCE((st.schedule_monthly_value / (NULLIF(st.bookings_count, 0))::numeric), (0)::numeric)
                 END AS booking_value,
                 CASE
-                    WHEN b.booking_type = 'clase_suelta'::text THEN COALESCE(lcm.payment_value_comissao, 0::numeric)
-                    ELSE COALESCE(st.schedule_monthly_commission_base / NULLIF(st.bookings_count, 0)::numeric, 0::numeric)
+                    WHEN (b.booking_type = 'clase_suelta'::text) THEN COALESCE(lcm.payment_value_comissao, (0)::numeric)
+                    ELSE COALESCE((st.schedule_monthly_commission_base / (NULLIF(st.bookings_count, 0))::numeric), (0)::numeric)
                 END AS booking_commission_base,
             COALESCE(lcm.is_socio, st.is_socio, false) AS is_socio_benefit,
                 CASE
-                    WHEN b.booking_type = 'clase_suelta'::text THEN COALESCE(lcm.is_paid, false)
+                    WHEN (b.booking_type = 'clase_suelta'::text) THEN COALESCE(lcm.is_paid, false)
                     ELSE COALESCE(st.is_paid, false)
                 END AS is_paid,
                 CASE
-                    WHEN b.booking_type = 'clase_suelta'::text THEN lcm.pay_date
+                    WHEN (b.booking_type = 'clase_suelta'::text) THEN lcm.pay_date
                     ELSE st.pay_date
                 END AS pay_date,
                 CASE
-                    WHEN b.booking_type = 'clase_colectiva'::text THEN COALESCE(st.schedule_monthly_value_monthly / NULLIF(st.bookings_count, 0)::numeric, 0::numeric)
-                    ELSE 0::numeric
+                    WHEN (b.booking_type = 'clase_colectiva'::text) THEN COALESCE((st.schedule_monthly_value_monthly / (NULLIF(st.bookings_count, 0))::numeric), (0)::numeric)
+                    ELSE (0)::numeric
                 END AS booking_value_monthly,
                 CASE
-                    WHEN b.booking_type = 'clase_colectiva'::text THEN COALESCE(st.schedule_monthly_commission_base_monthly / NULLIF(st.bookings_count, 0)::numeric, 0::numeric)
-                    ELSE 0::numeric
+                    WHEN (b.booking_type = 'clase_colectiva'::text) THEN COALESCE((st.schedule_monthly_commission_base_monthly / (NULLIF(st.bookings_count, 0))::numeric), (0)::numeric)
+                    ELSE (0)::numeric
                 END AS booking_commission_base_monthly,
                 CASE
-                    WHEN b.booking_type = 'clase_suelta'::text THEN true
+                    WHEN (b.booking_type = 'clase_suelta'::text) THEN true
                     ELSE COALESCE(st.is_avulsa, false)
                 END AS is_avulsa,
                 CASE
-                    WHEN b.booking_type = 'clase_colectiva'::text THEN false
+                    WHEN (b.booking_type = 'clase_colectiva'::text) THEN false
                     ELSE COALESCE(st.is_avulsa_grupo_fixo, false)
                 END AS is_avulsa_grupo_fixo
-           FROM mt_booking_participantes p
-             JOIN mt_bookings b ON b.booking_id = p.booking_id
-             LEFT JOIN loose_class_matches lcm ON lcm.booking_id = b.booking_id AND lcm.customer_code = p.customer_code
-             LEFT JOIN schedule_totals st ON b.booking_type = 'clase_colectiva'::text AND st.customer_code = p.customer_code AND st.plan_month = date_trunc('month'::text, b.booking_date::timestamp with time zone)::date AND st.day_of_week = EXTRACT(isodow FROM b.booking_date) AND st.start_time = b.start_time AND st.booking_class_type =
+           FROM (((mt_booking_participantes p
+             JOIN mt_bookings b ON ((b.booking_id = p.booking_id)))
+             LEFT JOIN loose_class_matches lcm ON (((lcm.booking_id = b.booking_id) AND (lcm.customer_code = p.customer_code))))
+             LEFT JOIN schedule_totals st ON (((b.booking_type = 'clase_colectiva'::text) AND (st.customer_code = p.customer_code) AND (st.plan_month = (date_trunc('month'::text, (b.booking_date)::timestamp with time zone))::date) AND (st.day_of_week = EXTRACT(isodow FROM b.booking_date)) AND (st.start_time = b.start_time) AND (st.booking_class_type =
                 CASE
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*1\s*\)'::text THEN 'INDIVIDUAL'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*2\s*\)'::text THEN 'DUPLA'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*3\s*\)'::text THEN 'TRIO'::text
-                    WHEN b.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text THEN 'GRUPO'::text
-                    WHEN b.booking_type = 'clase_suelta'::text THEN 'INDIVIDUAL'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*1\s*\)'::text) THEN 'INDIVIDUAL'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*2\s*\)'::text) THEN 'DUPLA'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*3\s*\)'::text) THEN 'TRIO'::text
+                    WHEN (b.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text) THEN 'GRUPO'::text
+                    WHEN (b.booking_type = 'clase_suelta'::text) THEN 'INDIVIDUAL'::text
                     ELSE 'GRUPO'::text
-                END AND st.professor =
+                END) AND (st.professor =
                 CASE
-                    WHEN b.booking_id = 4725 THEN 'Rodrigo Assunção'::text
-                    WHEN p.customer_code = '000475'::text AND b.booking_date >= '2026-07-01'::date AND b.booking_date <= '2026-07-31'::date OR b.description ~~* '%Julio Souza%'::text OR b.description ~~* '%João Assunção%'::text OR b.description ~~* '%Joao Assuncao%'::text OR b.description ~~* '%Joao Assunção%'::text OR b.description ~~* '%João Assuncao%'::text THEN 'João Assunção'::text
-                    WHEN b.description ~~* '%Elinton Sanches%'::text OR b.description ~~* '%Eliton Sanches%'::text OR b.description ~~* '%Élinton Sanches%'::text OR b.description ~~* '%Éliton Sanches%'::text THEN 'Elinton Sanches'::text
-                    WHEN b.description ~~* '%Rodrigo Assunção%'::text OR b.description ~~* '%Rodrigo Assuncao%'::text THEN 'Rodrigo Assunção'::text
-                    WHEN b.description ~~* '%Leandro Bonete%'::text THEN 'Leandro Bonete'::text
-                    WHEN b.description ~~* '%Tatiana Araújo%'::text OR b.description ~~* '%Tatiana Araujo%'::text THEN 'Tatiana Araújo'::text
-                    WHEN b.description ~~* '%Leciane Silva%'::text THEN 'Leciane Silva'::text
+                    WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
+                    WHEN (((p.customer_code = '000475'::text) AND (b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date)) OR (b.description ~~* '%Julio Souza%'::text) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
+                    WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
+                    WHEN ((b.description ~~* '%Rodrigo Assunção%'::text) OR (b.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+                    WHEN (b.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
+                    WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+                    WHEN (b.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
                     ELSE NULLIF(TRIM(BOTH FROM regexp_replace(COALESCE("substring"(b.description, '(?i)prof[:.]?[[:space:]]*([^.(]+)'::text), ''::text), '[[:space:]]+'::text, ' '::text, 'g'::text)), ''::text)
-                END
-          WHERE b.status = 'ACTIVE'::text AND (b.booking_type = ANY (ARRAY['clase_colectiva'::text, 'clase_suelta'::text])) AND b.description !~~* '%RESERVA MENSAL%'::text
+                END))))
+          WHERE ((b.status = 'ACTIVE'::text) AND (b.booking_type = ANY (ARRAY['clase_colectiva'::text, 'clase_suelta'::text])) AND (b.description !~~* '%RESERVA MENSAL%'::text))
         ), unallocated_payments AS (
          SELECT rf.item_key,
             rf.customer_code,
@@ -582,27 +547,48 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
             rf.paid,
             rf.is_avulsa,
             rf.is_avulsa_grupo_fixo,
+            COALESCE(
+                 CASE
+                     WHEN (((rf.customer_code = '000475'::text) AND (((rf.pay_date >= '2026-07-01 00:00:00'::timestamp without time zone) AND (rf.pay_date < '2026-08-01 00:00:00'::timestamp without time zone)) OR (rf.description ~~* '%15/07/2026%'::text))) OR (rf.description ~~* '%João Assunção%'::text) OR (rf.description ~~* '%Joao Assuncao%'::text) OR (rf.description ~~* '%Joao Assunção%'::text) OR (rf.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
+                     WHEN ((rf.description ~~* '%Rodrigo Assunção%'::text) OR (rf.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+                     WHEN ((rf.description ~~* '%Leandro Bonete%'::text) OR (rf.description ~~* '%Leandro B.%'::text)) THEN 'Leandro Bonete'::text
+                     WHEN ((rf.description ~~* '%Tatiana Araújo%'::text) OR (rf.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+                     WHEN (rf.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
+                     WHEN ((rf.description ~~* '%Elinton Sanches%'::text) OR (rf.description ~~* '%Eliton Sanches%'::text) OR (rf.description ~~* '%Élinton Sanches%'::text) OR (rf.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
+                     ELSE NULL::text
+                 END,
+                 (CASE WHEN rf.is_avulsa THEN 'Sem professor'::text ELSE NULL::text END),
+                 ( SELECT prof.professor
+                    FROM ( SELECT DISTINCT ON (p_sub.customer_code) p_sub.customer_code,
+                             COALESCE(
+                                 CASE
+                                     WHEN (b_sub.booking_id = 4725) THEN 'Rodrigo Assunção'::text
+                                     WHEN ((p_sub.customer_code = '000475'::text) AND (b_sub.booking_date >= '2026-07-01'::date) AND (b_sub.booking_date <= '2026-07-31'::date)) THEN 'João Assunção'::text
+                                     WHEN ((b_sub.description ~~* '%Elinton Sanches%'::text) OR (b_sub.description ~~* '%Eliton Sanches%'::text) OR (b_sub.description ~~* '%Élinton Sanches%'::text) OR (b_sub.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
+                                     WHEN ((b_sub.description ~~* '%Rodrigo Assunção%'::text) OR (b_sub.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+                                     WHEN (b_sub.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
+                                     WHEN ((b_sub.description ~~* '%Tatiana Araújo%'::text) OR (b_sub.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+                                     WHEN (b_sub.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
+                                     ELSE NULLIF(TRIM(BOTH FROM regexp_replace(COALESCE("substring"(b_sub.description, '(?i)prof[:.]?[[:space:]]*([^.(]+)'::text), ''::text), '[[:space:]]+'::text, ' '::text, 'g'::text)), ''::text)
+                                 END, 'Sem professor'::text) AS professor
+                            FROM (mt_booking_participantes p_sub
+                              JOIN mt_bookings b_sub ON ((b_sub.booking_id = p_sub.booking_id)))
+                           WHERE ((p_sub.customer_code = rf.customer_code) AND (b_sub.status = 'ACTIVE'::text) AND (b_sub.booking_type = 'clase_colectiva'::text))
+                           ORDER BY p_sub.customer_code, abs(b_sub.booking_date - (COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone))::date) ASC) prof),
+                 'Sem professor'::text
+             ) AS professor,
                 CASE
-                    WHEN rf.customer_code = '000475'::text AND (rf.pay_date >= '2026-07-01 00:00:00'::timestamp without time zone AND rf.pay_date < '2026-08-01 00:00:00'::timestamp without time zone OR rf.description ~~* '%15/07/2026%'::text) OR rf.description ~~* '%João Assunção%'::text OR rf.description ~~* '%Joao Assuncao%'::text OR rf.description ~~* '%Joao Assunção%'::text OR rf.description ~~* '%João Assuncao%'::text THEN 'João Assunção'::text
-                    WHEN rf.description ~~* '%Rodrigo Assunção%'::text OR rf.description ~~* '%Rodrigo Assuncao%'::text THEN 'Rodrigo Assunção'::text
-                    WHEN rf.description ~~* '%Leandro Bonete%'::text OR rf.description ~~* '%Leandro B.%'::text THEN 'Leandro Bonete'::text
-                    WHEN rf.description ~~* '%Tatiana Araújo%'::text OR rf.description ~~* '%Tatiana Araujo%'::text THEN 'Tatiana Araújo'::text
-                    WHEN rf.description ~~* '%Leciane Silva%'::text THEN 'Leciane Silva'::text
-                    WHEN rf.description ~~* '%Elinton Sanches%'::text OR rf.description ~~* '%Eliton Sanches%'::text OR rf.description ~~* '%Élinton Sanches%'::text OR rf.description ~~* '%Éliton Sanches%'::text THEN 'Elinton Sanches'::text
-                    ELSE NULL::text
-                END AS professor,
-                CASE
-                    WHEN rf.description ~~* '%Sócio Montreal%'::text OR rf.description ~~* '%Leonardo Assunção%'::text OR rf.description ~~* '%Leonardo Assuncao%'::text THEN true
+                    WHEN ((rf.description ~~* '%Sócio Montreal%'::text) OR (rf.description ~~* '%Leonardo Assunção%'::text) OR (rf.description ~~* '%Leonardo Assuncao%'::text)) THEN true
                     ELSE false
                 END AS is_socio
            FROM resolved_faturamento rf
-          WHERE rf.item_canceled = false AND rf.sale_canceled = false AND COALESCE(rf.sale_type, ''::text) <> 'refund'::text AND rf.valor_faturamento > 0::numeric AND (rf.subcategoria IS NULL OR rf.subcategoria <> 'Avulsa - Particular'::text) AND (rf.categoria = 'Aulas'::text OR rf.categoria = 'Outros'::text AND rf.description ~~* '%TÊNIS%'::text AND rf.description ~~* '%ADULTO%'::text) AND NOT (rf.item_key IN ( SELECT DISTINCT loose_class_matches.item_key
+          WHERE ((rf.item_canceled = false) AND (rf.sale_canceled = false) AND (COALESCE(rf.sale_type, ''::text) <> 'refund'::text) AND (rf.valor_faturamento > (0)::numeric) AND ((rf.subcategoria IS NULL) OR (rf.subcategoria <> 'Avulsa - Particular'::text)) AND ((rf.categoria = 'Aulas'::text) OR ((rf.categoria = 'Outros'::text) AND (rf.description ~~* '%TÊNIS%'::text) AND (rf.description ~~* '%ADULTO%'::text))) AND (NOT (rf.item_key IN ( SELECT DISTINCT loose_class_matches.item_key
                    FROM loose_class_matches
-                  WHERE loose_class_matches.item_key IS NOT NULL
+                  WHERE (loose_class_matches.item_key IS NOT NULL)
                 UNION
                  SELECT DISTINCT schedule_allocations.item_key
                    FROM schedule_allocations
-                  WHERE schedule_allocations.item_key IS NOT NULL))
+                  WHERE (schedule_allocations.item_key IS NOT NULL)))))
         )
  SELECT final_bookings.booking_id,
     final_bookings.booking_date,
@@ -612,28 +598,28 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
     final_bookings.resource_name,
     final_bookings.description,
         CASE
-            WHEN EXTRACT(isodow FROM final_bookings.booking_date) = 6::numeric AND final_bookings.start_time = '10:00:00'::time without time zone AND final_bookings.professor = 'Leandro Bonete'::text THEN 'Leandro Bonete'::text
+            WHEN ((EXTRACT(isodow FROM final_bookings.booking_date) = (6)::numeric) AND (final_bookings.start_time = '10:00:00'::time without time zone) AND (final_bookings.professor = 'Leandro Bonete'::text)) THEN 'Leandro Bonete'::text
             ELSE final_bookings.professor
         END AS professor,
     final_bookings.customer_code,
     final_bookings.participant_name,
         CASE
-            WHEN EXTRACT(isodow FROM final_bookings.booking_date) = 6::numeric AND final_bookings.start_time = '10:00:00'::time without time zone AND final_bookings.professor = 'Leandro Bonete'::text THEN final_bookings.booking_value / 2.0
+            WHEN ((EXTRACT(isodow FROM final_bookings.booking_date) = (6)::numeric) AND (final_bookings.start_time = '10:00:00'::time without time zone) AND (final_bookings.professor = 'Leandro Bonete'::text)) THEN (final_bookings.booking_value / 2.0)
             ELSE final_bookings.booking_value
         END AS booking_value,
         CASE
-            WHEN EXTRACT(isodow FROM final_bookings.booking_date) = 6::numeric AND final_bookings.start_time = '10:00:00'::time without time zone AND final_bookings.professor = 'Leandro Bonete'::text THEN final_bookings.booking_commission_base / 2.0
+            WHEN ((EXTRACT(isodow FROM final_bookings.booking_date) = (6)::numeric) AND (final_bookings.start_time = '10:00:00'::time without time zone) AND (final_bookings.professor = 'Leandro Bonete'::text)) THEN (final_bookings.booking_commission_base / 2.0)
             ELSE final_bookings.booking_commission_base
         END AS booking_commission_base,
     final_bookings.is_socio_benefit,
     final_bookings.is_paid,
     final_bookings.pay_date,
         CASE
-            WHEN EXTRACT(isodow FROM final_bookings.booking_date) = 6::numeric AND final_bookings.start_time = '10:00:00'::time without time zone AND final_bookings.professor = 'Leandro Bonete'::text THEN final_bookings.booking_value_monthly / 2.0
+            WHEN ((EXTRACT(isodow FROM final_bookings.booking_date) = (6)::numeric) AND (final_bookings.start_time = '10:00:00'::time without time zone) AND (final_bookings.professor = 'Leandro Bonete'::text)) THEN (final_bookings.booking_value_monthly / 2.0)
             ELSE final_bookings.booking_value_monthly
         END AS booking_value_monthly,
         CASE
-            WHEN EXTRACT(isodow FROM final_bookings.booking_date) = 6::numeric AND final_bookings.start_time = '10:00:00'::time without time zone AND final_bookings.professor = 'Leandro Bonete'::text THEN final_bookings.booking_commission_base_monthly / 2.0
+            WHEN ((EXTRACT(isodow FROM final_bookings.booking_date) = (6)::numeric) AND (final_bookings.start_time = '10:00:00'::time without time zone) AND (final_bookings.professor = 'Leandro Bonete'::text)) THEN (final_bookings.booking_commission_base_monthly / 2.0)
             ELSE final_bookings.booking_commission_base_monthly
         END AS booking_commission_base_monthly,
     final_bookings.is_avulsa,
@@ -650,53 +636,44 @@ UNION ALL
     'Elinton Sanches'::text AS professor,
     final_bookings.customer_code,
     final_bookings.participant_name,
-    final_bookings.booking_value / 2.0 AS booking_value,
-    final_bookings.booking_commission_base / 2.0 AS booking_commission_base,
+    (final_bookings.booking_value / 2.0) AS booking_value,
+    (final_bookings.booking_commission_base / 2.0) AS booking_commission_base,
     final_bookings.is_socio_benefit,
     final_bookings.is_paid,
     final_bookings.pay_date,
-    final_bookings.booking_value_monthly / 2.0 AS booking_value_monthly,
-    final_bookings.booking_commission_base_monthly / 2.0 AS booking_commission_base_monthly,
+    (final_bookings.booking_value_monthly / 2.0) AS booking_value_monthly,
+    (final_bookings.booking_commission_base_monthly / 2.0) AS booking_commission_base_monthly,
     final_bookings.is_avulsa,
     final_bookings.is_avulsa_grupo_fixo
    FROM final_bookings
-  WHERE EXTRACT(isodow FROM final_bookings.booking_date) = 6::numeric AND final_bookings.start_time = '10:00:00'::time without time zone AND final_bookings.professor = 'Leandro Bonete'::text
+  WHERE ((EXTRACT(isodow FROM final_bookings.booking_date) = (6)::numeric) AND (final_bookings.start_time = '10:00:00'::time without time zone) AND (final_bookings.professor = 'Leandro Bonete'::text))
 UNION ALL
  SELECT NULL::integer AS booking_id,
-    COALESCE(unallocated_payments.pay_date, unallocated_payments.data_venda::timestamp without time zone)::date AS booking_date,
-        CASE
-            WHEN unallocated_payments.is_avulsa THEN 'clase_suelta'::text
-            ELSE 'clase_colectiva'::text
-        END AS booking_type,
+    COALESCE(unallocated_payments.pay_date, (unallocated_payments.data_venda)::timestamp without time zone)::date AS booking_date,
+    'unallocated_payment'::text AS booking_type,
     '00:00:00'::time without time zone AS start_time,
-    'Montreal'::text AS venue,
-    'Quadra'::text AS resource_name,
-    'Mensalidade/Avulsa sem agendamento no sistema - '::text || unallocated_payments.description AS description,
-    COALESCE(unallocated_payments.professor, ( SELECT DISTINCT b.professor
-           FROM final_bookings b
-          WHERE b.customer_code = unallocated_payments.customer_code AND b.professor <> 'Sem professor'::text
-         LIMIT 1), 'Sem professor'::text) AS professor,
+    'MONTREAL TENIS CLUBE LTDA'::text AS venue,
+    'N/A'::text AS resource_name,
+    unallocated_payments.description,
+    COALESCE(unallocated_payments.professor, 'Sem professor'::text) AS professor,
     unallocated_payments.customer_code,
-    COALESCE(( SELECT mt_booking_participantes.participant_name
-           FROM mt_booking_participantes
-          WHERE mt_booking_participantes.customer_code = unallocated_payments.customer_code
-         LIMIT 1), 'Aluno sem agendamento'::text) AS participant_name,
+    ( SELECT c.name
+           FROM mt_clientes c
+          WHERE (c.customer_code = unallocated_payments.customer_code)
+         LIMIT 1) AS participant_name,
     unallocated_payments.valor_faturamento AS booking_value,
-        CASE
-            WHEN unallocated_payments.is_socio THEN unallocated_payments.valor_bruto
-            ELSE unallocated_payments.valor_faturamento
-        END AS booking_commission_base,
+    CASE
+        WHEN unallocated_payments.is_socio THEN unallocated_payments.valor_bruto
+        ELSE unallocated_payments.valor_faturamento
+    END AS booking_commission_base,
     unallocated_payments.is_socio AS is_socio_benefit,
-    unallocated_payments.paid AS is_paid,
+    COALESCE(unallocated_payments.paid, false) AS is_paid,
     unallocated_payments.pay_date,
-        CASE
-            WHEN unallocated_payments.is_avulsa THEN 0::numeric
-            ELSE unallocated_payments.valor_faturamento
-        END AS booking_value_monthly,
-        CASE
-            WHEN unallocated_payments.is_avulsa THEN 0::numeric
-            ELSE COALESCE(unallocated_payments.valor_bruto, unallocated_payments.valor_faturamento)
-        END AS booking_commission_base_monthly,
+    unallocated_payments.valor_faturamento AS booking_value_monthly,
+    CASE
+        WHEN unallocated_payments.is_socio THEN unallocated_payments.valor_bruto
+        ELSE unallocated_payments.valor_faturamento
+    END AS booking_commission_base_monthly,
     unallocated_payments.is_avulsa,
     unallocated_payments.is_avulsa_grupo_fixo
    FROM unallocated_payments;
