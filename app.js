@@ -6047,6 +6047,26 @@ if (isCurrentRealMonth) {
     remainingCommP2 = Math.max(0.0, round2(remainingCommP2 - paidP2Amount));
   }
 
+  // Aplicar Overrides nas Comissões de Professores
+  const ovCommP1 = windowOverrides[`comm_p1_${mKey}`] || windowOverrides[`comm_overdue_${mKey}`];
+  const ovCommP2 = windowOverrides[`comm_p2_${mKey}`];
+
+  if (ovCommP1) {
+    if (ovCommP1.is_deleted) {
+      remainingCommP1 = 0;
+    } else if (ovCommP1.custom_amount !== null && ovCommP1.custom_amount !== undefined) {
+      remainingCommP1 = parseFloat(ovCommP1.custom_amount);
+    }
+  }
+
+  if (ovCommP2) {
+    if (ovCommP2.is_deleted) {
+      remainingCommP2 = 0;
+    } else if (ovCommP2.custom_amount !== null && ovCommP2.custom_amount !== undefined) {
+      remainingCommP2 = parseFloat(ovCommP2.custom_amount);
+    }
+  }
+
   let tuitionFees = 0.0;
   tuitionFees += tuitionReceivedD30 * 0.025; 
   activeJuneSlots.forEach(slot => {
@@ -6405,13 +6425,24 @@ if (isCurrentRealMonth) {
       }).join('');
       
       if (overdueCommissions > 0) {
+        const commId = (startDay > daysInMonth) ? `comm_p2_${mKey}` : `comm_p1_${mKey}`;
+        const ovComm = windowOverrides[commId] || windowOverrides[`comm_overdue_${mKey}`];
+        const isEdited = ovComm && (ovComm.custom_amount !== null || ovComm.custom_due_date || ovComm.custom_name);
+        const badge = isEdited ? `<span style="background: rgba(255,193,7,0.2); color: #ffc107; font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">Editado</span>` : '';
+        const commDateIso = (ovComm && ovComm.custom_due_date) ? ovComm.custom_due_date : (startDay > daysInMonth ? `${year}-${month}-${String(daysInMonth).padStart(2, '0')}` : `${year}-${month}-20`);
+        const displayLabel = (ovComm && ovComm.custom_name) ? ovComm.custom_name : commLabel;
+        const escapeCommLabel = displayLabel.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
         overdueHtml += `
           <tr>
-            <td>${commDueDate}</td>
-            <td>${commLabel}</td>
+            <td>${formatDateBR(commDateIso)}</td>
+            <td>${displayLabel}${badge}</td>
             <td>Operação</td>
             <td class="text-right text-outflow">-${formatCurrency(overdueCommissions)}</td>
-            <td class="text-center">-</td>
+            <td class="text-center">
+              <button type="button" title="Editar" onclick="openCashFlowModalEdit('${commId}', '${escapeCommLabel}', '${commDateIso}', ${overdueCommissions}, 'Operação', false)" style="background:none; border:none; color:#aaa; cursor:pointer; font-size:0.85rem; padding:1px 3px;">✏️</button>
+              <button type="button" title="Excluir" onclick="deleteCashFlowItemById('${commId}')" style="background:none; border:none; color:#e63946; cursor:pointer; font-size:0.85rem; padding:1px 3px;">🗑️</button>
+            </td>
           </tr>
         `;
       }
