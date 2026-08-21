@@ -51,11 +51,12 @@ function getUserToken() {
   const sessionJson = localStorage.getItem('mt_session');
   if (!sessionJson) return null;
   try {
-
     const session = JSON.parse(sessionJson);
-    if (session.expires_at && Date.now() > session.expires_at - 60000) {
-      localStorage.removeItem('mt_session');
-      return null;
+    if (session.expires_at && typeof session.expires_at === 'number' && !isNaN(session.expires_at)) {
+      if (Date.now() > session.expires_at - 60000) {
+        localStorage.removeItem('mt_session');
+        return null;
+      }
     }
     return session.access_token || null;
   } catch (e) {
@@ -1219,29 +1220,34 @@ if (formLogin) {
       }
 
       const sessionData = await response.json();
+      const expiresInSec = parseFloat(sessionData.expires_in) || 86400;
+      const userEmail = (sessionData.user && sessionData.user.email) ? sessionData.user.email : email;
+
       localStorage.setItem('mt_session', JSON.stringify({
         access_token: sessionData.access_token,
-        expires_at: Date.now() + (sessionData.expires_in * 1000),
-        email: sessionData.user.email
+        expires_at: Date.now() + (expiresInSec * 1000),
+        email: userEmail
       }));
 
-      // Ensure app wrapper is visible and login overlay is hidden
-      checkSession();
-
-      // Populate professors dynamically
-      await populateProfessors();
-
-      // Load data
-      await loadDashboard();
-
-      // Hide login screen
-      loginOverlay.style.visibility = 'hidden';
-      loginOverlay.style.opacity = '0';
-      loginOverlay.style.display = 'none';
+      // HIDE LOGIN SCREEN IMMEDIATELY UPON SUCCESSFUL TOKEN
+      if (loginOverlay) {
+        loginOverlay.style.visibility = 'hidden';
+        loginOverlay.style.opacity = '0';
+        loginOverlay.style.display = 'none';
+      }
+      const appWrapper = document.querySelector('.app-wrapper');
+      if (appWrapper) {
+        appWrapper.style.display = 'block';
+      }
 
       // Clear form
       loginEmail.value = '';
       loginPassword.value = '';
+
+      // Populate professors and load dashboard in background
+      populateProfessors().catch(e => console.warn('Erro ao carregar professores:', e));
+      loadDashboard().catch(e => debugError('Erro ao carregar dashboard:', e));
+
     } catch (err) {
       debugError('Erro de login', err);
       loginError.innerText = err.message || 'Erro ao autenticar. Verifique suas credenciais.';
