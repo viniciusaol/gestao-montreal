@@ -5783,10 +5783,6 @@ function calculateAndRenderCurrentMonthProjection() {
   // =========================================================================
   // GUARANTEED EXACT MATCH WITH MONTHLY DFC FOR THE BASE MONTH
   // We will re-run the exact same data aggregation logic used by the 3-month projection
-  // =========================================================================
-  
-  const mKey = `${year}-${month}`; // "2026-07"
-  
   // Re-build active slots exactly as Monthly DFC
   const monthlyJuneBookings = allCommData.filter(row => row.booking_date && row.booking_date.startsWith(projBaseMonthPrefix) && row.booking_type !== 'clase_suelta');
   
