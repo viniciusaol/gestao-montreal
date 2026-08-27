@@ -329,7 +329,7 @@ async function populateProfessors() {
     debugLog('Carregando lista de professores dinamicamente...');
     const prevSelected = selectProf.value;
 
-    const data = await supabaseSelect('vw_mt_comissoes_detalhadas', 'select=professor');
+    const data = await supabaseSelect('vw_mt_professores_lista', 'select=professor');
     const uniqueProfs = Array.from(new Set(data.map(d => d.professor).filter(Boolean))).sort();
 
     if (uniqueProfs.length === 0) {
