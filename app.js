@@ -540,7 +540,7 @@ async function loadDashboard() {
     debugLog('Buscando repasses via REST API...');
 
     // 4. Fetch global sales data for faturamento reconciliation
-    const salesParams = `select=valor_faturamento,categoria,subcategoria,produto_padronizado,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    const salesParams = `select=item_key,valor_faturamento,categoria,subcategoria,produto_padronizado,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
     debugLog('Buscando vendas globais para conciliação...');
 
     const [classesData, payoutsData, salesData] = await Promise.all([
@@ -1342,7 +1342,7 @@ async function loadOperationalReports() {
     // 1. Fetch data from Supabase views concurrently using Promise.allSettled
     const payParams = `select=*&mes=eq.${monthStart}`;
     const subParams = `select=*&mes=eq.${monthStart}`;
-    const itemsParams = `select=categoria,subcategoria,produto_padronizado,customer_code,valor_liquido,valor_faturamento,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    const itemsParams = `select=item_key,categoria,subcategoria,produto_padronizado,customer_code,valor_liquido,valor_faturamento,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
 
     const [
       payDataResult,
@@ -2914,7 +2914,7 @@ async function loadFinancialReports() {
 
     const procfyParams = `or=(and(due_date.gte.${firstMonth},due_date.lte.${projectionEnd}),and(paid.eq.false,due_date.lt.${firstMonth}))`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
-    const salesParams = `select=valor_faturamento,categoria,subcategoria,produto_padronizado,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&order=pay_date.asc`;
+    const salesParams = `select=item_key,valor_faturamento,categoria,subcategoria,produto_padronizado,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
     const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))&order=booking_date.asc`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
