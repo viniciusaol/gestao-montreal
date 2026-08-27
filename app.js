@@ -481,6 +481,23 @@ function getBasePriceForBooking(booking) {
   return { price: PRICING.ADULTO.GRUPO, isMonthly: true, category: 'Adulto Grupo' };
 }
 
+// Helper unificado para categorização de itens de faturamento
+function categorizeFaturamentoItem(row) {
+  if (!row) return 'lanchonete';
+  const desc = (row.item_description || '').toLowerCase();
+  const cat = (row.categoria || '').toLowerCase();
+  const sub = (row.subcategoria || '').toLowerCase();
+  const prod = (row.produto_padronizado || '').toLowerCase();
+
+  const isIntensivao = /INTENSIV/i.test(row.item_description || '');
+  const isLesson = isIntensivao || cat === 'aulas' || desc.includes('aula') || desc.includes('tênis') || desc.includes('tenis') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
+  const isRental = !isLesson && (cat === 'locação' || sub.includes('reserva mensal') || prod.includes('reserva mensal') || desc.includes('vouchers desconto 1º reserva') || desc.includes('voucher desconto 1º reserva') || desc.includes('locação') || desc.includes('reserva'));
+
+  if (isLesson) return 'aulas';
+  if (isRental) return 'locacao';
+  return 'lanchonete';
+}
+
 // ---- Load Dashboard ----
 async function loadDashboard() {
   debugLog('loadDashboard() disparado.');
@@ -521,23 +538,6 @@ async function loadDashboard() {
     const profEncoded = encodeURIComponent(professor);
     const payoutsParams = `select=*&professor=eq.${profEncoded}&reference_period=eq.${monthStart}&order=payout_date.desc`;
     debugLog('Buscando repasses via REST API...');
-
-// Helper unificado para categorização de itens de faturamento
-function categorizeFaturamentoItem(row) {
-  if (!row) return 'lanchonete';
-  const desc = (row.item_description || '').toLowerCase();
-  const cat = (row.categoria || '').toLowerCase();
-  const sub = (row.subcategoria || '').toLowerCase();
-  const prod = (row.produto_padronizado || '').toLowerCase();
-
-  const isIntensivao = /INTENSIV/i.test(row.item_description || '');
-  const isLesson = isIntensivao || cat === 'aulas' || desc.includes('aula') || desc.includes('tênis') || desc.includes('tenis') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
-  const isRental = !isLesson && (cat === 'locação' || sub.includes('reserva mensal') || prod.includes('reserva mensal') || desc.includes('vouchers desconto 1º reserva') || desc.includes('voucher desconto 1º reserva') || desc.includes('locação') || desc.includes('reserva'));
-
-  if (isLesson) return 'aulas';
-  if (isRental) return 'locacao';
-  return 'lanchonete';
-}
 
     // 4. Fetch global sales data for faturamento reconciliation
     const salesParams = `select=valor_faturamento,categoria,subcategoria,produto_padronizado,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
