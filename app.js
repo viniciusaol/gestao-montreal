@@ -2897,6 +2897,19 @@ async function loadFinancialReports() {
   }
 
   const firstMonth = historicMonths[0].monthStart;
+  const currentMonthKey = `${year}-${month}`;
+
+  // Smart Session Cache: se os dados deste mês já estão em memória, reutiliza instantaneamente
+  if (cachedFinancialData && cachedFinancialData.year === year && cachedFinancialData.month === month && cachedFinancialData.dreData) {
+    debugLog(`[Cache] Usando dados financeiros em cache para ${currentMonthKey}`);
+    const currentProcfy = (cachedFinancialData.allProcfyData || []).filter(row => row.due_date && row.due_date.substring(0, 7) === currentMonthKey);
+    const currentInter = (cachedFinancialData.allInterData || []).filter(row => row.data_movimento && row.data_movimento.substring(0, 7) === currentMonthKey);
+    renderAuditTransactions(currentProcfy, currentInter);
+    updateRoiAnalysis(cachedFinancialData.dreData, currentMonthKey, cachedFinancialData.historicMonths);
+    calculateAndRenderCurrentMonthProjection();
+    calculateAndRenderProjection();
+    return;
+  }
 
   try {
     debugLog('Buscando dados financeiros do Supabase (janela de 6 meses)...');
