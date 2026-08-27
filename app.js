@@ -522,8 +522,25 @@ async function loadDashboard() {
     const payoutsParams = `select=*&professor=eq.${profEncoded}&reference_period=eq.${monthStart}&order=payout_date.desc`;
     debugLog('Buscando repasses via REST API...');
 
+// Helper unificado para categorização de itens de faturamento
+function categorizeFaturamentoItem(row) {
+  if (!row) return 'lanchonete';
+  const desc = (row.item_description || '').toLowerCase();
+  const cat = (row.categoria || '').toLowerCase();
+  const sub = (row.subcategoria || '').toLowerCase();
+  const prod = (row.produto_padronizado || '').toLowerCase();
+
+  const isIntensivao = /INTENSIV/i.test(row.item_description || '');
+  const isLesson = isIntensivao || cat === 'aulas' || desc.includes('aula') || desc.includes('tênis') || desc.includes('tenis') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
+  const isRental = !isLesson && (cat === 'locação' || sub.includes('reserva mensal') || prod.includes('reserva mensal') || desc.includes('vouchers desconto 1º reserva') || desc.includes('voucher desconto 1º reserva') || desc.includes('locação') || desc.includes('reserva'));
+
+  if (isLesson) return 'aulas';
+  if (isRental) return 'locacao';
+  return 'lanchonete';
+}
+
     // 4. Fetch global sales data for faturamento reconciliation
-    const salesParams = `select=valor_faturamento,categoria,subcategoria,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    const salesParams = `select=valor_faturamento,categoria,subcategoria,produto_padronizado,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
     debugLog('Buscando vendas globais para conciliação...');
 
     const [classesData, payoutsData, salesData] = await Promise.all([
@@ -965,18 +982,10 @@ function renderDashboardUI() {
     const val = parseFloat(row.valor_faturamento) || 0;
     globalTotalCaixaVal += val;
 
-    const desc = (row.item_description || '').toLowerCase();
-    const cat = (row.categoria || '').toLowerCase();
-    const prod = (row.produto_padronizado || '').toLowerCase();
-
-    const isIntensivao = /INTENSIV/i.test(row.item_description || '');
-    const hasAulaInDesc = desc.includes('aula') || desc.includes('tênis') || desc.includes('tenis') || desc.includes('kids') || desc.includes('baby');
-    const isLesson = isIntensivao || hasAulaInDesc || cat === 'aulas' || prod.includes('tênis') || prod.includes('aula');
-    const isRental = !hasAulaInDesc && (cat === 'locação' || desc.includes('locação') || desc.includes('reserva') || prod.includes('locação') || prod.includes('reserva'));
-
-    if (isLesson) {
+    const categoryType = categorizeFaturamentoItem(row);
+    if (categoryType === 'aulas') {
       globalComissionableSalesVal += val;
-    } else if (isRental) {
+    } else if (categoryType === 'locacao') {
       globalLocacoesVal += val;
     } else {
       globalConsumosVal += val;
@@ -1333,7 +1342,7 @@ async function loadOperationalReports() {
     // 1. Fetch data from Supabase views concurrently using Promise.allSettled
     const payParams = `select=*&mes=eq.${monthStart}`;
     const subParams = `select=*&mes=eq.${monthStart}`;
-    const itemsParams = `select=categoria,subcategoria,customer_code,valor_liquido,valor_faturamento,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
+    const itemsParams = `select=categoria,subcategoria,produto_padronizado,customer_code,valor_liquido,valor_faturamento,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}`;
 
     const [
       payDataResult,
@@ -2905,7 +2914,7 @@ async function loadFinancialReports() {
 
     const procfyParams = `or=(and(due_date.gte.${firstMonth},due_date.lte.${projectionEnd}),and(paid.eq.false,due_date.lt.${firstMonth}))`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
-    const salesParams = `select=valor_faturamento,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&order=pay_date.asc`;
+    const salesParams = `select=valor_faturamento,categoria,subcategoria,produto_padronizado,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&order=pay_date.asc`;
     const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))&order=booking_date.asc`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
@@ -5495,7 +5504,8 @@ window.saveCashFlowItemOverride = async function() {
   const isManual = document.getElementById('cashflow-edit-is-manual').value === "true";
   const description = document.getElementById('cashflow-edit-description').value.trim();
   const dateStr = document.getElementById('cashflow-edit-date').value;
-  const amount = parseFloat(document.getElementById('cashflow-edit-amount').value);
+  const rawAmount = document.getElementById('cashflow-edit-amount').value.toString().trim();
+  const amount = parseFloat(rawAmount.replace(/\./g, '').replace(',', '.'));
   const flow = document.getElementById('cashflow-edit-flow').value;
 
   if (!description || !dateStr || isNaN(amount) || amount <= 0) {
@@ -5542,6 +5552,9 @@ window.saveCashFlowItemOverride = async function() {
   if (typeof calculateAndRenderCurrentMonthProjection === 'function') {
     calculateAndRenderCurrentMonthProjection();
   }
+  if (typeof calculateAndRenderProjection === 'function') {
+    calculateAndRenderProjection();
+  }
 };
 
 window.deleteCurrentCashFlowItem = async function() {
@@ -5586,6 +5599,9 @@ window.deleteCurrentCashFlowItem = async function() {
   if (typeof calculateAndRenderCurrentMonthProjection === 'function') {
     calculateAndRenderCurrentMonthProjection();
   }
+  if (typeof calculateAndRenderProjection === 'function') {
+    calculateAndRenderProjection();
+  }
 };
 
 window.deleteCashFlowItemById = async function(txId) {
@@ -5625,6 +5641,9 @@ window.deleteCashFlowItemById = async function(txId) {
 
   if (typeof calculateAndRenderCurrentMonthProjection === 'function') {
     calculateAndRenderCurrentMonthProjection();
+  }
+  if (typeof calculateAndRenderProjection === 'function') {
+    calculateAndRenderProjection();
   }
 };
 
@@ -6715,22 +6734,15 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
   let totalRevenue = 0;
 
   itemsData.forEach(item => {
-    const desc = (item.item_description || '').toLowerCase();
-    const cat = (item.categoria || '').toLowerCase();
-    const sub = (item.subcategoria || '').toLowerCase();
-    const prod = (item.produto_padronizado || '').toLowerCase();
     const val = parseFloat(item.valor_faturamento) || 0;
-    
-    const isReservaMensal = sub.includes('reserva mensal') || prod.includes('reserva mensal');
-    const isQuadraAvulsa = cat === 'locação' || desc.includes('vouchers desconto 1º reserva') || desc.includes('voucher desconto 1º reserva');
-    const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby');
+    const categoryType = categorizeFaturamentoItem(item);
 
-    if (isLesson) {
+    if (categoryType === 'aulas') {
       aulasRevenue += val;
       if (item.customer_code) {
         studentsSet.add(item.customer_code);
       }
-    } else if (isReservaMensal || isQuadraAvulsa) {
+    } else if (categoryType === 'locacao') {
       locacaoRevenue += val;
     }
     
