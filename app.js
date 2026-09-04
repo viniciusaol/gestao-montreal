@@ -214,6 +214,27 @@ async function supabaseInsert(table, row) {
   return res.json();
 }
 
+async function supabaseUpsert(table, row) {
+  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+  debugLog(`[REST] UPSERT ${url}`, row);
+  const token = getUserToken() || SUPABASE_KEY;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates,return=representation'
+    },
+    body: JSON.stringify(row)
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Supabase REST upsert error ${res.status}: ${body}`);
+  }
+  return res.json();
+}
+
 async function supabaseDelete(table, filterKey, filterValue) {
   const url = `${SUPABASE_URL}/rest/v1/${table}?${filterKey}=eq.${encodeURIComponent(filterValue)}`;
   debugLog(`[REST] DELETE ${url}`);
@@ -2961,7 +2982,8 @@ async function loadFinancialReports() {
       supabaseSelect('vw_mt_ocupacao_quadras_mes', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
       supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
       supabaseSelect('mt_faturamento_vendas', voucherParams),
-      supabaseSelect('mt_agenda_recebiveis_importada', receivablesParams)
+      supabaseSelect('mt_agenda_recebiveis_importada', receivablesParams),
+      supabaseSelect('mt_provisoes_dre_config')
     ]);
 
     const allProcfyData = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -2978,6 +3000,8 @@ async function loadFinancialReports() {
     const prevHourlyEfficiency = results[11].status === 'fulfilled' ? results[11].value : [];
     const allVouchersData = results[12].status === 'fulfilled' ? results[12].value : [];
     const allImportedReceivablesData = results[13].status === 'fulfilled' ? results[13].value : [];
+    const allProvisoesConfigData = results[14].status === 'fulfilled' ? results[14].value : [];
+    globalProvisoesData = Array.isArray(allProvisoesConfigData) ? allProvisoesConfigData : [];
 
     results.forEach((res, i) => {
       if (res.status === 'rejected') {
@@ -3367,13 +3391,36 @@ async function loadFinancialReports() {
       } else {
         // Skip 'Estoque Bar/Lanchonete' from Procfy in DRE because we calculate it via COGS/CMV from sales
         // Skip 'Simples - Imposto' because we already calculate it pro-forma under Gross Revenue
-        if (category === 'Estoque Bar/Lanchonete' || category === 'Simples - Imposto') {
+        // Skip 'Encargos Trabalhistas' from Procfy in DRE because it is strictly calculated/managed via DRE Provisões (R$ 440 * funcionários)
+        if (category === 'Estoque Bar/Lanchonete' || category === 'Simples - Imposto' || category.toLowerCase() === 'encargos trabalhistas') {
           return;
         }
         dreData[monthKey].despesasOperacionais += amount;
         dreData[monthKey].despesasOperacionaisCategories[category] = 
           (dreData[monthKey].despesasOperacionaisCategories[category] || 0.0) + amount;
         operationalExpenseCategories.add(category);
+      }
+    });
+
+    // Inject configured DRE Encargos Trabalhistas (outside Procfy)
+    historicMonths.forEach(({ key }) => {
+      if (!dreData[key]) return;
+      
+      const configRow = (allProvisoesConfigData || []).find(c => c.month_key === key);
+      let encTotal = 0.0;
+      if (configRow && configRow.valor_total !== undefined && configRow.valor_total !== null) {
+        encTotal = parseFloat(configRow.valor_total) || 0.0;
+      } else if (key >= '2026-07') {
+        // Default: 1 funcionário * 440.00
+        encTotal = 440.00;
+      }
+
+      if (encTotal > 0) {
+        const catEnc = 'Encargos Trabalhistas';
+        dreData[key].despesasOperacionais += encTotal;
+        dreData[key].despesasOperacionaisCategories[catEnc] = 
+          (dreData[key].despesasOperacionaisCategories[catEnc] || 0.0) + encTotal;
+        operationalExpenseCategories.add(catEnc);
       }
     });
 
@@ -7429,5 +7476,150 @@ function initReceivablesUpload() {
 
 // Iniciar a escuta do upload
 initReceivablesUpload();
+
+// ==============================================================================
+// ---- Provisões de Encargos Trabalhistas (DRE) Controller ----
+// ==============================================================================
+let globalProvisoesData = [];
+
+window.openProvisoesModal = async function() {
+  const modal = document.getElementById('modal-provisoes-dre');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  
+  const tbody = document.getElementById('provisoes-config-tbody');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="padding: 1.5rem; text-align: center;">Carregando configurações...</td></tr>`;
+
+  try {
+    const data = await supabaseSelect('mt_provisoes_dre_config');
+    globalProvisoesData = Array.isArray(data) ? data : [];
+    renderProvisoesModalTable();
+  } catch (err) {
+    debugError('Erro ao carregar mt_provisoes_dre_config', err);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="color: #e63946; padding: 1rem; text-align: center;">Erro ao carregar dados: ${err.message}</td></tr>`;
+  }
+};
+
+window.closeProvisoesModal = function() {
+  const modal = document.getElementById('modal-provisoes-dre');
+  if (modal) modal.style.display = 'none';
+};
+
+window.renderProvisoesModalTable = function() {
+  const tbody = document.getElementById('provisoes-config-tbody');
+  if (!tbody) return;
+
+  const monthKeys = ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
+  const monthLabels = {
+    '2026-06': 'Jun/2026',
+    '2026-07': 'Jul/2026',
+    '2026-08': 'Ago/2026',
+    '2026-09': 'Set/2026',
+    '2026-10': 'Out/2026',
+    '2026-11': 'Nov/2026',
+    '2026-12': 'Dez/2026'
+  };
+
+  let html = '';
+  monthKeys.forEach(mKey => {
+    const existing = globalProvisoesData.find(d => d.month_key === mKey);
+    const numFunc = existing ? parseFloat(existing.num_funcionarios) : (mKey >= '2026-07' ? 1 : 0);
+    const valUnit = existing ? parseFloat(existing.valor_unitario) : 440.00;
+    const valTotal = existing ? parseFloat(existing.valor_total) : (numFunc * valUnit);
+
+    html += `
+      <tr id="row-provisao-${mKey}">
+        <td style="font-weight: 600; color: var(--color-creme); padding: 8px 12px;">${monthLabels[mKey] || mKey}</td>
+        <td style="text-align: center; padding: 6px;">
+          <input type="number" step="1" min="0" id="prov-func-${mKey}" value="${numFunc}" 
+            oninput="onProvisoesFieldChange('${mKey}', 'func')" 
+            style="width: 70px; text-align: center; padding: 4px; border-radius: 4px; border: 1px solid #444; background: #121212; color: #fff;">
+        </td>
+        <td style="text-align: right; padding: 6px;">
+          <input type="number" step="1" min="0" id="prov-unit-${mKey}" value="${valUnit}" 
+            oninput="onProvisoesFieldChange('${mKey}', 'unit')" 
+            style="width: 85px; text-align: right; padding: 4px; border-radius: 4px; border: 1px solid #444; background: #121212; color: #fff;">
+        </td>
+        <td style="text-align: right; padding: 6px;">
+          <input type="number" step="0.01" min="0" id="prov-total-${mKey}" value="${valTotal.toFixed(2)}" 
+            style="width: 100px; text-align: right; padding: 4px; border-radius: 4px; border: 1px solid var(--color-terracota); background: #1a1a1a; color: #2ec4b6; font-weight: bold;">
+        </td>
+        <td style="text-align: center; padding: 6px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="saveProvisoesRow('${mKey}')" 
+            style="padding: 3px 8px; font-size: 0.75rem; border-color: rgba(241,244,224,0.3);">Salvar</button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+};
+
+window.onProvisoesFieldChange = function(monthKey, changedField) {
+  const funcInput = document.getElementById(`prov-func-${monthKey}`);
+  const unitInput = document.getElementById(`prov-unit-${monthKey}`);
+  const totalInput = document.getElementById(`prov-total-${monthKey}`);
+
+  if (funcInput && unitInput && totalInput) {
+    const numFunc = parseFloat(funcInput.value) || 0;
+    const unitVal = parseFloat(unitInput.value) || 0;
+    totalInput.value = (numFunc * unitVal).toFixed(2);
+  }
+};
+
+window.saveProvisoesRow = async function(monthKey) {
+  const funcInput = document.getElementById(`prov-func-${monthKey}`);
+  const unitInput = document.getElementById(`prov-unit-${monthKey}`);
+  const totalInput = document.getElementById(`prov-total-${monthKey}`);
+
+  if (!funcInput || !unitInput || !totalInput) return;
+
+  const num_funcionarios = parseFloat(funcInput.value) || 0;
+  const valor_unitario = parseFloat(unitInput.value) || 0;
+  const valor_total = parseFloat(totalInput.value) || 0;
+
+  try {
+    const rowPayload = {
+      month_key: monthKey,
+      num_funcionarios: num_funcionarios,
+      valor_unitario: valor_unitario,
+      valor_total: valor_total,
+      updated_at: new Date().toISOString()
+    };
+
+    await supabaseUpsert('mt_provisoes_dre_config', rowPayload);
+    
+    // Atualiza localmente
+    const idx = globalProvisoesData.findIndex(d => d.month_key === monthKey);
+    if (idx >= 0) {
+      globalProvisoesData[idx] = { ...globalProvisoesData[idx], ...rowPayload };
+    } else {
+      globalProvisoesData.push(rowPayload);
+    }
+
+    const rowElem = document.getElementById(`row-provisao-${monthKey}`);
+    if (rowElem) {
+      rowElem.style.backgroundColor = 'rgba(46, 196, 182, 0.15)';
+      setTimeout(() => { rowElem.style.backgroundColor = 'transparent'; }, 1500);
+    }
+
+    // Recarrega DRE instantaneamente
+    if (typeof loadFinancialReports === 'function') {
+      loadFinancialReports();
+    }
+  } catch (err) {
+    debugError(`Erro ao salvar provisão ${monthKey}`, err);
+    alert(`Erro ao salvar provisão para ${monthKey}: ${err.message}`);
+  }
+};
+
+window.saveAllProvisoesRows = async function() {
+  const monthKeys = ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
+  for (const mKey of monthKeys) {
+    await saveProvisoesRow(mKey);
+  }
+  alert('Todas as configurações de provisões de encargos foram salvas com sucesso!');
+};
+
 
 

@@ -831,7 +831,12 @@
         <!-- Demonstration of Income Statement (DRE) -->
         <section id="fin-dre-card" class="detailed-section printable-section" style="margin-top: 0.5rem; margin-bottom: 2rem; display: none;">
           <div class="card">
-            <h3 class="card-title">Demonstração do Resultado do Exercício (DRE)</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+              <h3 class="card-title" style="margin-bottom: 0;">Demonstração do Resultado do Exercício (DRE)</h3>
+              <button id="btn-open-provisoes-modal" class="btn btn-outline btn-sm no-print" onclick="openProvisoesModal()" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; padding: 6px 12px; border-color: rgba(241,244,224,0.3);">
+                ⚙️ Configurar Encargos CLT
+              </button>
+            </div>
             <div class="table-container">
               <table class="data-table" id="fin-dre-table" style="min-width: 800px;">
                 <thead>
@@ -1342,6 +1347,44 @@
           <button type="button" class="btn btn-secondary btn-sm" onclick="closeCashFlowModal()" style="background: rgba(255,255,255,0.1); color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">Cancelar</button>
           <button type="button" class="btn btn-primary btn-sm" onclick="saveCashFlowItemOverride()" style="background: #c05131; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.8rem;">Salvar Alterações</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configuração de Provisões de Encargos Trabalhistas -->
+  <div id="modal-provisoes-dre" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; justify-content: center; align-items: center;">
+    <div class="modal-card" style="background: #1c1f1d; border: 1px solid rgba(241,244,224,0.15); border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 720px; max-height: 85vh; display: flex; flex-direction: column; color: var(--color-creme); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(241,244,224,0.1); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+        <h3 style="margin: 0; font-size: 1.1rem; color: var(--color-terracota); display: flex; align-items: center; gap: 8px;">
+          ⚙️ Provisões de Encargos Trabalhistas (DRE)
+        </h3>
+        <button type="button" onclick="closeProvisoesModal()" style="background: transparent; border: none; color: #aaa; font-size: 1.3rem; cursor: pointer;">&times;</button>
+      </div>
+      
+      <p style="font-size: 0.85rem; color: rgba(241,244,224,0.7); margin-bottom: 1rem;">
+        Configure o valor mensal alocado na linha <strong>Encargos Trabalhistas</strong> do DRE (fora do Procfy). Padrão: <strong>R$ 440,00 &times; nº de funcionários</strong>. Os valores do Procfy são ignorados nesta linha na DRE.
+      </p>
+
+      <div style="overflow-y: auto; flex: 1; margin-bottom: 1rem; border: 1px solid rgba(241,244,224,0.1); border-radius: 8px;">
+        <table class="data-table" style="width: 100%; font-size: 0.85rem; margin-bottom: 0;">
+          <thead>
+            <tr>
+              <th style="text-align: left; padding: 8px 12px;">Mês</th>
+              <th style="text-align: center; width: 140px; padding: 8px;">Qtd. Funcionários</th>
+              <th style="text-align: right; width: 130px; padding: 8px;">Unitário (R$)</th>
+              <th style="text-align: right; width: 150px; padding: 8px;">Total Encargos (R$)</th>
+              <th style="text-align: center; width: 90px; padding: 8px;">Ação</th>
+            </tr>
+          </thead>
+          <tbody id="provisoes-config-tbody">
+            <tr><td colspan="5" class="empty-state" style="padding: 1.5rem; text-align: center;">Carregando configurações...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(241,244,224,0.1); padding-top: 1rem;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="saveAllProvisoesRows()" style="border-color: var(--color-terracota); color: var(--color-creme); font-weight: 600;">💾 Salvar Todos os Meses</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeProvisoesModal()" style="background: rgba(255,255,255,0.1); color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer;">Fechar</button>
       </div>
     </div>
   </div>
