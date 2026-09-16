@@ -2479,6 +2479,9 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
       animations: canvasId.includes('report') ? false : {},
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: { top: 25, right: 10, left: 10 }
+      },
       plugins: {
         legend: { labels: { color: legendColor, font: { family: 'Hanken Grotesk' } } }
       },
@@ -2488,6 +2491,8 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
           type: 'linear',
           display: true,
           position: 'left',
+          min: 0,
+          suggestedMax: 250000,
           grid: { color: gridColor },
           ticks: { color: textColor, font: { family: 'Hanken Grotesk' }, callback: value => 'R$ ' + value.toLocaleString('pt-BR') }
         },
@@ -2495,8 +2500,10 @@ function renderChartRevenueHistory(labels, revenues, students, canvasId = 'chart
           type: 'linear',
           display: true,
           position: 'right',
+          min: 0,
+          suggestedMax: 450,
           grid: { drawOnChartArea: false },
-          ticks: { color: textColor, font: { family: 'Hanken Grotesk' }, stepSize: 5 }
+          ticks: { color: textColor, font: { family: 'Hanken Grotesk' }, stepSize: 50 }
         }
       }
     },
