@@ -21,3 +21,9 @@
 ### 3. Alocação Proporcional por Aulas Realizadas para Anna Miguel (`000602`)
 - Para o cadastro da aluna Anna Miguel (`000602`), a distribuição da mensalidade entre diferentes turmas/professores no mês deve considerar a multiplicação do peso do horário pela quantidade de aulas realizadas (`schedule_weight * bookings_count`).
 
+### 4. Gerenciamento Automático de Receitas Extras (`mt_receitas_extras`)
+- Sempre que o usuário informar valores de receitas extras via prompt para um determinado mês (ex: *"381,38 - setembro em comissões, eventos, patrocinios"*, *"Svila 1.200 em outubro"*, *"atualiza patrocinio para 500 em agosto"*):
+  1. Identificar o mês de referência (`YYYY-MM`) e o tipo de receita (`comissoes_eventos_patrocinios` ou `svila`).
+  2. Executar um comando `UPSERT` SQL na tabela `mt_receitas_extras` do Supabase para o mês e tipo informados.
+  3. Confirmar a gravação no chat informando o novo valor cadastrado para a categoria e o valor consolidado do Faturamento Líquido do mês.
+

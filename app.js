@@ -7,6 +7,13 @@ const SUPABASE_URL = 'https://ehhjnwosqcrfwonqhfoz.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4OTc4NjksImV4cCI6MjA3ODQ3Mzg2OX0.qxbGgdq3lOiOmXuY8fMok7xlNluKPQIKoC3zQroUYSQ';
 const UNPAID_RECOVERY_RATE = 0.90; // 90% recovery rate / 10% delinquency rate for unpaid bookings
 
+let globalExtraRevenuesData = [];
+
+function getExtraRevenueForMonth(monthKey, tipo) {
+  const row = (globalExtraRevenuesData || []).find(r => r.month_key === monthKey && r.tipo === tipo);
+  return row ? (parseFloat(row.valor) || 0) : 0;
+}
+
 // Helper to get adjusted commission base (applies custom rules, e.g., Jaqueline Bordejaco off-peak discount)
 function getAdjustedCommissionBase(row, baseValue) {
   let base = parseFloat(baseValue) || 0.0;
@@ -993,6 +1000,9 @@ function renderDashboardUI() {
     return sum + (isPaidInSelectedMonth ? (parseFloat(row.booking_value) || 0) : 0);
   }, 0);
 
+  const extraComissoesVal = getExtraRevenueForMonth(baseMonthPrefix, 'comissoes_eventos_patrocinios');
+  const extraSvilaVal = getExtraRevenueForMonth(baseMonthPrefix, 'svila');
+
   let globalTotalCaixaVal = 0;
   let globalComissionableSalesVal = 0;
   let globalLocacoesVal = 0;
@@ -1013,20 +1023,25 @@ function renderDashboardUI() {
     }
   });
 
+  globalTotalCaixaVal += extraComissoesVal + extraSvilaVal;
   const globalComissionableVal = globalComissionableSalesVal;
-  const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal);
-  debugLog(`[Conciliação] comissionableSales=${globalComissionableSalesVal.toFixed(2)}, locacoes=${globalLocacoesVal.toFixed(2)}, consumos=${globalConsumosVal.toFixed(2)}, total=${globalTotalCaixaVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
+  const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal + extraComissoesVal + extraSvilaVal);
+  debugLog(`[Conciliação] comissionableSales=${globalComissionableSalesVal.toFixed(2)}, locacoes=${globalLocacoesVal.toFixed(2)}, consumos=${globalConsumosVal.toFixed(2)}, extraComissoes=${extraComissoesVal.toFixed(2)}, extraSvila=${extraSvilaVal.toFixed(2)}, total=${globalTotalCaixaVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
 
   // Update DOM elements for Global Cash Reconciliation Card
   const elGlobalComissionavel = document.getElementById('global-rec-comissionavel');
   const elGlobalLocacoes = document.getElementById('global-rec-locacoes');
   const elGlobalConsumos = document.getElementById('global-rec-consumos');
+  const elGlobalExtraComissoes = document.getElementById('global-rec-extra-comissoes');
+  const elGlobalExtraSvila = document.getElementById('global-rec-extra-svila');
   const elGlobalAjustes = document.getElementById('global-rec-ajustes');
   const elGlobalTotalCaixa = document.getElementById('global-rec-total-caixa');
   
   if (elGlobalComissionavel) elGlobalComissionavel.innerText = formatCurrency(globalComissionableVal);
   if (elGlobalLocacoes) elGlobalLocacoes.innerText = formatCurrency(globalLocacoesVal);
   if (elGlobalConsumos) elGlobalConsumos.innerText = formatCurrency(globalConsumosVal);
+  if (elGlobalExtraComissoes) elGlobalExtraComissoes.innerText = formatCurrency(extraComissoesVal);
+  if (elGlobalExtraSvila) elGlobalExtraSvila.innerText = formatCurrency(extraSvilaVal);
   if (elGlobalAjustes) elGlobalAjustes.innerText = formatCurrency(globalAjustesVal);
   if (elGlobalTotalCaixa) elGlobalTotalCaixa.innerText = formatCurrency(globalTotalCaixaVal);
 
@@ -1478,6 +1493,18 @@ async function loadOperationalReports() {
     subData.forEach(item => {
       totalFaturamentoLiquido += parseFloat(item.valor_liquido_total) || 0;
     });
+
+    const curMonthKey = `${year}-${month}`;
+    const extraComissoes = getExtraRevenueForMonth(curMonthKey, 'comissoes_eventos_patrocinios');
+    const extraSvila = getExtraRevenueForMonth(curMonthKey, 'svila');
+
+    totalFaturamentoLiquido += extraComissoes + extraSvila;
+
+    // Render operational goal cards for extra revenues
+    const goalValExtraComissoes = document.getElementById('goal-val-extra-comissoes-current');
+    const goalValExtraSvila = document.getElementById('goal-val-extra-svila-current');
+    if (goalValExtraComissoes) goalValExtraComissoes.innerText = formatCurrency(extraComissoes);
+    if (goalValExtraSvila) goalValExtraSvila.innerText = formatCurrency(extraSvila);
 
     // Calculate discounts from itemsData
     let totalDesconto = 0;
@@ -2984,7 +3011,8 @@ async function loadFinancialReports() {
       supabaseSelect('mt_faturamento_vendas', voucherParams),
       supabaseSelect('mt_agenda_recebiveis_importada', receivablesParams),
       supabaseSelect('mt_provisoes_dre_config'),
-      supabaseSelect('mt_dre_mensal_fechado')
+      supabaseSelect('mt_dre_mensal_fechado'),
+      supabaseSelect('mt_receitas_extras')
     ]);
 
     const allProcfyData = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -3003,7 +3031,9 @@ async function loadFinancialReports() {
     const allImportedReceivablesData = results[13].status === 'fulfilled' ? results[13].value : [];
     const allProvisoesConfigData = results[14].status === 'fulfilled' ? results[14].value : [];
     const allClosedDreData = results[15].status === 'fulfilled' ? results[15].value : [];
+    const allExtraRevenuesData = results[16].status === 'fulfilled' ? results[16].value : [];
     globalProvisoesData = Array.isArray(allProvisoesConfigData) ? allProvisoesConfigData : [];
+    globalExtraRevenuesData = Array.isArray(allExtraRevenuesData) ? allExtraRevenuesData : [];
 
     results.forEach((res, i) => {
       if (res.status === 'rejected') {
