@@ -6820,19 +6820,22 @@ window.addEventListener('afterprint', () => {
 function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, month, totalActiveStudents) {
   const targetStudents = 300;
   const targetSnack = 10000;
-  const targetOccupancy = 50;
 
-  // Goals before August 2026: Rentals 15000, Ticket 550
-  // Goals for August 2026 and forward: Rentals 25000, Ticket 600
   const y = parseInt(year, 10) || 2026;
   const m = parseInt(month, 10) || 7;
   
   let targetRentals = 15000;
   let targetTicket = 550;
-  
-  if (y > 2026 || (y === 2026 && m >= 8)) {
+  let targetOccupancy = 50;
+
+  if (y > 2026 || (y === 2026 && m >= 9)) {
+    targetRentals = 70000;
+    targetTicket = 600;
+    targetOccupancy = 70;
+  } else if (y === 2026 && m === 8) {
     targetRentals = 25000;
     targetTicket = 600;
+    targetOccupancy = 50;
   }
 
   // 1. Group and calculate values from itemsData
