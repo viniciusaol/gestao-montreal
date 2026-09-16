@@ -1,0 +1,292 @@
+{
+  "name": "Relatório de Vendas - Carga Histórica (Junho e Julho)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1824,
+        -288
+      ],
+      "id": "9fe5f8e4-9b0b-4d72-a16b-60c5b82051ef",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "Data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -48
+      ],
+      "id": "3ab57446-cd1f-4b18-b165-a3b508d304c4",
+      "name": "Split Out1"
+    },
+    {
+      "parameters": {
+        "jsCode": "function pad2(value) {\n  return String(value).padStart(2, '0');\n}\n\nfunction formatDateObj(d) {\n  return [\n    d.getUTCFullYear(),\n    pad2(d.getUTCMonth() + 1),\n    pad2(d.getUTCDate())\n  ].join('-');\n}\n\nfunction addDaysISO(dateISO, days) {\n  const [year, month, day] = dateISO.split('-').map(Number);\n  const d = new Date(Date.UTC(year, month - 1, day));\n  d.setUTCDate(d.getUTCDate() + days);\n  return formatDateObj(d);\n}\n\n// PERÍODO HISTÓRICO CONFIGURÁVEL: Junho e Julho/2026\n// Se quiser mudar o período no futuro, basta alterar estas duas datas:\nconst dataInicial = '2026-06-01';\nconst dataFinal = '2026-07-31';\n\nconst saida = [];\nlet dateFrom = dataInicial;\nlet bloco = 1;\n\nwhile (dateFrom <= dataFinal) {\n  const dateToMaximo7Dias = addDaysISO(dateFrom, 7);\n  const limiteMaximo = addDaysISO(dataFinal, 1);\n  const dateTo = dateToMaximo7Dias <= limiteMaximo ? dateToMaximo7Dias : limiteMaximo;\n\n  saida.push({\n    json: {\n      dateFrom,\n      dateTo,\n      periodo: 'carga_historica_jun_jul',\n      bloco,\n      data_inicial_busca: dataInicial,\n      data_final_busca: dataFinal\n    }\n  });\n\n  dateFrom = dateTo;\n  bloco++;\n}\n\nreturn saida;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1392,
+        64
+      ],
+      "id": "4d25ed73-b3aa-46d5-8480-9f1e2b6e5a81",
+      "name": "Definir período de busca1"
+    },
+    {
+      "parameters": {
+        "url": "https://montrealtenisclubeltda-br.matchpoint.com.es/api/query/sales",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "dateFrom",
+              "value": "={{ $json.dateFrom }}"
+            },
+            {
+              "name": "dateTo",
+              "value": "={{ $json.dateTo }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Token",
+              "value": "hNffXWhfyEy3F5eLNrQzGMWmdPD4XFJF8dfpS30LKQxQbMhH"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -832,
+        176
+      ],
+      "id": "8ebcb730-34d0-42eb-b8ed-e9f70c0ac041",
+      "name": "Busca vendas1"
+    },
+    {
+      "parameters": {
+        "jsCode": "function toText(value) {\n  if (value === null || value === undefined) return null;\n  const text = String(value).trim();\n  return text === '' ? null : text;\n}\n\nfunction toNumber(value) {\n  if (value === null || value === undefined || value === '') return 0;\n\n  if (typeof value === 'number') {\n    return Number(value.toFixed(2));\n  }\n\n  const text = String(value).trim();\n\n  let cleaned;\n\n  if (text.includes(',')) {\n    cleaned = text.replace(/\\./g, '').replace(',', '.');\n  } else {\n    cleaned = text;\n  }\n\n  const n = Number(cleaned);\n\n  if (Number.isNaN(n)) return 0;\n\n  return Number(n.toFixed(2));\n}\n\nfunction round2(value) {\n  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;\n}\n\nfunction toCents(value) {\n  return Math.round(round2(value) * 100);\n}\n\nfunction fromCents(value) {\n  return round2(value / 100);\n}\n\nfunction normalizeDate(value) {\n  const text = toText(value);\n  if (!text) return null;\n  return text.slice(0, 10);\n}\n\nfunction normalizeTimestamp(value) {\n  const text = toText(value);\n  if (!text) return null;\n  return text.replace('T', ' ').slice(0, 19);\n}\n\nfunction simpleHash(input) {\n  let hash = 2166136261;\n\n  for (let i = 0; i < input.length; i++) {\n    hash ^= input.charCodeAt(i);\n    hash +=\n      (hash << 1) +\n      (hash << 4) +\n      (hash << 7) +\n      (hash << 8) +\n      (hash << 24);\n  }\n\n  return (hash >>> 0).toString(16).padStart(8, '0');\n}\n\nfunction normalizeTextForKey(value) {\n  return String(value ?? '')\n    .trim()\n    .toLowerCase()\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/\\s+/g, ' ');\n}\n\nfunction getSaleSign(sale) {\n  const tipo = normalizeTextForKey(sale.Type);\n\n  if (tipo === 'refund') return -1;\n\n  return 1;\n}\n\nfunction classifyItem(description, reference) {\n  const desc = normalizeTextForKey(description);\n  const ref = String(reference ?? '').trim();\n\n  const produtosLanchonete = {\n    '000006': {\n      categoria: 'Lanchonete',\n      subcategoria: 'Bebidas',\n      produto_padronizado: 'Powerade',\n    },\n    '000007': {\n      categoria: 'Lanchonete',\n      subcategoria: 'Bebidas',\n      produto_padronizado: 'Água 500 ml Crystal',\n    },\n    '000008': {\n      categoria: 'Lanchonete',\n      subcategoria: 'Bebidas',\n      produto_padronizado: 'Coca-Cola',\n    },\n    '000009': {\n      categoria: 'Lanchonete',\n      subcategoria: 'Bebidas',\n      produto_padronizado: 'Fanta',\n    },\n    '000010': {\n      categoria: 'Lanchonete',\n      subcategoria: 'Bebidas',\n      produto_padronizado: 'Sprite',\n    },\n  };\n\n  const aulasAvulsasGrupoFixo = {\n    '000002': {\n      categoria: 'Aulas',\n      subcategoria: 'Avulsa - Grupo Fixo',\n      produto_padronizado: 'AULA AVULSA - GRUPO FIXO - João Assunção',\n    },\n    '000003': {\n      categoria: 'Aulas',\n      subcategoria: 'Avulsa - Grupo Fixo',\n      produto_padronizado: 'AULA AVULSA - GRUPO FIXO - Rodrigo Assunção',\n    },\n    '000004': {\n      categoria: 'Aulas',\n      subcategoria: 'Avulsa - Grupo Fixo',\n      produto_padronizado: 'AULA AVULSA - GRUPO FIXO - Tatiana Araujo',\n    },\n    '000005': {\n      categoria: 'Aulas',\n      subcategoria: 'Avulsa - Grupo Fixo',\n      produto_padronizado: 'AULA AVULSA - GRUPO FIXO - Leciane Silva',\n    },\n    '000011': {\n      categoria: 'Aulas',\n      subcategoria: 'Avulsa - Grupo Fixo',\n      produto_padronizado: 'AULA AVULSA - GRUPO FIXO - Leandro',\n    },\n  };\n\n  if (produtosLanchonete[ref]) {\n    return produtosLanchonete[ref];\n  }\n\n  if (aulasAvulsasGrupoFixo[ref]) {\n    return aulasAvulsasGrupoFixo[ref];\n  }\n\n  if (\n    desc.includes('powerade') ||\n    desc.includes('agua') ||\n    desc.includes('crystal') ||\n    desc.includes('coca') ||\n    desc.includes('coca-cola') ||\n    desc.includes('fanta') ||\n    desc.includes('sprite') ||\n    desc.includes('gatorade') ||\n    desc.includes('refrigerante') ||\n    desc.includes('suco')\n  ) {\n    return {\n      categoria: 'Lanchonete',\n      subcategoria: 'Bebidas',\n      produto_padronizado: null,\n    };\n  }\n\n  if (\n    desc.includes('classe aula avulsa') ||\n    desc.includes('aula avulsa dia')\n  ) {\n    return {\n      categoria: 'Aulas',\n      subcategoria: 'Avulsa - Particular',\n      produto_padronizado: 'AULA AVULSA PARTICULAR',\n    };\n  }\n\n  if (\n    desc.includes('aula avulsa - grupo fixo') ||\n    desc.includes('aula-avulsa- grupo- fixo') ||\n    desc.includes('aula avulsa grupo fixo')\n  ) {\n    return {\n      categoria: 'Aulas',\n      subcategoria: 'Avulsa - Grupo Fixo',\n      produto_padronizado: 'AULA AVULSA - GRUPO FIXO',\n    };\n  }\n\n  if (\n    desc.includes('reserva mensal')\n  ) {\n    return {\n      categoria: 'Locação',\n      subcategoria: 'Reserva Mensal',\n      produto_padronizado: 'RESERVA MENSAL',\n    };\n  }\n\n  if (\n    desc.includes('tenis kids') ||\n    desc.includes('tenis infantil') ||\n    desc.includes('kids')\n  ) {\n    return {\n      categoria: 'Aulas',\n      subcategoria: 'Kids',\n      produto_padronizado: 'TÊNIS KIDS',\n    };\n  }\n\n  if (\n    desc.includes('tenis adulto')\n  ) {\n    return {\n      categoria: 'Aulas',\n      subcategoria: 'Adulto',\n      produto_padronizado: 'TÊNIS ADULTO',\n    };\n  }\n\n  if (\n    desc.includes('quadra')\n  ) {\n    return {\n      categoria: 'Locação',\n      subcategoria: 'Quadra Avulsa',\n      produto_padronizado: 'LOCAÇÃO DE QUADRA',\n    };\n  }\n\n  return {\n    categoria: 'Outros',\n    subcategoria: null,\n    produto_padronizado: null,\n  };\n}\n\nfunction getDiscountType(description) {\n  const desc = normalizeTextForKey(description);\n\n  if (desc.includes('desconto familia')) {\n    return 'Família';\n  }\n\n  if (desc.includes('desconto frequencia')) {\n    return 'Frequência';\n  }\n\n  if (desc.includes('desconto')) {\n    return 'Outro desconto';\n  }\n\n  return null;\n}\n\nfunction buildPaymentKey(sale, payment) {\n  const parts = [\n    toText(sale.CustomerCode) ?? '',\n    toText(sale.CustomerIdent) ?? '',\n    normalizeTimestamp(payment.Date) ?? '',\n    toText(payment.PayMethod) ?? '',\n    round2(toNumber(payment.Amount)).toFixed(2),\n    normalizeTextForKey(payment.Description),\n    normalizeTextForKey(payment.Account),\n  ];\n\n  return `pay_${simpleHash(parts.join('|'))}`;\n}\n\nfunction buildSyntheticPaymentKey(item, payMethod, amount) {\n  const parts = [\n    item.item_key,\n    payMethod,\n    round2(amount).toFixed(2),\n  ];\n\n  return `synt_${simpleHash(parts.join('|'))}`;\n}\n\nfunction allocateProportionally(totalAmount, baseValues) {\n  const totalCents = toCents(totalAmount);\n  const bases = baseValues.map((v) => Math.abs(toCents(v)));\n  const baseSum = bases.reduce((sum, v) => sum + v, 0);\n\n  if (baseSum === 0) {\n    return baseValues.map(() => 0);\n  }\n\n  const result = [];\n  let usedCents = 0;\n\n  for (let i = 0; i < bases.length; i++) {\n    if (i === bases.length - 1) {\n      result.push(fromCents(totalCents - usedCents));\n    } else {\n      const allocated = Math.round((totalCents * bases[i]) / baseSum);\n      usedCents += allocated;\n      result.push(fromCents(allocated));\n    }\n  }\n\n  return result;\n}\n\nfunction extractSalesFromInput() {\n  const inputItems = $input.all();\n  const sales = [];\n\n  for (const item of inputItems) {\n    const data = item.json;\n\n    if (Array.isArray(data)) {\n      sales.push(...data);\n      continue;\n    }\n\n    if (Array.isArray(data.data)) {\n      sales.push(...data.data);\n      continue;\n    }\n\n    if (Array.isArray(data.results)) {\n      sales.push(...data.results);\n      continue;\n    }\n\n    if (Array.isArray(data.items)) {\n      sales.push(...data.items);\n      continue;\n    }\n\n    if (data.Id || data.DocNumber) {\n      sales.push(data);\n    }\n  }\n\n  return sales;\n}\n\nconst rawSales = extractSalesFromInput();\n\n// Deduplicate sales by Id to handle overlapping date boundary chunks\nconst uniqueSalesMap = new Map();\nfor (const s of rawSales) {\n  if (s && s.Id) {\n    uniqueSalesMap.set(s.Id, s);\n  }\n}\nconst sales = Array.from(uniqueSalesMap.values());\n\nconst vendas = [];\nconst itens = [];\nconst pagamentosMap = new Map();\nconst itensByVenda = new Map();\nconst vendaByExternalId = new Map();\n\nfor (const sale of sales) {\n  const externalId = Number(sale.Id);\n\n  if (!externalId) {\n    continue;\n  }\n\n  const venda = {\n    external_id: externalId,\n    data_venda: normalizeDate(sale.Date),\n    doc_number: toText(sale.DocNumber),\n    tipo: toText(sale.Type),\n    is_canceled: Boolean(sale.IsCanceled),\n    cancel_date: normalizeTimestamp(sale.CancelDate),\n    paid: Boolean(sale.Paid),\n    pay_date: normalizeTimestamp(sale.PayDate),\n    customer_name: toText(sale.CustomerName),\n    customer_code: toText(sale.CustomerCode),\n    customer_ident: toText(sale.CustomerIdent),\n    issuer_name: toText(sale.IssuerName),\n    issuer_vat: toText(sale.IssuerVat),\n    description: toText(sale.Description),\n    amount: toNumber(sale.Amount),\n    vat: toNumber(sale.Vat),\n    total: toNumber(sale.Total),\n    raw_json: sale,\n  };\n\n  vendas.push(venda);\n  vendaByExternalId.set(externalId, venda);\n\n  const sign = getSaleSign(sale);\n  const lines = Array.isArray(sale.Lines) ? sale.Lines : [];\n\n  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {\n    const line = lines[lineIndex];\n\n    const quantity = toNumber(line.Quantity || 1);\n    const price = toNumber(line.Price);\n    const discount = toNumber(line.Discount);\n    const amount = toNumber(line.Amount);\n    const vat = toNumber(line.Vat);\n    const total = toNumber(line.Total || line.Amount);\n\n    const valorBruto = round2(price * quantity);\n    const valorDesconto = discount;\n    const valorLiquido = total;\n    const valorFaturamento = round2(sign * valorLiquido);\n\n    const classification = classifyItem(line.Description, line.Reference);\n    const tipoDesconto = getDiscountType(line.Description);\n\n    const item = {\n      item_key: `item_${externalId}_${lineIndex}`,\n      venda_external_id: externalId,\n      line_index: lineIndex,\n\n      reference: toText(line.Reference),\n      description: toText(line.Description),\n\n      quantity,\n      price,\n      discount,\n      amount,\n      vat,\n      total,\n\n      valor_bruto: valorBruto,\n      valor_desconto: valorDesconto,\n      valor_liquido: valorLiquido,\n      valor_faturamento: valorFaturamento,\n\n      account: toText(line.Account),\n      cost_center: toText(line.CostCenter),\n\n      categoria: classification.categoria,\n      subcategoria: classification.subcategoria,\n      produto_padronizado: classification.produto_padronizado,\n\n      tipo_desconto: tipoDesconto,\n\n      tipo_venda: toText(sale.Type),\n      is_canceled: Boolean(sale.IsCanceled),\n      paid: Boolean(sale.Paid),\n    };\n\n    itens.push(item);\n\n    if (!itensByVenda.has(externalId)) {\n      itensByVenda.set(externalId, []);\n    }\n\n    itensByVenda.get(externalId).push(item);\n  }\n\n  const payments = Array.isArray(sale.Payments) ? sale.Payments : [];\n\n  for (const payment of payments) {\n    const paymentKey = buildPaymentKey(sale, payment);\n\n    if (!pagamentosMap.has(paymentKey)) {\n      pagamentosMap.set(paymentKey, {\n        payment_key: paymentKey,\n        payment_date: normalizeTimestamp(payment.Date),\n        pay_method: toText(payment.PayMethod) || 'Sem método',\n        amount: toNumber(payment.Amount),\n        description: toText(payment.Description),\n        account: toText(payment.Account),\n        customer_code: toText(sale.CustomerCode),\n        customer_ident: toText(sale.CustomerIdent),\n        is_estorno: toNumber(payment.Amount) < 0,\n        is_sintetico: false,\n        source_venda_external_ids: [],\n        source_doc_numbers: [],\n        raw_payment: payment,\n      });\n    }\n\n    const group = pagamentosMap.get(paymentKey);\n\n    if (!group.source_venda_external_ids.includes(externalId)) {\n      group.source_venda_external_ids.push(externalId);\n    }\n\n    if (sale.DocNumber && !group.source_doc_numbers.includes(sale.DocNumber)) {\n      group.source_doc_numbers.push(sale.DocNumber);\n    }\n  }\n}\n\nconst alocacoes = [];\nconst valorAlocadoPorItem = new Map();\n\nfunction addAllocatedValue(itemKey, amount) {\n  const current = valorAlocadoPorItem.get(itemKey) || 0;\n  valorAlocadoPorItem.set(itemKey, round2(current + amount));\n}\n\nfor (const pagamento of pagamentosMap.values()) {\n  const candidateItems = [];\n\n  for (const vendaId of pagamento.source_venda_external_ids) {\n    const vendaItens = itensByVenda.get(Number(vendaId)) || [];\n\n    for (const item of vendaItens) {\n      if (Math.abs(toNumber(item.valor_faturamento)) >= 0.01) {\n        candidateItems.push(item);\n      }\n    }\n  }\n\n  if (candidateItems.length === 0) {\n    continue;\n  }\n\n  const baseValues = candidateItems.map((item) => item.valor_faturamento);\n  const allocatedValues = allocateProportionally(pagamento.amount, baseValues);\n\n  for (let i = 0; i < candidateItems.length; i++) {\n    const item = candidateItems[i];\n    const allocated = round2(allocatedValues[i]);\n\n    if (Math.abs(allocated) < 0.01) {\n      continue;\n    }\n\n    const allocationKey = `alloc_${pagamento.payment_key}_${item.item_key}`;\n\n    alocacoes.push({\n      allocation_key: allocationKey,\n      payment_key: pagamento.payment_key,\n      item_key: item.item_key,\n      venda_external_id: item.venda_external_id,\n      payment_date: pagamento.payment_date,\n      pay_method: pagamento.pay_method,\n      valor_alocado: allocated,\n      tipo_alocacao: pagamento.is_estorno ? 'Estorno' : 'Pagamento',\n    });\n\n    addAllocatedValue(item.item_key, allocated);\n  }\n}\n\nfor (const item of itens) {\n  const expected = round2(item.valor_faturamento);\n  const allocated = round2(valorAlocadoPorItem.get(item.item_key) || 0);\n  const diff = round2(expected - allocated);\n\n  if (Math.abs(diff) < 0.01) {\n    continue;\n  }\n\n  let payMethod = 'Diferença pagamento/faturamento';\n  let tipoAlocacao = 'Ajuste';\n\n  const tipoVenda = normalizeTextForKey(item.tipo_venda);\n\n  if (item.is_canceled === true) {\n    payMethod = 'Venda cancelada/anulada';\n    tipoAlocacao = 'Cancelamento';\n  } else if (tipoVenda === 'refund') {\n    payMethod = 'Anulação sem pagamento';\n    tipoAlocacao = 'Anulação';\n  } else if (!item.paid) {\n    payMethod = 'Em aberto';\n    tipoAlocacao = 'Em aberto';\n  }\n\n  const syntheticPaymentKey = buildSyntheticPaymentKey(item, payMethod, diff);\n\n  if (!pagamentosMap.has(syntheticPaymentKey)) {\n    const venda = vendaByExternalId.get(item.venda_external_id);\n\n    pagamentosMap.set(syntheticPaymentKey, {\n      payment_key: syntheticPaymentKey,\n      payment_date: venda?.pay_date || null,\n      pay_method: payMethod,\n      amount: diff,\n      description: `Alocação automática - ${payMethod}`,\n      account: null,\n      customer_code: venda?.customer_code || null,\n      customer_ident: venda?.customer_ident || null,\n      is_estorno: diff < 0,\n      is_sintetico: true,\n      source_venda_external_ids: [item.venda_external_id],\n      source_doc_numbers: venda?.doc_number ? [venda.doc_number] : [],\n      raw_payment: {\n        synthetic: true,\n        reason: payMethod,\n        item_key: item.item_key,\n      },\n    });\n  }\n\n  alocacoes.push({\n    allocation_key: `alloc_${syntheticPaymentKey}_${item.item_key}`,\n    payment_key: syntheticPaymentKey,\n    item_key: item.item_key,\n    venda_external_id: item.venda_external_id,\n    payment_date: null,\n    pay_method: payMethod,\n    valor_alocado: diff,\n    tipo_alocacao: tipoAlocacao,\n  });\n\n  addAllocatedValue(item.item_key, diff);\n}\n\nconst pagamentos = Array.from(pagamentosMap.values());\n\nconst totalItens = round2(\n  itens.reduce((sum, item) => sum + toNumber(item.valor_faturamento), 0)\n);\n\nconst totalAlocado = round2(\n  alocacoes.reduce((sum, item) => sum + toNumber(item.valor_alocado), 0)\n);\n\nconst diferenca = round2(totalItens - totalAlocado);\n\nreturn [\n  {\n    json: {\n      payload: {\n        vendas,\n        itens,\n        pagamentos,\n        alocacoes,\n      },\n      resumo_importacao: {\n        vendas: vendas.length,\n        itens: itens.length,\n        pagamentos: pagamentos.length,\n        alocacoes: alocacoes.length,\n        total_faturamento_itens: totalItens,\n        total_faturamento_alocado: totalAlocado,\n        diferenca,\n      },\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -48
+      ],
+      "id": "2578ae46-3cb9-4269-86f0-4b945546ee2d",
+      "name": "Normalizar faturamento1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ehhjnwosqcrfwonqhfoz.supabase.co/rest/v1/rpc/mt_importar_faturamento_matchpoint",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Mjg5Nzg2OSwiZXhwIjoyMDc4NDczODY5fQ.9NEyAQd203dXiyOyxC2wXvUZJ4Loo_Kn2_-EEmLvx3M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Mjg5Nzg2OSwiZXhwIjoyMDc4NDczODY5fQ.9NEyAQd203dXiyOyxC2wXvUZJ4Loo_Kn2_-EEmLvx3M"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    dados: $json.payload\n  }\n}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -128,
+        -48
+      ],
+      "id": "e69e8b25-b9cb-48ff-a1aa-871cfe2bab61",
+      "name": "Enviar faturamento ao Supabase1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1152,
+        160
+      ],
+      "id": "8c7d7a30-51c8-4748-bc67-0d5078f74025",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -544,
+        176
+      ],
+      "id": "acd256a0-8215-48a0-86ca-24cb1a7a30e1",
+      "name": "Wait1",
+      "webhookId": "73577480-4ab6-4184-9a71-97d647523b4d"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1824,
+        80
+      ],
+      "id": "d98b29a4-d106-445b-9659-6c655c60a689",
+      "name": "Quando Clicar em Executar"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Definir período de busca1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out1": {
+      "main": [
+        [
+          {
+            "node": "Normalizar faturamento1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Definir período de busca1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busca vendas1": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar faturamento1": {
+      "main": [
+        [
+          {
+            "node": "Enviar faturamento ao Supabase1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Split Out1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busca vendas1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quando Clicar em Executar": {
+      "main": [
+        [
+          {
+            "node": "Definir período de busca1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "aae3b109-5fe8-4af0-b842-64497bf97332",
+  "meta": {
+    "instanceId": "33738330930e3881dd5571eca013f36ddf8aab20e4ea5c1f2ebaf4a2b4668ac6"
+  },
+  "id": "carga-historica-vendas-jun-jul",
+  "tags": []
+}

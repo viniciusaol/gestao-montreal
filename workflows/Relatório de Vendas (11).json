@@ -1,0 +1,386 @@
+{
+  "name": "Relatório de Vendas",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1824,
+        -288
+      ],
+      "id": "9fe5f8e4-9b0b-4d72-a16b-60c5b82051ef",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 8-22/2,23 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1872,
+        80
+      ],
+      "id": "95c58802-284a-4524-9088-cf69ee71da4c",
+      "name": "Schedule Trigger1"
+    },
+    {
+      "parameters": {
+        "jsCode": "function pad2(value) {\n  return String(value).padStart(2, '0');\n}\n\nfunction formatDateObj(d) {\n  return [\n    d.getUTCFullYear(),\n    pad2(d.getUTCMonth() + 1),\n    pad2(d.getUTCDate())\n  ].join('-');\n}\n\nfunction getHojeSaoPauloISO() {\n  const formatter = new Intl.DateTimeFormat('en-CA', {\n    timeZone: 'America/Sao_Paulo',\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit',\n  });\n\n  return formatter.format(new Date());\n}\n\nfunction addDaysISO(dateISO, days) {\n  const [year, month, day] = dateISO.split('-').map(Number);\n  const d = new Date(Date.UTC(year, month - 1, day));\n  d.setUTCDate(d.getUTCDate() + days);\n  return formatDateObj(d);\n}\n\nfunction primeiroDiaDoMesISO(dateISO) {\n  const [year, month] = dateISO.split('-').map(Number);\n  return `${year}-${pad2(month)}-01`;\n}\n\nfunction ultimoDiaDoMesISO(dateISO) {\n  const [year, month] = dateISO.split('-').map(Number);\n  const d = new Date(Date.UTC(year, month, 0));\n  return formatDateObj(d);\n}\n\nfunction subMonthsISO(dateISO, months) {\n  const [year, month, day] = dateISO.split('-').map(Number);\n  const d = new Date(Date.UTC(year, month - 1 - months, 1));\n  return formatDateObj(d);\n}\n\nconst hoje = getHojeSaoPauloISO();\n\n// Retrocede até o dia 1º do mês de 2 meses atrás (ex: 01/06) para cobrir os 2 últimos meses inteiros.\n// Gera apenas ~12 requisições de 7 dias cada com 1 segundo de intervalo (levando 12 segundos para rodar).\nconst mes2Atras = subMonthsISO(hoje, 2);\nconst dataInicial = primeiroDiaDoMesISO(mes2Atras);\nconst dataFinal = ultimoDiaDoMesISO(hoje);\n\nconst saida = [];\nlet dateFrom = dataInicial;\nlet bloco = 1;\n\nwhile (dateFrom <= dataFinal) {\n  const dateToMaximo7Dias = addDaysISO(dateFrom, 7);\n  const limiteMaximo = addDaysISO(dataFinal, 1);\n  const dateTo = dateToMaximo7Dias <= limiteMaximo ? dateToMaximo7Dias : limiteMaximo;\n\n  saida.push({\n    json: {\n      dateFrom,\n      dateTo,\n      periodo: 'janela_2_ultimos_meses_inteiros',\n      bloco,\n      hoje,\n      data_inicial_busca: dataInicial,\n      data_final_busca: dataFinal\n    }\n  });\n\n  dateFrom = dateTo;\n  bloco++;\n}\n\nreturn saida;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1392,
+        64
+      ],
+      "id": "4d25ed73-b3aa-46d5-8480-9f1e2b6e5a81",
+      "name": "Definir período de busca1"
+    },
+    {
+      "parameters": {
+        "url": "https://montrealtenisclubeltda-br.matchpoint.com.es/api/query/sales",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "dateFrom",
+              "value": "={{ $json.dateFrom }}"
+            },
+            {
+              "name": "dateTo",
+              "value": "={{ $json.dateTo }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Token",
+              "value": "hNffXWhfyEy3F5eLNrQzGMWmdPD4XFJF8dfpS30LKQxQbMhH"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -832,
+        176
+      ],
+      "id": "8ebcb730-34d0-42eb-b8ed-e9f70c0ac041",
+      "name": "Busca vendas1"
+    },
+    {
+      "parameters": {
+        "jsCode": "function toText(value) {\n  if (value === null || value === undefined) return null;\n  const text = String(value).trim();\n  return text === '' ? null : text;\n}\n\nfunction toNumber(value) {\n  if (value === null || value === undefined || value === '') return 0;\n  if (typeof value === 'number') return Number(value.toFixed(2));\n  const text = String(value).trim();\n  let cleaned = text.includes(',') ? text.replace(/\\./g, '').replace(',', '.') : text;\n  const n = Number(cleaned);\n  if (Number.isNaN(n)) return 0;\n  return Number(n.toFixed(2));\n}\n\nfunction round2(value) {\n  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;\n}\n\nfunction toCents(value) {\n  return Math.round(round2(value) * 100);\n}\n\nfunction fromCents(value) {\n  return round2(value / 100);\n}\n\nfunction normalizeDate(value) {\n  const text = toText(value);\n  if (!text) return null;\n  return text.slice(0, 10);\n}\n\nfunction normalizeTimestamp(value) {\n  const text = toText(value);\n  if (!text) return null;\n  return text.replace('T', ' ').slice(0, 19);\n}\n\nfunction simpleHash(input) {\n  let hash = 2166136261;\n  for (let i = 0; i < input.length; i++) {\n    hash ^= input.charCodeAt(i);\n    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);\n  }\n  return (hash >>> 0).toString(16).padStart(8, '0');\n}\n\nfunction normalizeTextForKey(value) {\n  return String(value ?? '')\n    .trim()\n    .toLowerCase()\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/\\s+/g, ' ');\n}\n\nfunction getSaleSign(sale) {\n  const tipo = normalizeTextForKey(sale.Type);\n  if (tipo === 'refund') return -1;\n  return 1;\n}\n\nfunction classifyItem(description, reference) {\n  const desc = normalizeTextForKey(description);\n  const ref = String(reference ?? '').trim();\n\n  const produtosLanchonete = {\n    '000006': { categoria: 'Lanchonete', subcategoria: 'Bebidas', produto_padronizado: 'Powerade' },\n    '000007': { categoria: 'Lanchonete', subcategoria: 'Bebidas', produto_padronizado: 'Água 500 ml Crystal' },\n    '000008': { categoria: 'Lanchonete', subcategoria: 'Bebidas', produto_padronizado: 'Coca-Cola' },\n    '000009': { categoria: 'Lanchonete', subcategoria: 'Bebidas', produto_padronizado: 'Fanta' },\n    '000010': { categoria: 'Lanchonete', subcategoria: 'Bebidas', produto_padronizado: 'Sprite' },\n  };\n\n  const aulasAvulsasGrupoFixo = {\n    '000002': { categoria: 'Aulas', subcategoria: 'Avulsa - Grupo Fixo', produto_padronizado: 'AULA AVULSA - GRUPO FIXO - João Assunção' },\n    '000003': { categoria: 'Aulas', subcategoria: 'Avulsa - Grupo Fixo', produto_padronizado: 'AULA AVULSA - GRUPO FIXO - Rodrigo Assunção' },\n    '000004': { categoria: 'Aulas', subcategoria: 'Avulsa - Grupo Fixo', produto_padronizado: 'AULA AVULSA - GRUPO FIXO - Tatiana Araujo' },\n    '000005': { categoria: 'Aulas', subcategoria: 'Avulsa - Grupo Fixo', produto_padronizado: 'AULA AVULSA - GRUPO FIXO - Leciane Silva' },\n    '000011': { categoria: 'Aulas', subcategoria: 'Avulsa - Grupo Fixo', produto_padronizado: 'AULA AVULSA - GRUPO FIXO - Leandro' },\n  };\n\n  if (produtosLanchonete[ref]) return produtosLanchonete[ref];\n  if (aulasAvulsasGrupoFixo[ref]) return aulasAvulsasGrupoFixo[ref];\n\n  if (desc.includes('powerade') || desc.includes('agua') || desc.includes('crystal') || desc.includes('coca') || desc.includes('fanta') || desc.includes('sprite') || desc.includes('gatorade') || desc.includes('refrigerante') || desc.includes('suco')) {\n    return { categoria: 'Lanchonete', subcategoria: 'Bebidas', produto_padronizado: null };\n  }\n  if (desc.includes('classe aula avulsa') || desc.includes('aula avulsa dia')) {\n    return { categoria: 'Aulas', subcategoria: 'Avulsa - Particular', produto_padronizado: 'AULA AVULSA PARTICULAR' };\n  }\n  if (desc.includes('aula avulsa - grupo fixo') || desc.includes('aula-avulsa- grupo- fixo') || desc.includes('aula avulsa grupo fixo')) {\n    return { categoria: 'Aulas', subcategoria: 'Avulsa - Grupo Fixo', produto_padronizado: 'AULA AVULSA - GRUPO FIXO' };\n  }\n  if (desc.includes('reserva mensal')) {\n    return { categoria: 'Locação', subcategoria: 'Reserva Mensal', produto_padronizado: 'RESERVA MENSAL' };\n  }\n  if (desc.includes('tenis kids') || desc.includes('tenis infantil') || desc.includes('kids')) {\n    return { categoria: 'Aulas', subcategoria: 'Kids', produto_padronizado: 'TÊNIS KIDS' };\n  }\n  if (desc.includes('tenis adulto')) {\n    return { categoria: 'Aulas', subcategoria: 'Adulto', produto_padronizado: 'TÊNIS ADULTO' };\n  }\n  if (desc.includes('quadra')) {\n    return { categoria: 'Locação', subcategoria: 'Quadra Avulsa', produto_padronizado: 'LOCAÇÃO DE QUADRA' };\n  }\n\n  return { categoria: 'Outros', subcategoria: null, produto_padronizado: null };\n}\n\nfunction getDiscountType(description) {\n  const desc = normalizeTextForKey(description);\n  if (desc.includes('desconto familia')) return 'Família';\n  if (desc.includes('desconto frequencia')) return 'Frequência';\n  if (desc.includes('desconto')) return 'Outro desconto';\n  return null;\n}\n\nfunction buildPaymentKey(sale, payment) {\n  const parts = [\n    toText(sale.CustomerCode) ?? '',\n    toText(sale.CustomerIdent) ?? '',\n    normalizeTimestamp(payment.Date) ?? '',\n    toText(payment.PayMethod) ?? '',\n    round2(toNumber(payment.Amount)).toFixed(2),\n    normalizeTextForKey(payment.Description),\n    normalizeTextForKey(payment.Account),\n  ];\n  return `pay_${simpleHash(parts.join('|'))}`;\n}\n\nfunction buildSyntheticPaymentKey(item, payMethod, amount) {\n  const parts = [item.item_key, payMethod, round2(amount).toFixed(2)];\n  return `synt_${simpleHash(parts.join('|'))}`;\n}\n\nfunction allocateProportionally(totalAmount, baseValues) {\n  const totalCents = toCents(totalAmount);\n  const bases = baseValues.map((v) => Math.abs(toCents(v)));\n  const baseSum = bases.reduce((sum, v) => sum + v, 0);\n  if (baseSum === 0) return baseValues.map(() => 0);\n  const result = [];\n  let usedCents = 0;\n  for (let i = 0; i < bases.length; i++) {\n    if (i === bases.length - 1) {\n      result.push(fromCents(totalCents - usedCents));\n    } else {\n      const allocated = Math.round((totalCents * bases[i]) / baseSum);\n      usedCents += allocated;\n      result.push(fromCents(allocated));\n    }\n  }\n  return result;\n}\n\n// 1. Extrair vendas do Matchpoint vindas do nó Split Out1 ($input.all())\nfunction extractSalesFromInput() {\n  const inputItems = $input.all();\n  const sales = [];\n\n  for (const item of inputItems) {\n    const data = item.json;\n    if (!data) continue;\n\n    if (Array.isArray(data)) {\n      sales.push(...data);\n      continue;\n    }\n    if (Array.isArray(data.Data)) {\n      sales.push(...data.Data);\n      continue;\n    }\n    if (Array.isArray(data.data)) {\n      sales.push(...data.data);\n      continue;\n    }\n    if (data.Id || data.DocNumber) {\n      sales.push(data);\n    }\n  }\n\n  return sales;\n}\n\n// 2. Extrair vendas existentes no Supabase ($('Buscar vendas no Supabase').all())\nfunction extractSalesFromSupabase() {\n  let items = [];\n  try {\n    items = $('Buscar vendas no Supabase').all();\n  } catch (e) {\n    items = [];\n  }\n  const map = new Map();\n  for (const item of items) {\n    const data = item.json;\n    if (!data) continue;\n\n    const list = Array.isArray(data) ? data : [data];\n    for (const row of list) {\n      if (row && row.external_id) {\n        map.set(Number(row.external_id), {\n          paid: Boolean(row.paid),\n          is_canceled: Boolean(row.is_canceled),\n          total: Number(row.total || 0),\n          pay_date: row.pay_date ? String(row.pay_date).replace('T', ' ').slice(0, 19) : null,\n          cancel_date: row.cancel_date ? String(row.cancel_date).replace('T', ' ').slice(0, 19) : null,\n        });\n      }\n    }\n  }\n  return map;\n}\n\nconst rawSales = extractSalesFromInput();\nconst existentesMap = extractSalesFromSupabase();\n\n// Deduplicate sales by Id\nconst uniqueSalesMap = new Map();\nfor (const s of rawSales) {\n  if (s && s.Id) uniqueSalesMap.set(Number(s.Id), s);\n}\nconst allSales = Array.from(uniqueSalesMap.values());\n\n// Filtrar apenas vendas NOVAS ou ALTERADAS\nconst salesToProcess = [];\nlet totalNovas = 0;\nlet totalAlteradas = 0;\nlet totalIgnoradas = 0;\n\nfor (const sale of allSales) {\n  const extId = Number(sale.Id);\n  if (!extId) continue;\n\n  const existente = existentesMap.get(extId);\n\n  if (!existente) {\n    totalNovas++;\n    salesToProcess.push(sale);\n  } else {\n    const matchpointPaid = Boolean(sale.Paid);\n    const matchpointCanceled = Boolean(sale.IsCanceled);\n    const matchpointTotal = toNumber(sale.Total);\n    const matchpointPayDate = normalizeTimestamp(sale.PayDate);\n    const matchpointCancelDate = normalizeTimestamp(sale.CancelDate);\n\n    const pagoMudou = existente.paid !== matchpointPaid;\n    const canceladoMudou = existente.is_canceled !== matchpointCanceled;\n    const valorMudou = Math.abs(existente.total - matchpointTotal) >= 0.01;\n    const dataPagamentoMudou = (existente.pay_date || null) !== (matchpointPayDate || null);\n    const dataCancelamentoMudou = (existente.cancel_date || null) !== (matchpointCancelDate || null);\n\n    if (pagoMudou || canceladoMudou || valorMudou || dataPagamentoMudou || dataCancelamentoMudou) {\n      totalAlteradas++;\n      salesToProcess.push(sale);\n    } else {\n      totalIgnoradas++;\n    }\n  }\n}\n\nconst sales = salesToProcess;\n\nconst vendas = [];\nconst itens = [];\nconst pagamentosMap = new Map();\nconst itensByVenda = new Map();\nconst vendaByExternalId = new Map();\n\nfor (const sale of sales) {\n  const externalId = Number(sale.Id);\n  if (!externalId) continue;\n\n  const venda = {\n    external_id: externalId,\n    data_venda: normalizeDate(sale.Date),\n    doc_number: toText(sale.DocNumber),\n    tipo: toText(sale.Type),\n    is_canceled: Boolean(sale.IsCanceled),\n    cancel_date: normalizeTimestamp(sale.CancelDate),\n    paid: Boolean(sale.Paid),\n    pay_date: normalizeTimestamp(sale.PayDate),\n    customer_name: toText(sale.CustomerName),\n    customer_code: toText(sale.CustomerCode),\n    customer_ident: toText(sale.CustomerIdent),\n    issuer_name: toText(sale.IssuerName),\n    issuer_vat: toText(sale.IssuerVat),\n    description: toText(sale.Description),\n    amount: toNumber(sale.Amount),\n    vat: toNumber(sale.Vat),\n    total: toNumber(sale.Total),\n    raw_json: sale,\n  };\n\n  vendas.push(venda);\n  vendaByExternalId.set(externalId, venda);\n\n  const sign = getSaleSign(sale);\n  const lines = Array.isArray(sale.Lines) ? sale.Lines : [];\n\n  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {\n    const line = lines[lineIndex];\n\n    const quantity = toNumber(line.Quantity || 1);\n    const price = toNumber(line.Price);\n    const discount = toNumber(line.Discount);\n    const amount = toNumber(line.Amount);\n    const vat = toNumber(line.Vat);\n    const total = toNumber(line.Total || line.Amount);\n\n    const valorBruto = round2(price * quantity);\n    const valorDesconto = discount;\n    const valorLiquido = total;\n    const valorFaturamento = round2(sign * valorLiquido);\n\n    const classification = classifyItem(line.Description, line.Reference);\n    const tipoDesconto = getDiscountType(line.Description);\n\n    const item = {\n      item_key: `item_${externalId}_${lineIndex}`,\n      venda_external_id: externalId,\n      line_index: lineIndex,\n      reference: toText(line.Reference),\n      description: toText(line.Description),\n      quantity,\n      price,\n      discount,\n      amount,\n      vat,\n      total,\n      valor_bruto: valorBruto,\n      valor_desconto: valorDesconto,\n      valor_liquido: valorLiquido,\n      valor_faturamento: valorFaturamento,\n      account: toText(line.Account),\n      cost_center: toText(line.CostCenter),\n      categoria: classification.categoria,\n      subcategoria: classification.subcategoria,\n      produto_padronizado: classification.produto_padronizado,\n      tipo_desconto: tipoDesconto,\n      tipo_venda: toText(sale.Type),\n      is_canceled: Boolean(sale.IsCanceled),\n      paid: Boolean(sale.Paid),\n    };\n\n    itens.push(item);\n\n    if (!itensByVenda.has(externalId)) {\n      itensByVenda.set(externalId, []);\n    }\n    itensByVenda.get(externalId).push(item);\n  }\n\n  const payments = Array.isArray(sale.Payments) ? sale.Payments : [];\n\n  for (const payment of payments) {\n    const paymentKey = buildPaymentKey(sale, payment);\n\n    if (!pagamentosMap.has(paymentKey)) {\n      pagamentosMap.set(paymentKey, {\n        payment_key: paymentKey,\n        payment_date: normalizeTimestamp(payment.Date),\n        pay_method: toText(payment.PayMethod) || 'Sem método',\n        amount: toNumber(payment.Amount),\n        description: toText(payment.Description),\n        account: toText(payment.Account),\n        customer_code: toText(sale.CustomerCode),\n        customer_ident: toText(sale.CustomerIdent),\n        is_estorno: toNumber(payment.Amount) < 0,\n        is_sintetico: false,\n        source_venda_external_ids: [],\n        source_doc_numbers: [],\n        raw_payment: payment,\n      });\n    }\n\n    const group = pagamentosMap.get(paymentKey);\n    if (!group.source_venda_external_ids.includes(externalId)) {\n      group.source_venda_external_ids.push(externalId);\n    }\n    if (sale.DocNumber && !group.source_doc_numbers.includes(sale.DocNumber)) {\n      group.source_doc_numbers.push(sale.DocNumber);\n    }\n  }\n}\n\nconst alocacoes = [];\nconst valorAlocadoPorItem = new Map();\n\nfunction addAllocatedValue(itemKey, amount) {\n  const current = valorAlocadoPorItem.get(itemKey) || 0;\n  valorAlocadoPorItem.set(itemKey, round2(current + amount));\n}\n\nfor (const pagamento of pagamentosMap.values()) {\n  const candidateItems = [];\n\n  for (const vendaId of pagamento.source_venda_external_ids) {\n    const vendaItens = itensByVenda.get(Number(vendaId)) || [];\n    for (const item of vendaItens) {\n      if (Math.abs(toNumber(item.valor_faturamento)) >= 0.01) {\n        candidateItems.push(item);\n      }\n    }\n  }\n\n  if (candidateItems.length === 0) continue;\n\n  const baseValues = candidateItems.map((item) => item.valor_faturamento);\n  const allocatedValues = allocateProportionally(pagamento.amount, baseValues);\n\n  for (let i = 0; i < candidateItems.length; i++) {\n    const item = candidateItems[i];\n    const allocated = round2(allocatedValues[i]);\n    if (Math.abs(allocated) < 0.01) continue;\n\n    const allocationKey = `alloc_${pagamento.payment_key}_${item.item_key}`;\n    alocacoes.push({\n      allocation_key: allocationKey,\n      payment_key: pagamento.payment_key,\n      item_key: item.item_key,\n      venda_external_id: item.venda_external_id,\n      payment_date: pagamento.payment_date,\n      pay_method: pagamento.pay_method,\n      valor_alocado: allocated,\n      tipo_alocacao: pagamento.is_estorno ? 'Estorno' : 'Pagamento',\n    });\n    addAllocatedValue(item.item_key, allocated);\n  }\n}\n\nfor (const item of itens) {\n  const expected = round2(item.valor_faturamento);\n  const allocated = round2(valorAlocadoPorItem.get(item.item_key) || 0);\n  const diff = round2(expected - allocated);\n  if (Math.abs(diff) < 0.01) continue;\n\n  let payMethod = 'Diferença pagamento/faturamento';\n  let tipoAlocacao = 'Ajuste';\n\n  const tipoVenda = normalizeTextForKey(item.tipo_venda);\n\n  if (item.is_canceled === true) {\n    payMethod = 'Venda cancelada/anulada';\n    tipoAlocacao = 'Cancelamento';\n  } else if (tipoVenda === 'refund') {\n    payMethod = 'Anulação sem pagamento';\n    tipoAlocacao = 'Anulação';\n  } else if (!item.paid) {\n    payMethod = 'Em aberto';\n    tipoAlocacao = 'Em aberto';\n  }\n\n  const syntheticPaymentKey = buildSyntheticPaymentKey(item, payMethod, diff);\n\n  if (!pagamentosMap.has(syntheticPaymentKey)) {\n    const venda = vendaByExternalId.get(item.venda_external_id);\n    pagamentosMap.set(syntheticPaymentKey, {\n      payment_key: syntheticPaymentKey,\n      payment_date: venda?.pay_date || null,\n      pay_method: payMethod,\n      amount: diff,\n      description: `Alocação automática - ${payMethod}`,\n      account: null,\n      customer_code: venda?.customer_code || null,\n      customer_ident: venda?.customer_ident || null,\n      is_estorno: diff < 0,\n      is_sintetico: true,\n      source_venda_external_ids: [item.venda_external_id],\n      source_doc_numbers: venda?.doc_number ? [venda.doc_number] : [],\n      raw_payment: { synthetic: true, reason: payMethod, item_key: item.item_key },\n    });\n  }\n\n  alocacoes.push({\n    allocation_key: `alloc_${syntheticPaymentKey}_${item.item_key}`,\n    payment_key: syntheticPaymentKey,\n    item_key: item.item_key,\n    venda_external_id: item.venda_external_id,\n    payment_date: null,\n    pay_method: payMethod,\n    valor_alocado: diff,\n    tipo_alocacao: tipoAlocacao,\n  });\n  addAllocatedValue(item.item_key, diff);\n}\n\nconst pagamentos = Array.from(pagamentosMap.values());\nconst totalItens = round2(itens.reduce((sum, item) => sum + toNumber(item.valor_faturamento), 0));\nconst totalAlocado = round2(alocacoes.reduce((sum, item) => sum + toNumber(item.valor_alocado), 0));\nconst diferenca = round2(totalItens - totalAlocado);\n\nreturn [\n  {\n    json: {\n      payload: { vendas, itens, pagamentos, alocacoes },\n      resumo_importacao: {\n        vendas: vendas.length,\n        itens: itens.length,\n        pagamentos: pagamentos.length,\n        alocacoes: alocacoes.length,\n        total_faturamento_itens: totalItens,\n        total_faturamento_alocado: totalAlocado,\n        diferenca,\n        filtro_novidades: {\n          total_matchpoint: allSales.length,\n          novas: totalNovas,\n          alteradas: totalAlteradas,\n          ignoradas_sem_alteracao: totalIgnoradas\n        }\n      },\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -48
+      ],
+      "id": "2578ae46-3cb9-4269-86f0-4b945546ee2d",
+      "name": "Normalizar faturamento1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ehhjnwosqcrfwonqhfoz.supabase.co/rest/v1/rpc/mt_importar_faturamento_matchpoint",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Mjg5Nzg2OSwiZXhwIjoyMDc4NDczODY5fQ.9NEyAQd203dXiyOyxC2wXvUZJ4Loo_Kn2_-EEmLvx3M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Mjg5Nzg2OSwiZXhwIjoyMDc4NDczODY5fQ.9NEyAQd203dXiyOyxC2wXvUZJ4Loo_Kn2_-EEmLvx3M"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    dados: $json.payload\n  }\n}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        0,
+        -48
+      ],
+      "id": "e69e8b25-b9cb-48ff-a1aa-871cfe2bab61",
+      "name": "Enviar faturamento ao Supabase1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1152,
+        160
+      ],
+      "id": "8c7d7a30-51c8-4748-bc67-0d5078f74025",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -544,
+        176
+      ],
+      "id": "acd256a0-8215-48a0-86ca-24cb1a7a30e1",
+      "name": "Wait1",
+      "webhookId": "73577480-4ab6-4184-9a71-97d647523b4d"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://ehhjnwosqcrfwonqhfoz.supabase.co/rest/v1/mt_faturamento_vendas?select=external_id,paid,is_canceled,total,pay_date,cancel_date",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Mjg5Nzg2OSwiZXhwIjoyMDc4NDczODY5fQ.9NEyAQd203dXiyOyxC2wXvUZJ4Loo_Kn2_-EEmLvx3M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Mjg5Nzg2OSwiZXhwIjoyMDc4NDczODY5fQ.9NEyAQd203dXiyOyxC2wXvUZJ4Loo_Kn2_-EEmLvx3M"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1600,
+        0
+      ],
+      "id": "c71a391f-7b24-4f81-a83e-9081bcfa0102",
+      "name": "Buscar vendas no Supabase",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "e91243ba-4475-4710-91a5-e3d8fdfa3382",
+              "leftValue": "={{ $json.resumo_importacao.vendas }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -220,
+        -48
+      ],
+      "id": "b328a911-39ef-42d3-9f89-c454e93d8b12",
+      "name": "Existem novidades para enviar?"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "Data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -48
+      ],
+      "id": "3ab57446-cd1f-4b18-b165-a3b508d304c4",
+      "name": "Split Out1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Buscar vendas no Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Buscar vendas no Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Definir período de busca1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busca vendas1": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar faturamento1": {
+      "main": [
+        [
+          {
+            "node": "Existem novidades para enviar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Split Out1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busca vendas1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existem novidades para enviar?": {
+      "main": [
+        [
+          {
+            "node": "Enviar faturamento ao Supabase1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Buscar vendas no Supabase": {
+      "main": [
+        [
+          {
+            "node": "Definir período de busca1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out1": {
+      "main": [
+        [
+          {
+            "node": "Normalizar faturamento1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "aae3b109-5fe8-4af0-b842-64497bf97332",
+  "meta": {
+    "instanceId": "33738330930e3881dd5571eca013f36ddf8aab20e4ea5c1f2ebaf4a2b4668ac6"
+  },
+  "id": "G9vRkKtYKrhOnZZc",
+  "tags": []
+}
