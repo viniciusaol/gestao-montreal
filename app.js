@@ -2949,7 +2949,7 @@ async function loadFinancialReports() {
     const procfyParams = `or=(and(due_date.gte.${firstMonth},due_date.lte.${projectionEnd}),and(paid.eq.false,due_date.lt.${firstMonth}))`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
     const salesParams = `select=item_key,valor_faturamento,categoria,subcategoria,produto_padronizado,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
-    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))&order=booking_date.asc`;
+    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${monthStart},booking_date.lte.${monthEnd}),and(pay_date.gte.${monthStart},pay_date.lt.${nextMonthStart}))&order=booking_date.asc`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
     const voucherParams = `description=ilike.*INTENSIV*&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
@@ -2983,7 +2983,8 @@ async function loadFinancialReports() {
       supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${prevYear}-${prevMonthStr}-01`),
       supabaseSelect('mt_faturamento_vendas', voucherParams),
       supabaseSelect('mt_agenda_recebiveis_importada', receivablesParams),
-      supabaseSelect('mt_provisoes_dre_config')
+      supabaseSelect('mt_provisoes_dre_config'),
+      supabaseSelect('mt_dre_mensal_fechado')
     ]);
 
     const allProcfyData = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -3001,6 +3002,7 @@ async function loadFinancialReports() {
     const allVouchersData = results[12].status === 'fulfilled' ? results[12].value : [];
     const allImportedReceivablesData = results[13].status === 'fulfilled' ? results[13].value : [];
     const allProvisoesConfigData = results[14].status === 'fulfilled' ? results[14].value : [];
+    const allClosedDreData = results[15].status === 'fulfilled' ? results[15].value : [];
     globalProvisoesData = Array.isArray(allProvisoesConfigData) ? allProvisoesConfigData : [];
 
     results.forEach((res, i) => {
@@ -3276,30 +3278,72 @@ async function loadFinancialReports() {
     const dreData = {};
     const operationalExpenseCategories = new Set();
 
+    const closedDreMap = {};
+    (allClosedDreData || []).forEach(row => {
+      if (row.is_closed) {
+        closedDreMap[row.month_key] = row;
+      }
+    });
+
     historicMonths.forEach(({ key }) => {
-      dreData[key] = {
-        receitaBruta: 0.0,
-        impostos: 0.0,
-        receitaLiquida: 0.0,
-        cogs: 0.0,
-        comissao: 0.0,
-        energia: 0.0,
-        taxasProcessamento: 0.0,
-        lucroBruto: 0.0,
-        despesasOperacionais: 0.0,
-        despesasOperacionaisCategories: {},
-        ebitda: 0.0,
-        depreciacao: 0.0,
-        ebit: 0.0,
-        ir: 0.0,
-        lucroLiquido: 0.0
-      };
+      const closed = closedDreMap[key];
+      if (closed) {
+        const catJson = typeof closed.despesas_operacionais_json === 'string' 
+          ? JSON.parse(closed.despesas_operacionais_json || '{}') 
+          : (closed.despesas_operacionais_json || {});
+        Object.keys(catJson).forEach(cat => operationalExpenseCategories.add(cat));
+
+        const recLiq = parseFloat(closed.receita_liquida) || 0.0;
+        const cogs = parseFloat(closed.cogs) || 0.0;
+        const comissao = parseFloat(closed.comissao_professores) || 0.0;
+        const energia = parseFloat(closed.energia) || 0.0;
+        const taxas = parseFloat(closed.taxas_processamento) || 0.0;
+        const lucroBruto = parseFloat(closed.lucro_bruto) || (recLiq - cogs - comissao - energia - taxas);
+
+        dreData[key] = {
+          isClosed: true,
+          receitaBruta: parseFloat(closed.receita_bruta) || 0.0,
+          impostos: parseFloat(closed.impostos) || 0.0,
+          receitaLiquida: recLiq,
+          cogs: cogs,
+          comissao: comissao,
+          energia: energia,
+          taxasProcessamento: taxas,
+          lucroBruto: round2(lucroBruto),
+          despesasOperacionais: parseFloat(closed.despesas_operacionais) || 0.0,
+          despesasOperacionaisCategories: catJson,
+          ebitda: parseFloat(closed.ebitda) || 0.0,
+          depreciacao: parseFloat(closed.depreciacao) || 7666.67,
+          ebit: parseFloat(closed.ebit) || 0.0,
+          ir: parseFloat(closed.ir) || 0.0,
+          lucroLiquido: parseFloat(closed.lucro_liquido) || 0.0
+        };
+      } else {
+        dreData[key] = {
+          isClosed: false,
+          receitaBruta: 0.0,
+          impostos: 0.0,
+          receitaLiquida: 0.0,
+          cogs: 0.0,
+          comissao: 0.0,
+          energia: 0.0,
+          taxasProcessamento: 0.0,
+          lucroBruto: 0.0,
+          despesasOperacionais: 0.0,
+          despesasOperacionaisCategories: {},
+          ebitda: 0.0,
+          depreciacao: 0.0,
+          ebit: 0.0,
+          ir: 0.0,
+          lucroLiquido: 0.0
+        };
+      }
     });
 
     // Populate DRE Gross Revenue & Calculate CMV for Lanchonete items
     allSalesData.forEach(sale => {
       const monthKey = sale.pay_date ? sale.pay_date.substring(0, 7) : '';
-      if (!dreData[monthKey]) return;
+      if (!dreData[monthKey] || dreData[monthKey].isClosed) return;
       
       const valFat = parseFloat(sale.valor_faturamento) || 0.0;
       dreData[monthKey].receitaBruta += valFat;
@@ -3345,7 +3389,7 @@ async function loadFinancialReports() {
       if (!row.is_paid) return;
       // Agrupa comissões no mês do pagamento (pay_date), usando a data da aula como fallback caso pay_date falhe
       const monthKey = (row.pay_date && row.pay_date.substring(0, 7)) || (row.booking_date ? row.booking_date.substring(0, 7) : '');
-      if (!dreData[monthKey]) return;
+      if (!dreData[monthKey] || dreData[monthKey].isClosed) return;
       
       const rawBase = parseFloat(row.booking_commission_base) || (row.is_socio_benefit ? (parseFloat(row.booking_value) * 2) : (parseFloat(row.booking_value) || 0.0));
       const commBase = getAdjustedCommissionBase(row, rawBase);
@@ -3363,7 +3407,7 @@ async function loadFinancialReports() {
       const prof = parseVoucherProfessor(v.description || '');
       const val = parseFloat(v.total) || 0.0;
       const monthKey = v.pay_date ? v.pay_date.substring(0, 7) : '';
-      if (!dreData[monthKey]) return;
+      if (!dreData[monthKey] || dreData[monthKey].isClosed) return;
 
       const rate = getRateForTeacher(prof);
       dreData[monthKey].comissao += val * (rate / 100);
@@ -3375,7 +3419,7 @@ async function loadFinancialReports() {
       if (tx.transaction_type === 'revenue') return;
 
       const monthKey = tx.due_date ? tx.due_date.substring(0, 7) : '';
-      if (!dreData[monthKey]) return;
+      if (!dreData[monthKey] || dreData[monthKey].isClosed) return;
 
       const amount = parseFloat(tx.amount) || 0.0;
       const category = tx.category_name || 'Outras Despesas';
@@ -3404,7 +3448,7 @@ async function loadFinancialReports() {
 
     // Inject configured DRE Encargos Trabalhistas (outside Procfy)
     historicMonths.forEach(({ key }) => {
-      if (!dreData[key]) return;
+      if (!dreData[key] || dreData[key].isClosed) return;
       
       const configRow = (allProvisoesConfigData || []).find(c => c.month_key === key);
       let encTotal = 0.0;
@@ -3430,7 +3474,7 @@ async function loadFinancialReports() {
       const dateStr = mp.date_approved;
       if (!dateStr) return;
       const monthKey = dateStr.substring(0, 7);
-      if (!dreData[monthKey]) return;
+      if (!dreData[monthKey] || dreData[monthKey].isClosed) return;
       dreData[monthKey].taxasProcessamento += parseFloat(mp.fee_amount) || 0.0;
     });
 
@@ -3441,7 +3485,7 @@ async function loadFinancialReports() {
       const dateStr = pay.payment_date;
       if (!dateStr) return;
       const monthKey = dateStr.substring(0, 7);
-      if (!dreData[monthKey]) return;
+      if (!dreData[monthKey] || dreData[monthKey].isClosed) return;
 
       const amt = parseFloat(pay.amount) || 0.0;
       let rate = 0.0;
@@ -3456,6 +3500,7 @@ async function loadFinancialReports() {
     // Round inputs and solve intermediate totals
     historicMonths.forEach(({ key }) => {
       const d = dreData[key];
+      if (d.isClosed) return;
       d.receitaBruta = round2(d.receitaBruta);
       d.cogs = round2(d.cogs || 0.0);
       d.comissao = round2(d.comissao);
@@ -3569,7 +3614,26 @@ async function loadFinancialReports() {
     // 5. Render DRE Table
     const dreHeaderRow = document.getElementById('fin-dre-header-row');
     if (dreHeaderRow) {
-      dreHeaderRow.innerHTML = `<th>Categoria / Conta</th>` + historicMonths.map(m => `<th class="text-right">${m.label}</th>`).join('');
+      dreHeaderRow.innerHTML = `<th>Categoria / Conta</th>` + historicMonths.map(m => {
+        const isC = dreData[m.key] && dreData[m.key].isClosed;
+        const icon = isC ? ' <span title="Mês Fechado / Consolidado">🔒</span>' : '';
+        return `<th class="text-right">${m.label}${icon}</th>`;
+      }).join('');
+    }
+
+    // Update Fechar Mês button state
+    const btnToggleFechar = document.getElementById('btn-toggle-fechar-mes');
+    if (btnToggleFechar) {
+      const curDre = dreData[currentMonthKey];
+      if (curDre && curDre.isClosed) {
+        btnToggleFechar.innerHTML = '🔓 Reabrir Mês';
+        btnToggleFechar.style.color = '#e63946';
+        btnToggleFechar.style.borderColor = 'rgba(230, 57, 70, 0.4)';
+      } else {
+        btnToggleFechar.innerHTML = '🔒 Fechar Mês';
+        btnToggleFechar.style.color = '#2ec4b6';
+        btnToggleFechar.style.borderColor = 'rgba(46, 196, 182, 0.4)';
+      }
     }
 
     // Helper to generate DRE Cell with Vertical Analysis (AV)
@@ -7619,6 +7683,71 @@ window.saveAllProvisoesRows = async function() {
     await saveProvisoesRow(mKey);
   }
   alert('Todas as configurações de provisões de encargos foram salvas com sucesso!');
+};
+
+window.toggleFecharMesAtual = async function() {
+  const selectYear = document.getElementById('select-year');
+  const selectMonth = document.getElementById('select-month');
+  if (!selectYear || !selectMonth) return;
+  const year = selectYear.value;
+  const month = selectMonth.value;
+  const monthKey = `${year}-${month}`;
+
+  const currentDre = cachedDreData ? cachedDreData[monthKey] : null;
+  const isClosed = currentDre && currentDre.isClosed;
+
+  if (isClosed) {
+    if (!confirm(`Deseja REABRIR a DRE de ${monthKey}? O mês voltará a ser calculado dinamicamente.`)) return;
+    try {
+      await supabaseUpsert('mt_dre_mensal_fechado', {
+        month_key: monthKey,
+        is_closed: false,
+        closed_at: new Date().toISOString(),
+        closed_by: 'Usuario'
+      });
+      alert(`Mês ${monthKey} reaberto com sucesso!`);
+      cachedFinancialData = null;
+      loadFinancialReports();
+    } catch (err) {
+      alert('Erro ao reabrir mês: ' + err.message);
+    }
+  } else {
+    if (!currentDre) {
+      alert('Aguarde o carregamento do relatório para fechar o mês.');
+      return;
+    }
+    if (!confirm(`Deseja FECHAR e CONGELAR a DRE de ${monthKey} com os valores atuais?`)) return;
+
+    try {
+      const row = {
+        month_key: monthKey,
+        receita_bruta: currentDre.receitaBruta,
+        impostos: currentDre.impostos,
+        receita_liquida: currentDre.receitaLiquida,
+        cogs: currentDre.cogs,
+        comissao_professores: currentDre.comissao,
+        energia: currentDre.energia,
+        taxas_processamento: currentDre.taxasProcessamento,
+        despesas_operacionais: currentDre.despesasOperacionais,
+        despesas_operacionais_json: currentDre.despesasOperacionaisCategories || {},
+        ebitda: currentDre.ebitda,
+        depreciacao: currentDre.depreciacao,
+        ebit: currentDre.ebit,
+        ir: currentDre.ir,
+        lucro_liquido: currentDre.lucroLiquido,
+        is_closed: true,
+        closed_at: new Date().toISOString(),
+        closed_by: 'Usuario'
+      };
+
+      await supabaseUpsert('mt_dre_mensal_fechado', row);
+      alert(`Mês ${monthKey} fechado e congelado com sucesso!`);
+      cachedFinancialData = null;
+      loadFinancialReports();
+    } catch (err) {
+      alert('Erro ao fechar mês: ' + err.message);
+    }
+  }
 };
 
 

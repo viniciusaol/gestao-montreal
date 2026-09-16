@@ -833,9 +833,14 @@
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
               <h3 class="card-title" style="margin-bottom: 0;">Demonstração do Resultado do Exercício (DRE)</h3>
-              <button id="btn-open-provisoes-modal" class="btn btn-outline btn-sm no-print" onclick="openProvisoesModal()" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; padding: 6px 12px; border-color: rgba(241,244,224,0.3);">
-                ⚙️ Configurar Encargos CLT
-              </button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="btn-toggle-fechar-mes" class="btn btn-outline btn-sm no-print" onclick="toggleFecharMesAtual()" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; padding: 6px 12px; border-color: rgba(46,196,182,0.4); color: #2ec4b6;">
+                  🔒 Fechar Mês
+                </button>
+                <button id="btn-open-provisoes-modal" class="btn btn-outline btn-sm no-print" onclick="openProvisoesModal()" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; padding: 6px 12px; border-color: rgba(241,244,224,0.3);">
+                  ⚙️ Configurar Encargos CLT
+                </button>
+              </div>
             </div>
             <div class="table-container">
               <table class="data-table" id="fin-dre-table" style="min-width: 800px;">
