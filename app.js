@@ -571,11 +571,13 @@ async function loadDashboard() {
     const salesParams = `select=item_key,valor_faturamento,categoria,subcategoria,produto_padronizado,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
     debugLog('Buscando vendas globais para conciliação...');
 
-    const [classesData, payoutsData, salesData] = await Promise.all([
+    const [classesData, payoutsData, salesData, extraRevenuesData] = await Promise.all([
       supabaseSelect('vw_mt_comissoes_detalhadas', classesParams),
       supabaseSelect('mt_pagamentos_professores', payoutsParams),
-      supabaseSelect('vw_mt_faturamento_itens_pago', salesParams)
+      supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
+      supabaseSelect('mt_receitas_extras')
     ]);
+    globalExtraRevenuesData = Array.isArray(extraRevenuesData) ? extraRevenuesData : [];
 
     // 5. Fetch intensivão vouchers directly from mt_faturamento_vendas
     //    (a descrição completa com nome do professor fica na venda, não no item)
@@ -1387,7 +1389,8 @@ async function loadOperationalReports() {
       effDataResult,
       freqDataResult,
       paidVendasResult,
-      itemsDataResult
+      itemsDataResult,
+      extraRevenuesResult
     ] = await Promise.allSettled([
       supabaseSelect('vw_mt_resumo_por_forma_pagamento_pago_mes', payParams),
       supabaseSelect('vw_mt_ticket_medio_subcategoria_pago_mes', subParams),
@@ -1395,7 +1398,8 @@ async function loadOperationalReports() {
       supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=eq.${monthStart}`),
       supabaseSelect('vw_mt_frequencia_clientes_mes', `select=*&mes=eq.${monthStart}`),
       supabaseSelect('mt_faturamento_vendas', `select=customer_code&paid=eq.true&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&is_canceled=eq.false&tipo=neq.refund`),
-      supabaseSelect('vw_mt_faturamento_itens_pago', itemsParams)
+      supabaseSelect('vw_mt_faturamento_itens_pago', itemsParams),
+      supabaseSelect('mt_receitas_extras')
     ]);
 
     const payData = payDataResult.status === 'fulfilled' ? payDataResult.value : [];
@@ -1405,6 +1409,8 @@ async function loadOperationalReports() {
     const freqData = freqDataResult.status === 'fulfilled' ? freqDataResult.value : [];
     const paidVendasData = paidVendasResult.status === 'fulfilled' ? paidVendasResult.value : [];
     const itemsData = itemsDataResult.status === 'fulfilled' ? itemsDataResult.value : [];
+    const extraRevenuesData = extraRevenuesResult.status === 'fulfilled' ? extraRevenuesResult.value : [];
+    globalExtraRevenuesData = Array.isArray(extraRevenuesData) ? extraRevenuesData : [];
 
     if (payDataResult.status === 'rejected') debugError('Erro ao carregar vw_mt_resumo_por_forma_pagamento_pago_mes', payDataResult.reason);
     if (subDataResult.status === 'rejected') debugError('Erro ao carregar vw_mt_ticket_medio_subcategoria_pago_mes', subDataResult.reason);
