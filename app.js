@@ -136,7 +136,7 @@ function calculateInvestmentBalance(allInterData, upToDateStr = null) {
 }
 
 // ---- Supabase REST helpers ----
-async function supabaseSelect(table, queryParams = '') {
+async function supabaseSelect(table, queryParams = '', retries = 3) {
   const hasLimit = queryParams.includes('limit=');
   const hasOffset = queryParams.includes('offset=');
   
@@ -144,18 +144,27 @@ async function supabaseSelect(table, queryParams = '') {
     const url = `${SUPABASE_URL}/rest/v1/${table}?${queryParams}`;
     debugLog(`[REST] GET ${url}`);
     const token = getUserToken() || SUPABASE_KEY;
-    const res = await fetch(url, {
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(`Supabase REST error ${res.status}: ${body}`);
+        }
+        return await res.json();
+      } catch (err) {
+        if (attempt === retries) throw err;
+        debugLog(`[REST] Attempt ${attempt} failed for ${table}, retrying...`);
+        await new Promise(r => setTimeout(r, 400 * attempt));
       }
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Supabase REST error ${res.status}: ${body}`);
     }
-    return res.json();
   }
 
   let allData = [];
@@ -170,27 +179,37 @@ async function supabaseSelect(table, queryParams = '') {
     debugLog(`[REST] GET ${url} (offset: ${currentOffset})`);
     
     const token = getUserToken() || SUPABASE_KEY;
-    const res = await fetch(url, {
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+    let pageData = null;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(`Supabase REST error ${res.status}: ${body}`);
+        }
+        pageData = await res.json();
+        break;
+      } catch (err) {
+        if (attempt === retries) throw err;
+        debugLog(`[REST] Attempt ${attempt} failed for ${table} at offset ${currentOffset}, retrying...`);
+        await new Promise(r => setTimeout(r, 400 * attempt));
       }
-    });
-    
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Supabase REST error ${res.status}: ${body}`);
+    }
+
+    if (!Array.isArray(pageData)) {
+      return pageData;
     }
     
-    const data = await res.json();
-    if (!Array.isArray(data)) {
-      return data;
-    }
+    allData = allData.concat(pageData);
     
-    allData = allData.concat(data);
-    
-    if (data.length < limit) {
+    if (pageData.length < limit) {
       hasMore = false;
     } else {
       currentOffset += limit;
@@ -2960,17 +2979,8 @@ async function loadFinancialReports() {
   const firstMonth = historicMonths[0].monthStart;
   const currentMonthKey = `${year}-${month}`;
 
-  // Smart Session Cache: se os dados deste mês já estão em memória, reutiliza instantaneamente
-  if (cachedFinancialData && cachedFinancialData.year === year && cachedFinancialData.month === month && cachedFinancialData.dreData) {
-    debugLog(`[Cache] Usando dados financeiros em cache para ${currentMonthKey}`);
-    const currentProcfy = (cachedFinancialData.allProcfyData || []).filter(row => row.due_date && row.due_date.substring(0, 7) === currentMonthKey);
-    const currentInter = (cachedFinancialData.allInterData || []).filter(row => row.data_movimento && row.data_movimento.substring(0, 7) === currentMonthKey);
-    renderAuditTransactions(currentProcfy, currentInter);
-    updateRoiAnalysis(cachedFinancialData.dreData, currentMonthKey, cachedFinancialData.historicMonths);
-    calculateAndRenderCurrentMonthProjection();
-    calculateAndRenderProjection();
-    return;
-  }
+  // Reset cache on load to ensure fresh computation of DRE and DFC with extra revenues
+  cachedFinancialData = null;
 
   try {
     debugLog('Buscando dados financeiros do Supabase (janela de 6 meses)...');
@@ -2989,7 +2999,7 @@ async function loadFinancialReports() {
     const procfyParams = `or=(and(due_date.gte.${firstMonth},due_date.lte.${projectionEnd}),and(paid.eq.false,due_date.lt.${firstMonth}))`;
     const interParams = `data_movimento=gte.${firstMonth}&data_movimento=lte.${monthEnd}`;
     const salesParams = `select=item_key,valor_faturamento,categoria,subcategoria,produto_padronizado,pay_date,reference,item_description,quantity,customer_code&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
-    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&or=(and(booking_date.gte.${monthStart},booking_date.lte.${monthEnd}),and(pay_date.gte.${monthStart},pay_date.lt.${nextMonthStart}))&order=booking_date.asc`;
+    const commParams = `select=booking_id,booking_value,booking_commission_base,is_socio_benefit,booking_date,is_paid,participant_name,start_time,booking_type,description,professor,customer_code,pay_date,resource_name&is_paid=eq.true&or=(and(booking_date.gte.${firstMonth},booking_date.lte.${monthEnd}),and(pay_date.gte.${firstMonth},pay_date.lt.${nextMonthStart}))&order=pay_date.desc.nullslast,booking_date.desc`;
     const payParams = `payment_date=gte.${firstMonth}&payment_date=lt.${nextMonthStart}`;
     const mpParams = `date_approved=gte.${firstMonth}&date_approved=lt.${nextMonthStart}&status=eq.approved`;
     const voucherParams = `description=ilike.*INTENSIV*&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}`;
@@ -3055,7 +3065,8 @@ async function loadFinancialReports() {
           'vw_mt_comissoes_detalhadas', 'mt_faturamento_pagamentos', 'mp_pagamentos',
           'mt_pagamentos_professores', 'mt_custo_produtos', 'vw_mt_ocupacao_quadras_mes (atual)',
           'vw_mt_faturamento_por_hora_ocupada (atual)', 'vw_mt_ocupacao_quadras_mes (anterior)',
-          'vw_mt_faturamento_por_hora_ocupada (anterior)', 'mt_faturamento_vendas', 'mt_agenda_recebiveis_importada'
+          'vw_mt_faturamento_por_hora_ocupada (anterior)', 'mt_faturamento_vendas', 'mt_agenda_recebiveis_importada',
+          'mt_provisoes_dre_config', 'mt_dre_mensal_fechado', 'mt_receitas_extras'
         ];
         debugError(`Erro ao carregar ${endpoints[i]}`, res.reason);
       }
@@ -3424,6 +3435,17 @@ async function loadFinancialReports() {
         const totalCost = unitCost * qty;
 
         dreData[monthKey].cogs = (dreData[monthKey].cogs || 0.0) + totalCost;
+      }
+    });
+
+    // Populate DRE Extra Revenues (Comissões/Eventos/Patrocínios e Svila) into Gross Revenue
+    (globalExtraRevenuesData || []).forEach(row => {
+      const monthKey = (row.month_key || '').trim();
+      if (!dreData[monthKey] || dreData[monthKey].isClosed) return;
+      const extraVal = parseFloat(row.valor) || 0.0;
+      if (Math.abs(extraVal) > 0.001) {
+        dreData[monthKey].receitaBruta += extraVal;
+        debugLog(`[DRE Extra] Adicionado R$ ${extraVal} (${row.tipo}) na Receita Bruta de ${monthKey}. Novo total: ${dreData[monthKey].receitaBruta}`);
       }
     });
 
