@@ -6971,6 +6971,26 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
     v => v.toFixed(1).replace('.', ',') + '%',
     occupancyRate >= targetOccupancy
   );
+
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+  const extraComissoes = getExtraRevenueForMonth(monthKey, 'comissoes_eventos_patrocinios');
+  const extraSvila = getExtraRevenueForMonth(monthKey, 'svila');
+
+  updateGoalCard(
+    'goal-card-extra-comissoes',
+    extraComissoes,
+    15000,
+    formatCurrency,
+    extraComissoes >= 15000
+  );
+
+  updateGoalCard(
+    'goal-card-extra-svila',
+    extraSvila,
+    5000,
+    formatCurrency,
+    extraSvila >= 5000
+  );
 }
 
 
