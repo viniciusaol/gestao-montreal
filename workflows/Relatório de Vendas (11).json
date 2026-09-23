@@ -135,7 +135,8 @@
             "response": {
               "responseFormat": "json"
             }
-          }
+          },
+          "timeout": 120000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -177,8 +178,8 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "https://ehhjnwosqcrfwonqhfoz.supabase.co/rest/v1/mt_faturamento_vendas?select=external_id,paid,is_canceled,total,pay_date,cancel_date",
+        "method": "POST",
+        "url": "https://ehhjnwosqcrfwonqhfoz.supabase.co/rest/v1/rpc/mt_buscar_vendas_existentes_json",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -189,10 +190,17 @@
             {
               "name": "Authorization",
               "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaGpud29zcWNyZndvbnFoZm96Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Mjg5Nzg2OSwiZXhwIjoyMDc4NDczODY5fQ.9NEyAQd203dXiyOyxC2wXvUZJ4Loo_Kn2_-EEmLvx3M"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"p_data_inicial\": \"2026-01-01\" }"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
