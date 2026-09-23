@@ -14,16 +14,9 @@ function getExtraRevenueForMonth(monthKey, tipo) {
   return row ? (parseFloat(row.valor) || 0) : 0;
 }
 
-// Helper to get adjusted commission base (applies custom rules, e.g., Jaqueline Bordejaco off-peak discount)
+// Helper to get adjusted commission base
 function getAdjustedCommissionBase(row, baseValue) {
   let base = parseFloat(baseValue) || 0.0;
-  const name = (row.participant_name || '').toLowerCase();
-  const date = row.booking_date || '';
-  if (name.includes('jaqueline') && name.includes('bordejaco')) {
-    if (date >= '2026-07-01') {
-      base = base * 0.88; // 12% discount for off-peak (15h-16h) from July 2026 onwards
-    }
-  }
   return base;
 }
 
@@ -415,6 +408,8 @@ async function populateProfessors() {
       <option value="João Assunção">João Assunção</option>
       <option value="Leandro Bonete">Leandro Bonete</option>
       <option value="Tatiana Araújo">Tatiana Araújo</option>
+      <option value="Elinton Sanches">Elinton Sanches</option>
+      <option value="Leciane Silva">Leciane Silva</option>
       <option value="Sem professor">Sem Professor</option>
     `;
   }
@@ -660,6 +655,8 @@ function calculateAndRenderDashboardData() {
 
   classesData.forEach(row => {
     const studentName = row.participant_name || 'Desconhecido';
+    const studentCode = row.customer_code ? row.customer_code.trim() : '';
+    const studentKey = studentCode ? `${studentCode} - ${studentName}` : studentName;
     
     // Critério 1: Aula paga dentro do mês de referência do relatório
     const isPaidInSelectedMonth = row.is_paid && row.pay_date && row.pay_date.startsWith(baseMonthPrefix);
@@ -689,28 +686,28 @@ function calculateAndRenderDashboardData() {
           }
         }
         
-        if (!paidAgg[studentName]) {
-          paidAgg[studentName] = { 
-            name: studentName, 
+        if (!paidAgg[studentKey]) {
+          paidAgg[studentKey] = { 
+            name: studentKey, 
             classesCount: 0, 
             totalBilled: 0, 
             totalCommissionBase: 0, 
             isSocio: false
           };
         }
-        paidAgg[studentName].classesCount += 1;
-        paidAgg[studentName].totalBilled += val;
-        paidAgg[studentName].totalCommissionBase += commBase;
+        paidAgg[studentKey].classesCount += 1;
+        paidAgg[studentKey].totalBilled += val;
+        paidAgg[studentKey].totalCommissionBase += commBase;
         if (isSocio) {
-          paidAgg[studentName].isSocio = true;
+          paidAgg[studentKey].isSocio = true;
         }
       }
     } else if (isPendingInSelectedMonth) {
       // Unpaid / Pending
-      if (!pendingBookingsByStudent[studentName]) {
-        pendingBookingsByStudent[studentName] = [];
+      if (!pendingBookingsByStudent[studentKey]) {
+        pendingBookingsByStudent[studentKey] = [];
       }
-      pendingBookingsByStudent[studentName].push(row);
+      pendingBookingsByStudent[studentKey].push(row);
     }
   });
 
