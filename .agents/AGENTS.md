@@ -27,3 +27,9 @@
   2. Executar um comando `UPSERT` SQL na tabela `mt_receitas_extras` do Supabase para o mês e tipo informados.
   3. Confirmar a gravação no chat informando o novo valor cadastrado para a categoria e o valor consolidado do Faturamento Líquido do mês.
 
+### 5. Regime de Caixa Pura e Alocação de Pró-Ratas
+- A data de pagamento (`pay_date`) no financeiro é soberana para determinar o mês de competência do faturamento comissionável.
+- Qualquer mensalidade ou recibo pró-rata pago em um determinado mês (`pay_date` dentro do mês) DEVE ser 100% contabilizado na base comissionável daquele mês, independentemente de mencionar datas do mês anterior no texto da descrição.
+- Lançamentos pró-rata de alunos matriculados em turmas ativas no mês devem ser alocados prioritariamente à modalidade da agenda do aluno naquele mês.
+
+
