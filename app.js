@@ -585,13 +585,17 @@ async function loadDashboard() {
     const salesParams = `select=item_key,valor_faturamento,categoria,subcategoria,produto_padronizado,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
     debugLog('Buscando vendas globais para conciliação...');
 
-    const [classesData, payoutsData, salesData, extraRevenuesData] = await Promise.all([
+    const [classesRes, payoutsRes, salesRes, extraRevenuesRes] = await Promise.allSettled([
       supabaseSelect('vw_mt_comissoes_detalhadas', classesParams),
       supabaseSelect('mt_pagamentos_professores', payoutsParams),
       supabaseSelect('vw_mt_faturamento_itens_pago', salesParams),
       supabaseSelect('mt_receitas_extras')
     ]);
-    globalExtraRevenuesData = Array.isArray(extraRevenuesData) ? extraRevenuesData : [];
+    const classesData = classesRes.status === 'fulfilled' && Array.isArray(classesRes.value) ? classesRes.value : [];
+    const payoutsData = payoutsRes.status === 'fulfilled' && Array.isArray(payoutsRes.value) ? payoutsRes.value : [];
+    const salesData = salesRes.status === 'fulfilled' && Array.isArray(salesRes.value) ? salesRes.value : [];
+    const extraRevenuesData = extraRevenuesRes.status === 'fulfilled' && Array.isArray(extraRevenuesRes.value) ? extraRevenuesRes.value : [];
+    globalExtraRevenuesData = extraRevenuesData;
 
     // 5. Fetch intensivão vouchers directly from mt_faturamento_vendas
     //    (a descrição completa com nome do professor fica na venda, não no item)
@@ -1751,11 +1755,14 @@ async function loadOperationalReports() {
     const firstMonth = historicMonths[0].monthStart;
     const lastMonth = historicMonths[historicMonths.length - 1].monthStart;
 
-    const [histSubData, histPaidVendasData, histEffData] = await Promise.all([
+    const [histSubDataRes, histPaidVendasDataRes, histEffDataRes] = await Promise.allSettled([
       supabaseSelect('vw_mt_ticket_medio_subcategoria_pago_mes', `select=mes,valor_liquido_total&mes=gte.${firstMonth}&mes=lte.${lastMonth}`),
       supabaseSelect('mt_faturamento_vendas', `select=customer_code,pay_date&paid=eq.true&is_canceled=eq.false&pay_date=gte.${firstMonth}&pay_date=lt.${nextMonthStart}&tipo=neq.refund`),
       supabaseSelect('vw_mt_faturamento_por_hora_ocupada', `select=*&mes=gte.${firstMonth}&mes=lte.${lastMonth}`)
     ]);
+    const histSubData = histSubDataRes.status === 'fulfilled' && Array.isArray(histSubDataRes.value) ? histSubDataRes.value : [];
+    const histPaidVendasData = histPaidVendasDataRes.status === 'fulfilled' && Array.isArray(histPaidVendasDataRes.value) ? histPaidVendasDataRes.value : [];
+    const histEffData = histEffDataRes.status === 'fulfilled' && Array.isArray(histEffDataRes.value) ? histEffDataRes.value : [];
 
     // Aggregate revenue by month
     const revenueByMonth = {};
@@ -1782,10 +1789,15 @@ async function loadOperationalReports() {
     });
 
     // 5. Occupancy History: fetch productive court hours for the same 6-month window
-    const histCourtData = await supabaseSelect(
-      'vw_mt_ocupacao_quadras_mes',
-      `select=mes,resource_name,tipo_operacional,horas_ocupadas&mes=gte.${firstMonth}&mes=lte.${lastMonth}`
-    );
+    let histCourtData = [];
+    try {
+      histCourtData = await supabaseSelect(
+        'vw_mt_ocupacao_quadras_mes',
+        `select=mes,resource_name,tipo_operacional,horas_ocupadas&mes=gte.${firstMonth}&mes=lte.${lastMonth}`
+      ) || [];
+    } catch (e) {
+      debugError('Erro ao carregar histórico de ocupação das quadras', e);
+    }
 
     // Aggregate productive hours per month (exclude maintenance/blocking)
     const productiveHoursByMonth = {};
@@ -7049,11 +7061,12 @@ async function loadMonthlyReport() {
     debugLog('Buscando aulas para o relatório consolidado...');
 
     // 1. Load operational, financial, and commissions data for the current month in parallel
-    const [classesData] = await Promise.all([
+    const [classesRes] = await Promise.allSettled([
       supabaseSelect('vw_mt_comissoes_detalhadas', classesParams),
       loadOperationalReports(),
       loadFinancialReports()
     ]);
+    const classesData = classesRes.status === 'fulfilled' && Array.isArray(classesRes.value) ? classesRes.value : [];
     
     // Store in global cache so renderReportCommissions can use it
     currentClassesData = classesData || [];
