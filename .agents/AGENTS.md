@@ -33,4 +33,18 @@
 - Qualquer mensalidade ou recibo pró-rata pago em um determinado mês (`pay_date` dentro do mês) DEVE ser 100% contabilizado na base comissionável daquele mês, independentemente de mencionar datas do mês anterior no texto da descrição.
 - Lançamentos pró-rata de alunos matriculados em turmas ativas no mês devem ser alocados prioritariamente à modalidade da agenda do aluno naquele mês.
 
+### 6. Exceção Outubro/2026: Família Thiago Figueiredo da Fonseca (`000372`)
+- **Thiago Figueiredo da Fonseca (`000372`)**:
+  - Em Outubro/2026 (`plan_month = '2026-10-01'`):
+    - 1 turma em quarteto com Prof. Rodrigo Assunção (Terça 19h, 4 aulas): Faturamento de R$ 302,34 (`item_5897_0`).
+    - 1 turma em dupla com Prof. Leandro Bonete (Quarta 17h, 4 aulas): Faturamento consolidado de R$ 698,15 (composto por R$ 379,90 de `item_5898_0` + R$ 318,25 de `item_5659_0`, pago em conjunto no lote familiar de 06/10).
+  - A partir de Novembro/2026 a turma de quarta do Thiago muda para aula individual e volta à regra padrão sem necessidade desta exceção.
+- **Ana Paula Brixel da Fonseca (`000601`)**:
+  - Houve duplicidade de pagamento no mês (R$ 318,25 e R$ 311,55).
+  - O valor de R$ 318,25 (`item_5659_0`) foi absorvido na conta do Thiago com o Leandro.
+  - O pagamento correto dela para o quarteto com Prof. João Assunção (Quarta 18h, 3 aulas) é R$ 311,55 (`item_6223_0`).
+- **Arthur Brixel da Fonseca (`001043`) e Matheus Brixel da Fonseca (`001044`)**:
+  - Cada um mantém R$ 399,90 alocado normalmente para a aula de dupla com Prof. Rodrigo Assunção (Quarta 17h, 4 aulas).
+
+
 
