@@ -20,6 +20,7 @@
 
 ### 3. Alocação Proporcional por Aulas Realizadas para Anna Miguel (`000602`)
 - Para o cadastro da aluna Anna Miguel (`000602`), a distribuição da mensalidade entre diferentes turmas/professores no mês deve considerar a multiplicação do peso do horário pela quantidade de aulas realizadas (`schedule_weight * bookings_count`).
+- **Exceção de Transição Outubro/2026**: Devido à saída da Profa. Leciane Silva e remanejamento da aluna, em outubro/2026 ela teve 1 treino com o Prof. Rodrigo Assunção e 3 treinos com o Prof. Leandro Bonete. A mensalidade (R$ 335,00) é rateada estritamente proporcional aos treinos dados: 1/4 (R$ 83,75) para Rodrigo Assunção e 3/4 (R$ 251,25) para Leandro Bonete.
 
 ### 4. Gerenciamento Automático de Receitas Extras (`mt_receitas_extras`)
 - Sempre que o usuário informar valores de receitas extras via prompt para um determinado mês (ex: *"381,38 - setembro em comissões, eventos, patrocinios"*, *"Svila 1.200 em outubro"*, *"atualiza patrocinio para 500 em agosto"*):
