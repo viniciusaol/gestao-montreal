@@ -1,4 +1,4 @@
--- MIGRATION V1.6: FIX AVULSAS - BLOQUEIO DE LOCACOES PURAS E MATCH ESTRITO DE DATA
+-- MIGRATION V1.7: INCLUSAO DE AULAS ADIANTADAS COMO COMISSIONAVEIS AVULSAS
 CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
  WITH view_base AS (
          WITH unique_participants AS MATERIALIZED (
@@ -80,7 +80,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                     i.valor_bruto,
                     i.description,
                     v.paid,
-                    COALESCE(((i.description ~~* '%AVULSA%'::text) OR (i.description ~~* '%GRUPO%FIXO%'::text) OR (i.subcategoria ~~* '%Avulsa%'::text) OR (i.subcategoria ~~* '%Grupo Fixo%'::text)), false) AS is_avulsa,
+                    COALESCE(((i.description ~~* '%AVULSA%'::text) OR (i.description ~~* '%GRUPO%FIXO%'::text) OR (i.description ~~* '%AULA%ADIANTADA%'::text) OR (i.subcategoria ~~* '%Avulsa%'::text) OR (i.subcategoria ~~* '%Grupo Fixo%'::text)), false) AS is_avulsa,
                     COALESCE(((i.description ~~* '%GRUPO%FIXO%'::text) OR (i.subcategoria ~~* '%Grupo Fixo%'::text)), false) AS is_avulsa_grupo_fixo,
                         CASE
                             WHEN ((i.description ~~* '%Sócio Montreal%'::text) OR (i.description ~~* '%Leonardo Assunção%'::text) OR (i.description ~~* '%Leonardo Assuncao%'::text)) THEN true
@@ -459,6 +459,7 @@ CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
                             WHEN ((rf.description ~~* '%Leciane Silva%'::text) OR (rf.description ~~* '%Leciane S.%'::text)) THEN 'Leciane Silva'::text
                             WHEN ((rf.description ~~* '%Elinton Sanches%'::text) OR (rf.description ~~* '%Eliton Sanches%'::text) OR (rf.description ~~* '%Élinton Sanches%'::text) OR (rf.description ~~* '%Éliton Sanches%'::text) OR (rf.description ~~* '%Elinton S.%'::text)) THEN 'Elinton Sanches'::text
                             WHEN (rf.description ~~* '%Alan%'::text) THEN 'Alan'::text
+                            WHEN (rf.description ~~* '%Aula%adiantada%-%'::text) THEN TRIM(BOTH FROM split_part(rf.description, '-', 2))
                             ELSE NULL::text
                         END,
                         CASE

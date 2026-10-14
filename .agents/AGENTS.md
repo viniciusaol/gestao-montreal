@@ -46,5 +46,7 @@
 - **Arthur Brixel da Fonseca (`001043`) e Matheus Brixel da Fonseca (`001044`)**:
   - Cada um mantém R$ 399,90 alocado normalmente para a aula de dupla com Prof. Rodrigo Assunção (Quarta 17h, 4 aulas).
 
-
-
+### 7. Tratamento Específico de Aulas Adiantadas (`Aula adiantada`)
+- Lançamentos com a menção expressa `Aula adiantada` na descrição (ex: *"Aula adiantada de novembro - João Assunção"*) devem fluir diretamente para a esteira de pagamentos avulsos comissionáveis (`is_avulsa = true`).
+- A comissão deve ser atribuída estritamente ao professor identificado na descrição (após o hífen ou por correspondência de nome no texto).
+- Pelo regime de caixa soberano, a comissão entra no mês em que o recibo foi efetivamente pago (`pay_date`).
