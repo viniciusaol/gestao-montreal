@@ -1,10 +1,12 @@
+-- MIGRATION V1.6: FIX AVULSAS - BLOQUEIO DE LOCACOES PURAS E MATCH ESTRITO DE DATA
 CREATE OR REPLACE VIEW public.vw_mt_comissoes_detalhadas AS
-WITH view_base AS (
+ WITH view_base AS (
          WITH unique_participants AS MATERIALIZED (
                  SELECT DISTINCT ON (mt_booking_participantes.participant_name) mt_booking_participantes.participant_name,
                     mt_booking_participantes.customer_code
                    FROM mt_booking_participantes
                   WHERE ((mt_booking_participantes.participant_name IS NOT NULL) AND (length(mt_booking_participantes.participant_name) > 5))
+                  ORDER BY mt_booking_participantes.participant_name, mt_booking_participantes.customer_code
                 ), booking_min_pay_dates AS (
                  SELECT mt_booking_pagamentos.booking_id,
                     min(mt_booking_pagamentos.payment_date) AS min_payment_date
@@ -27,7 +29,7 @@ WITH view_base AS (
                     fv.paid AS is_paid,
                     COALESCE(bmpd.min_payment_date, fv.pay_date) AS pay_date,
                         CASE
-                            WHEN (fv.customer_code = '000917'::text OR fv.customer_code = '000932'::text) THEN 'Leandro Bonete'::text
+                            WHEN ((fv.customer_code = '000917'::text) OR (fv.customer_code = '000932'::text)) THEN 'Leandro Bonete'::text
                             WHEN ((fv.customer_code = '000815'::text) OR ((fv.customer_code = '000475'::text) AND (((fv.pay_date >= '2026-07-01 00:00:00'::timestamp without time zone) AND (fv.pay_date < '2026-08-01 00:00:00'::timestamp without time zone)) OR (fi.description ~~* '%15/07/2026%'::text))) OR (fi.description ~~* '%João Assunção%'::text) OR (fi.description ~~* '%Joao Assuncao%'::text) OR (fi.description ~~* '%Joao Assunção%'::text) OR (fi.description ~~* '%João Assuncao%'::text) OR (fi.description ~~* '%Joao A.%'::text)) THEN 'João Assunção'::text
                             WHEN ((fi.description ~~* '%Rodrigo Assunção%'::text) OR (fi.description ~~* '%Rodrigo Assuncao%'::text) OR (fi.description ~~* '%Rodrigo A.%'::text)) THEN 'Rodrigo Assunção'::text
                             WHEN ((fi.description ~~* '%Leandro Bonete%'::text) OR (fi.description ~~* '%Leandro B.%'::text) OR (fi.description ~~* '%Leandro B'::text)) THEN 'Leandro Bonete'::text
@@ -41,30 +43,59 @@ WITH view_base AS (
                      LEFT JOIN booking_min_pay_dates bmpd ON ((bmpd.booking_id = b.booking_id)))
                      JOIN mt_faturamento_vendas fv ON ((fv.customer_code = p.customer_code)))
                      JOIN mt_faturamento_itens fi ON ((fi.venda_external_id = fv.external_id)))
-                  WHERE ((fv.paid = true) AND (b.status = 'ACTIVE'::text) AND (b.booking_type = 'clase_suelta'::text) AND (b.description !~~* '%RESERVA MENSAL%'::text) AND (fi.is_canceled = false) AND (fv.is_canceled = false) AND (fi.valor_faturamento > (0)::numeric) AND (fi.categoria = ANY (ARRAY['Aulas'::text, 'Outros'::text, 'Locação'::text])) AND (((fi.description ~~ (('%'::text || to_char((b.booking_date)::timestamp with time zone, 'DD/MM/YYYY'::text)) || '%'::text)) AND (fi.description ~~ (('%'::text || to_char((b.start_time)::interval, 'HH24:MI'::text)) || '%'::text))) OR (EXISTS ( SELECT 1
-                           FROM mt_booking_pagamentos bpay
-                          WHERE ((bpay.booking_id = b.booking_id) AND (bpay.payment_date = fv.pay_date) AND (bpay.amount = fi.valor_faturamento))))))
+                  WHERE ((fv.paid = true) AND (b.status = 'ACTIVE'::text) AND (b.booking_type = 'clase_suelta'::text) AND (b.description !~~* '%RESERVA MENSAL%'::text) AND (fi.is_canceled = false) AND (fv.is_canceled = false) AND (fi.valor_faturamento > (0)::numeric) AND (fi.categoria = ANY (ARRAY['Aulas'::text, 'Outros'::text, 'Locação'::text])) -- REGRA 1: Ignora comprovantes que sao puramente reservas de quadra (sem mencao a aula)
+      AND NOT (
+          (fi.description ~~* '%Reserva Quadra%' OR fi.description ~~* '%Reserva nº%' OR fi.description ~~* '%Reserva no%')
+          AND fi.description !~~* '%AULA%'
+      )
+      -- REGRA 2: Match por data e hora no texto OU (se a descricao nao mencionar outra data) match por carimbo de pagamento
+      AND (
+          (
+              (fi.description ~~ (('%'::text || to_char((b.booking_date)::timestamp with time zone, 'DD/MM/YYYY'::text)) || '%'::text)) 
+              AND (fi.description ~~ (('%'::text || to_char((b.start_time)::interval, 'HH24:MI'::text)) || '%'::text))
+          )
+          OR (
+              (fi.description !~ '[0-9]{2}/[0-9]{2}/[0-9]{4}' OR fi.description ~~ (('%'::text || to_char((b.booking_date)::timestamp with time zone, 'DD/MM/YYYY'::text)) || '%'::text))
+              AND (EXISTS ( 
+                  SELECT 1 FROM mt_booking_pagamentos bpay
+                  WHERE ((bpay.booking_id = b.booking_id) AND (bpay.payment_date = fv.pay_date) AND (bpay.amount = fi.valor_faturamento))
+              ))
+          )
+      ))
                 ), resolved_faturamento AS MATERIALIZED (
                  SELECT i.item_key,
-                    COALESCE(( SELECT p_1.customer_code
-                       FROM unique_participants p_1
-                      WHERE i.description ~~* (('%'::text || p_1.participant_name) || '%'::text)
-                     LIMIT 1), v.customer_code) AS customer_code,
+                    COALESCE(
+                        CASE
+                            WHEN i.item_key = 'item_5659_0' THEN '000372'::text
+                            WHEN ((i.categoria = 'Aulas'::text) OR (i.description ~~* '%AULA%'::text) OR (i.description ~~* '%TÊNIS%'::text) OR (i.description ~~* '%KIDS%'::text)) THEN ( SELECT p_1.customer_code
+                               FROM unique_participants p_1
+                              WHERE (i.description ~~* (('%'::text || p_1.participant_name) || '%'::text))
+                              ORDER BY (length(p_1.participant_name)) DESC
+                             LIMIT 1)
+                            ELSE NULL::text
+                        END, v.customer_code) AS customer_code,
                     v.pay_date,
                     v.data_venda,
                     i.valor_faturamento,
                     i.valor_bruto,
                     i.description,
                     v.paid,
-                    COALESCE(i.description ~~* '%AVULSA%'::text OR i.description ~~* '%GRUPO%FIXO%'::text OR i.subcategoria ~~* '%Avulsa%'::text OR i.subcategoria ~~* '%Grupo Fixo%'::text, false) AS is_avulsa,
-                    COALESCE(i.description ~~* '%GRUPO%FIXO%'::text OR i.subcategoria ~~* '%Grupo Fixo%'::text, false) AS is_avulsa_grupo_fixo,
-                    CASE WHEN i.description ~~* '%Sócio Montreal%'::text OR i.description ~~* '%Leonardo Assunção%'::text OR i.description ~~* '%Leonardo Assuncao%'::text THEN true ELSE false END AS is_socio,
+                    COALESCE(((i.description ~~* '%AVULSA%'::text) OR (i.description ~~* '%GRUPO%FIXO%'::text) OR (i.subcategoria ~~* '%Avulsa%'::text) OR (i.subcategoria ~~* '%Grupo Fixo%'::text)), false) AS is_avulsa,
+                    COALESCE(((i.description ~~* '%GRUPO%FIXO%'::text) OR (i.subcategoria ~~* '%Grupo Fixo%'::text)), false) AS is_avulsa_grupo_fixo,
+                        CASE
+                            WHEN ((i.description ~~* '%Sócio Montreal%'::text) OR (i.description ~~* '%Leonardo Assunção%'::text) OR (i.description ~~* '%Leonardo Assuncao%'::text)) THEN true
+                            ELSE false
+                        END AS is_socio,
                     i.is_canceled AS item_canceled,
                     v.is_canceled AS sale_canceled,
                     v.tipo AS sale_type,
                     i.categoria
-                   FROM mt_faturamento_itens i
-                     JOIN mt_faturamento_vendas v ON v.external_id = i.venda_external_id
+                   FROM (mt_faturamento_itens i
+                     JOIN mt_faturamento_vendas v ON ((v.external_id = i.venda_external_id)))
+                  WHERE (NOT (EXISTS ( SELECT 1
+                           FROM (mt_faturamento_vendas v2
+                             JOIN mt_faturamento_itens i2 ON ((i2.venda_external_id = v2.external_id)))
+                          WHERE ((v2.external_id < v.external_id) AND (v2.customer_code = v.customer_code) AND (v2.paid = true) AND (v2.is_canceled = false) AND (i2.is_canceled = false) AND (abs((i2.valor_faturamento - i.valor_faturamento)) < 0.01) AND (i2.description = i.description) AND ((COALESCE(v2.pay_date, (v2.data_venda)::timestamp without time zone))::date = (COALESCE(v.pay_date, (v.data_venda)::timestamp without time zone))::date)))))
                 ), plan_items_raw AS MATERIALIZED (
                  SELECT rf.item_key,
                     rf.customer_code,
@@ -72,8 +103,8 @@ WITH view_base AS (
                     (date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)))::date AS plan_month,
                     rf.paid,
                         CASE
-                            WHEN (rf.description ~ '\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}'::text) THEN round((((CASE WHEN rf.is_socio THEN GREATEST(COALESCE(rf.valor_bruto, (0)::numeric), (rf.valor_faturamento * (2.0)::numeric)) ELSE rf.valor_faturamento END) * (((((date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone) + '1 mon -1 days'::interval))::date - (date_trunc('month'::text, (to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text))::timestamp with time zone))::date) + 1))::numeric) / (GREATEST(((to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-(\d{2}/\d{2}/\d{4})'::text))[2], 'DD/MM/YYYY'::text) - to_date((regexp_match(rf.description, '(\d{2}/\d{2}/\d{4})-\d{2}/\d{2}/\d{4}'::text))[1], 'DD/MM/YYYY'::text)) + 1), 1))::numeric), 2)
-                            ELSE CASE WHEN rf.is_socio THEN GREATEST(COALESCE(rf.valor_bruto, (0)::numeric), (rf.valor_faturamento * (2.0)::numeric)) ELSE rf.valor_faturamento END
+                            WHEN rf.is_socio THEN GREATEST(COALESCE(rf.valor_bruto, (0)::numeric), (rf.valor_faturamento * 2.0))
+                            ELSE rf.valor_faturamento
                         END AS valor_bruto_derived,
                     rf.is_socio,
                     COALESCE(
@@ -84,31 +115,29 @@ WITH view_base AS (
                             WHEN (rf.description ~~* '%TRIO%'::text) THEN 'TRIO'::text
                             WHEN ((rf.description ~~* '%GRUPO%'::text) OR (rf.description ~~* '%QUARTETO%'::text) OR (rf.description ~~* '%KIDS%'::text)) THEN 'GRUPO'::text
                             ELSE NULL::text
-                        END, 
-                        ( SELECT bp.plan_class_type
-                          FROM ( VALUES ('INDIVIDUAL'::text, 720.00), ('DUPLA'::text, 430.00), ('TRIO'::text, 395.00), ('GRUPO'::text, 335.00), ('GRUPO'::text, 245.00) ) bp(plan_class_type, base_value)
-                          WHERE abs(COALESCE(rf.valor_bruto, rf.valor_faturamento) - bp.base_value) <= 150.00
-                             OR abs(COALESCE(rf.valor_bruto, rf.valor_faturamento) - (2.0 * bp.base_value)) <= 200.00
-                          ORDER BY LEAST(abs(COALESCE(rf.valor_bruto, rf.valor_faturamento) - bp.base_value), abs(COALESCE(rf.valor_bruto, rf.valor_faturamento) - (2.0 * bp.base_value))) ASC
-                          LIMIT 1
-                        ),
-                        ( SELECT CASE
-                             WHEN (b_sub.description ~ '\(\s*\d+\s*/\s*1\s*\)'::text) THEN 'INDIVIDUAL'::text
-                             WHEN (b_sub.description ~ '\(\s*\d+\s*/\s*2\s*\)'::text) THEN 'DUPLA'::text
-                             WHEN (b_sub.description ~ '\(\s*\d+\s*/\s*3\s*\)'::text) THEN 'TRIO'::text
-                             WHEN (b_sub.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text) THEN 'GRUPO'::text
-                             ELSE 'GRUPO'::text
-                           END
-                         FROM (mt_booking_participantes p_sub
-                           JOIN mt_bookings b_sub ON ((b_sub.booking_id = p_sub.booking_id)))
-                        WHERE ((p_sub.customer_code = rf.customer_code) AND (b_sub.status = 'ACTIVE'::text) AND (b_sub.booking_type = 'clase_colectiva'::text))
-                       LIMIT 1),
-                        'GRUPO'::text
-                    ) AS plan_class_type,
+                        END, ( SELECT bp.plan_class_type
+                           FROM ( VALUES ('INDIVIDUAL'::text,720.00), ('DUPLA'::text,430.00), ('TRIO'::text,395.00), ('GRUPO'::text,335.00), ('GRUPO'::text,245.00)) bp(plan_class_type, base_value)
+                          WHERE ((abs((COALESCE(rf.valor_bruto, rf.valor_faturamento) - bp.base_value)) <= 150.00) OR (abs((COALESCE(rf.valor_bruto, rf.valor_faturamento) - (2.0 * bp.base_value))) <= 200.00))
+                          ORDER BY LEAST(abs((COALESCE(rf.valor_bruto, rf.valor_faturamento) - bp.base_value)), abs((COALESCE(rf.valor_bruto, rf.valor_faturamento) - (2.0 * bp.base_value))))
+                         LIMIT 1), ( SELECT
+                                CASE
+                                    WHEN (b_sub.description ~ '\(\s*\d+\s*/\s*1\s*\)'::text) THEN 'INDIVIDUAL'::text
+                                    WHEN (b_sub.description ~ '\(\s*\d+\s*/\s*2\s*\)'::text) THEN 'DUPLA'::text
+                                    WHEN (b_sub.description ~ '\(\s*\d+\s*/\s*3\s*\)'::text) THEN 'TRIO'::text
+                                    WHEN (b_sub.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text) THEN 'GRUPO'::text
+                                    ELSE 'GRUPO'::text
+                                END AS "case"
+                           FROM (mt_booking_participantes p_sub
+                             JOIN mt_bookings b_sub ON ((b_sub.booking_id = p_sub.booking_id)))
+                          WHERE ((p_sub.customer_code = rf.customer_code) AND (b_sub.status = 'ACTIVE'::text) AND (b_sub.booking_type = 'clase_colectiva'::text))
+                         LIMIT 1), 'GRUPO'::text) AS plan_class_type,
                     rf.is_avulsa,
                     rf.is_avulsa_grupo_fixo,
                     rf.valor_faturamento AS valor_faturamento_monthly,
-                    CASE WHEN rf.is_socio THEN GREATEST(COALESCE(rf.valor_bruto, (0)::numeric), (rf.valor_faturamento * (2.0)::numeric)) ELSE rf.valor_faturamento END AS valor_bruto_monthly,
+                        CASE
+                            WHEN rf.is_socio THEN GREATEST(COALESCE(rf.valor_bruto, (0)::numeric), (rf.valor_faturamento * 2.0))
+                            ELSE rf.valor_faturamento
+                        END AS valor_bruto_monthly,
                     rf.description
                    FROM resolved_faturamento rf
                   WHERE ((rf.paid = true) AND (rf.is_avulsa = false) AND (rf.item_canceled = false) AND (rf.sale_canceled = false) AND (COALESCE(rf.sale_type, ''::text) <> 'refund'::text) AND (rf.valor_faturamento > (0)::numeric) AND ((rf.categoria = 'Aulas'::text) OR ((rf.categoria = 'Outros'::text) AND (rf.description ~~* '%TÊNIS%'::text) AND ((rf.description ~~* '%ADULTO%'::text) OR (rf.description ~~* '%KIDS%'::text)))))
@@ -165,7 +194,8 @@ WITH view_base AS (
                     pir.is_socio,
                     pir.plan_class_type,
                     pir.valor_faturamento_monthly,
-                    pir.valor_bruto_monthly
+                    pir.valor_bruto_monthly,
+                    pir.description
                    FROM plan_items_raw pir
                 ), exact_schedule_matches AS (
                  SELECT s.customer_code,
@@ -177,7 +207,9 @@ WITH view_base AS (
                     s.bookings_count,
                     count(pe.item_key) AS exact_match_count
                    FROM (schedules s
-                     LEFT JOIN pi_exact pe ON (((pe.customer_code = s.customer_code) AND (pe.plan_month = s.plan_month) AND (pe.plan_class_type = s.booking_class_type))))
+                     LEFT JOIN pi_exact pe ON (((pe.customer_code = s.customer_code) AND (pe.plan_month = s.plan_month) AND ((pe.plan_class_type = s.booking_class_type) OR (NOT (EXISTS ( SELECT 1
+                           FROM schedules s2
+                          WHERE ((s2.customer_code = pe.customer_code) AND (s2.plan_month = pe.plan_month) AND (s2.booking_class_type = pe.plan_class_type)))))))))
                   GROUP BY s.customer_code, s.plan_month, s.day_of_week, s.start_time, s.professor, s.booking_class_type, s.bookings_count
                 ), schedules_with_sums AS (
                  SELECT s.customer_code,
@@ -188,16 +220,15 @@ WITH view_base AS (
                     s.booking_class_type,
                     s.bookings_count,
                     esm.exact_match_count,
-                    CASE
-                        WHEN (s.customer_code = '000602'::text) THEN (100.00 * (s.bookings_count)::numeric)
-                        ELSE 1.0
-                    END AS schedule_weight,
+                        CASE
+                            WHEN (s.customer_code = '000602'::text) THEN (100.00 * (s.bookings_count)::numeric)
+                            ELSE 1.0
+                        END AS schedule_weight,
                     sum(
                         CASE
                             WHEN (s.customer_code = '000602'::text) THEN (100.00 * (s.bookings_count)::numeric)
                             ELSE 1.0
-                        END
-                    ) OVER (PARTITION BY s.customer_code, s.plan_month) AS total_customer_weighted_bookings_all
+                        END) OVER (PARTITION BY s.customer_code, s.plan_month) AS total_customer_weighted_bookings_all
                    FROM (schedules s
                      JOIN exact_schedule_matches esm ON (((esm.customer_code = s.customer_code) AND (esm.plan_month = s.plan_month) AND (esm.day_of_week = s.day_of_week) AND (esm.start_time = s.start_time) AND (esm.professor = s.professor) AND (esm.booking_class_type = s.booking_class_type))))
                 ), exact_item_schedule_allocations AS (
@@ -213,13 +244,40 @@ WITH view_base AS (
                     pe.is_socio,
                     false AS is_avulsa,
                     false AS is_avulsa_grupo_fixo,
-                    (pe.valor_faturamento_monthly / (NULLIF(count(*) OVER (PARTITION BY pe.item_key), 0))::numeric) AS allocated_valor_faturamento_monthly,
-                    CASE 
-                      WHEN pe.customer_code = '000007'::text THEN (pe.valor_bruto_monthly * (0.88)::numeric / (NULLIF(count(*) OVER (PARTITION BY pe.item_key), 0))::numeric)
-                      ELSE (pe.valor_bruto_monthly / (NULLIF(count(*) OVER (PARTITION BY pe.item_key), 0))::numeric)
-                    END AS allocated_valor_bruto_monthly
+                    CASE
+                            WHEN pe.customer_code = '000602'::text AND pe.plan_month = '2026-10-01'::date THEN ((pe.valor_faturamento_monthly * (s.bookings_count)::numeric) / (NULLIF(sum(s.bookings_count) OVER (PARTITION BY pe.item_key), 0))::numeric)
+                            WHEN pe.customer_code = '000372'::text AND pe.plan_month = '2026-10-01'::date THEN
+                                CASE
+                                    WHEN pe.item_key = 'item_5897_0' AND s.professor = 'Rodrigo Assunção'::text THEN pe.valor_faturamento_monthly
+                                    WHEN pe.item_key IN ('item_5898_0', 'item_5659_0') AND s.professor = 'Leandro Bonete'::text THEN pe.valor_faturamento_monthly
+                                    ELSE (0)::numeric
+                                END
+                            ELSE (pe.valor_faturamento_monthly / (NULLIF(count(*) OVER (PARTITION BY pe.item_key), 0))::numeric)
+                        END AS allocated_valor_faturamento_monthly,
+                        CASE
+                            WHEN (pe.customer_code = '000007'::text) THEN ((pe.valor_bruto_monthly * 0.88) / (NULLIF(count(*) OVER (PARTITION BY pe.item_key), 0))::numeric)
+                            WHEN pe.customer_code = '000602'::text AND pe.plan_month = '2026-10-01'::date THEN ((pe.valor_bruto_monthly * (s.bookings_count)::numeric) / (NULLIF(sum(s.bookings_count) OVER (PARTITION BY pe.item_key), 0))::numeric)
+                            WHEN pe.customer_code = '000372'::text AND pe.plan_month = '2026-10-01'::date THEN
+                                CASE
+                                    WHEN pe.item_key = 'item_5897_0' AND s.professor = 'Rodrigo Assunção'::text THEN pe.valor_bruto_monthly
+                                    WHEN pe.item_key IN ('item_5898_0', 'item_5659_0') AND s.professor = 'Leandro Bonete'::text THEN pe.valor_bruto_monthly
+                                    ELSE (0)::numeric
+                                END
+                            ELSE (pe.valor_bruto_monthly / (NULLIF(count(*) OVER (PARTITION BY pe.item_key), 0))::numeric)
+                        END AS allocated_valor_bruto_monthly
                    FROM (pi_exact pe
-                     JOIN schedules s ON (((s.customer_code = pe.customer_code) AND (s.plan_month = pe.plan_month) AND (s.booking_class_type = pe.plan_class_type))))
+                     JOIN schedules s ON (((s.customer_code = pe.customer_code) AND (s.plan_month = pe.plan_month) AND (
+                         (pe.customer_code = '000372'::text AND pe.plan_month = '2026-10-01'::date AND (
+                             (pe.item_key = 'item_5897_0' AND s.professor = 'Rodrigo Assunção'::text) OR
+                             (pe.item_key IN ('item_5898_0', 'item_5659_0') AND s.professor = 'Leandro Bonete'::text)
+                         ))
+                         OR
+                         (NOT (pe.customer_code = '000372'::text AND pe.plan_month = '2026-10-01'::date) AND (
+                             (pe.plan_class_type = s.booking_class_type) OR (NOT (EXISTS ( SELECT 1
+                               FROM schedules s2
+                              WHERE ((s2.customer_code = pe.customer_code) AND (s2.plan_month = pe.plan_month) AND (s2.booking_class_type = pe.plan_class_type))))
+                         ))
+                     )))))
                 ), fallback_plan_totals AS (
                  SELECT pir.customer_code,
                     pir.plan_month,
@@ -232,8 +290,8 @@ WITH view_base AS (
                     sum(pir.valor_bruto_monthly) AS total_valor_bruto_monthly
                    FROM plan_items_raw pir
                   WHERE (NOT (EXISTS ( SELECT 1
-                           FROM schedules s
-                          WHERE ((s.customer_code = pir.customer_code) AND (s.plan_month = pir.plan_month) AND (s.booking_class_type = pir.plan_class_type)))))
+                           FROM exact_item_schedule_allocations eisa
+                          WHERE ((eisa.customer_code = pir.customer_code) AND (eisa.plan_month = pir.plan_month)))))
                   GROUP BY pir.customer_code, pir.plan_month
                 ), fallback_schedule_allocations AS (
                  SELECT sws.customer_code,
@@ -249,14 +307,12 @@ WITH view_base AS (
                     fpt.is_avulsa,
                     fpt.is_avulsa_grupo_fixo,
                     ((fpt.total_valor_faturamento_monthly * sws.schedule_weight) / NULLIF(sum(sws.schedule_weight) OVER (PARTITION BY sws.customer_code, sws.plan_month), (0)::numeric)) AS allocated_valor_faturamento_monthly,
-                    CASE
-                        WHEN (sws.customer_code = '000007'::text)
-                        THEN (((fpt.total_valor_bruto_monthly * (0.88)::numeric) * sws.schedule_weight) / NULLIF(sum(sws.schedule_weight) OVER (PARTITION BY sws.customer_code, sws.plan_month), (0)::numeric))
-                        ELSE ((fpt.total_valor_bruto_monthly * sws.schedule_weight) / NULLIF(sum(sws.schedule_weight) OVER (PARTITION BY sws.customer_code, sws.plan_month), (0)::numeric))
-                    END AS allocated_valor_bruto_monthly
+                        CASE
+                            WHEN (sws.customer_code = '000007'::text) THEN (((fpt.total_valor_bruto_monthly * 0.88) * sws.schedule_weight) / NULLIF(sum(sws.schedule_weight) OVER (PARTITION BY sws.customer_code, sws.plan_month), (0)::numeric))
+                            ELSE ((fpt.total_valor_bruto_monthly * sws.schedule_weight) / NULLIF(sum(sws.schedule_weight) OVER (PARTITION BY sws.customer_code, sws.plan_month), (0)::numeric))
+                        END AS allocated_valor_bruto_monthly
                    FROM (schedules_with_sums sws
                      JOIN fallback_plan_totals fpt ON (((fpt.customer_code = sws.customer_code) AND (fpt.plan_month = sws.plan_month))))
-                  WHERE (sws.exact_match_count = 0)
                 ), schedule_allocations AS (
                  SELECT exact_item_schedule_allocations.customer_code,
                     exact_item_schedule_allocations.plan_month,
@@ -318,7 +374,7 @@ WITH view_base AS (
                     b.description,
                     COALESCE(
                         CASE
-                            WHEN (p.customer_code = '000917'::text OR p.customer_code = '000932'::text) THEN 'Leandro Bonete'::text
+                            WHEN ((p.customer_code = '000917'::text) OR (p.customer_code = '000932'::text)) THEN 'Leandro Bonete'::text
                             WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
                             WHEN ((p.customer_code = '000815'::text) OR ((p.customer_code = '000475'::text) AND (b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date)) OR (b.description ~~* '%Julio Souza%'::text) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
                             WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
@@ -348,7 +404,7 @@ WITH view_base AS (
                         END AS is_paid,
                         CASE
                             WHEN (b.booking_type = 'clase_suelta'::text) THEN lcm.pay_date
-                            ELSE st.pay_date
+                            ELSE (st.pay_date)::timestamp without time zone
                         END AS pay_date,
                         CASE
                             WHEN (b.booking_type = 'clase_colectiva'::text) THEN COALESCE((st.schedule_monthly_value_monthly / (NULLIF(st.bookings_count, 0))::numeric), (0)::numeric)
@@ -377,9 +433,9 @@ WITH view_base AS (
                             WHEN (b.description ~ '\(\s*\d+\s*/\s*[456789]\d*\s*\)'::text) THEN 'GRUPO'::text
                             WHEN (b.booking_type = 'clase_suelta'::text) THEN 'INDIVIDUAL'::text
                             ELSE 'GRUPO'::text
-                        END) AND (st.professor =
+                        END) AND (st.professor = COALESCE(
                         CASE
-                            WHEN (p.customer_code = '000917'::text OR p.customer_code = '000932'::text) THEN 'Leandro Bonete'::text
+                            WHEN ((p.customer_code = '000917'::text) OR (p.customer_code = '000932'::text)) THEN 'Leandro Bonete'::text
                             WHEN (b.booking_id = 4725) THEN 'Rodrigo Assunção'::text
                             WHEN ((p.customer_code = '000815'::text) OR ((p.customer_code = '000475'::text) AND (b.booking_date >= '2026-07-01'::date) AND (b.booking_date <= '2026-07-31'::date)) OR (b.description ~~* '%Julio Souza%'::text) OR (b.description ~~* '%João Assunção%'::text) OR (b.description ~~* '%Joao Assuncao%'::text) OR (b.description ~~* '%Joao Assunção%'::text) OR (b.description ~~* '%João Assuncao%'::text)) THEN 'João Assunção'::text
                             WHEN ((b.description ~~* '%Elinton Sanches%'::text) OR (b.description ~~* '%Eliton Sanches%'::text) OR (b.description ~~* '%Élinton Sanches%'::text) OR (b.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
@@ -388,14 +444,14 @@ WITH view_base AS (
                             WHEN ((b.description ~~* '%Tatiana Araújo%'::text) OR (b.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
                             WHEN (b.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
                             ELSE NULLIF(TRIM(BOTH FROM regexp_replace(COALESCE("substring"(b.description, '(?i)prof[:.]?[[:space:]]*([^.(]+)'::text), ''::text), '[[:space:]]+'::text, ' '::text, 'g'::text)), ''::text)
-                        END))))
+                        END, 'Sem professor'::text)))))
                   WHERE ((b.status = 'ACTIVE'::text) AND (b.booking_type = ANY (ARRAY['clase_colectiva'::text, 'clase_suelta'::text])) AND (b.description !~~* '%RESERVA MENSAL%'::text))
                 ), unallocated_payments AS (
                  SELECT rf.item_key,
                     COALESCE(
                         CASE
                             WHEN (rf.customer_code = '000815'::text) THEN 'João Assunção'::text
-                            WHEN (rf.customer_code = '000917'::text OR rf.customer_code = '000932'::text) THEN 'Leandro Bonete'::text
+                            WHEN ((rf.customer_code = '000917'::text) OR (rf.customer_code = '000932'::text)) THEN 'Leandro Bonete'::text
                             WHEN ((rf.description ~~* '%João Assunção%'::text) OR (rf.description ~~* '%Joao Assuncao%'::text) OR (rf.description ~~* '%Joao Assunção%'::text) OR (rf.description ~~* '%João Assuncao%'::text) OR (rf.description ~~* '%Joao A.%'::text)) THEN 'João Assunção'::text
                             WHEN ((rf.description ~~* '%Rodrigo Assunção%'::text) OR (rf.description ~~* '%Rodrigo Assuncao%'::text) OR (rf.description ~~* '%Rodrigo A.%'::text)) THEN 'Rodrigo Assunção'::text
                             WHEN ((rf.description ~~* '%Leandro Bonete%'::text) OR (rf.description ~~* '%Leandro B.%'::text) OR (rf.description ~~* '%Leandro B'::text)) THEN 'Leandro Bonete'::text
@@ -411,16 +467,16 @@ WITH view_base AS (
                         END, ( SELECT prof.professor
                            FROM ( SELECT DISTINCT ON (p_sub.customer_code) p_sub.customer_code,
                                     COALESCE(
-                                        CASE
-                                            WHEN (b_sub.booking_id = 4725) THEN 'Rodrigo Assunção'::text
-                                            WHEN ((p_sub.customer_code = '000815'::text) OR ((p_sub.customer_code = '000475'::text) AND (b_sub.booking_date >= '2026-07-01'::date) AND (b_sub.booking_date <= '2026-07-31'::date))) THEN 'João Assunção'::text
-                                            WHEN ((b_sub.description ~~* '%Elinton Sanches%'::text) OR (b_sub.description ~~* '%Eliton Sanches%'::text) OR (b_sub.description ~~* '%Élinton Sanches%'::text) OR (b_sub.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
-                                            WHEN ((b_sub.description ~~* '%Rodrigo Assunção%'::text) OR (b_sub.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
-                                            WHEN (b_sub.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
-                                            WHEN ((b_sub.description ~~* '%Tatiana Araújo%'::text) OR (b_sub.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
-                                            WHEN (b_sub.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
-                                            ELSE NULLIF(TRIM(BOTH FROM regexp_replace(COALESCE("substring"(b_sub.description, '(?i)prof[:.]?[[:space:]]*([^.(]+)'::text), ''::text), '[[:space:]]+'::text, ' '::text, 'g'::text)), ''::text)
-                                        END, 'Sem professor'::text) AS professor
+CASE
+ WHEN (b_sub.booking_id = 4725) THEN 'Rodrigo Assunção'::text
+ WHEN ((p_sub.customer_code = '000815'::text) OR ((p_sub.customer_code = '000475'::text) AND (b_sub.booking_date >= '2026-07-01'::date) AND (b_sub.booking_date <= '2026-07-31'::date))) THEN 'João Assunção'::text
+ WHEN ((b_sub.description ~~* '%Elinton Sanches%'::text) OR (b_sub.description ~~* '%Eliton Sanches%'::text) OR (b_sub.description ~~* '%Élinton Sanches%'::text) OR (b_sub.description ~~* '%Éliton Sanches%'::text)) THEN 'Elinton Sanches'::text
+ WHEN ((b_sub.description ~~* '%Rodrigo Assunção%'::text) OR (b_sub.description ~~* '%Rodrigo Assuncao%'::text)) THEN 'Rodrigo Assunção'::text
+ WHEN (b_sub.description ~~* '%Leandro Bonete%'::text) THEN 'Leandro Bonete'::text
+ WHEN ((b_sub.description ~~* '%Tatiana Araújo%'::text) OR (b_sub.description ~~* '%Tatiana Araujo%'::text)) THEN 'Tatiana Araújo'::text
+ WHEN (b_sub.description ~~* '%Leciane Silva%'::text) THEN 'Leciane Silva'::text
+ ELSE NULLIF(TRIM(BOTH FROM regexp_replace(COALESCE("substring"(b_sub.description, '(?i)prof[:.]?[[:space:]]*([^.(]+)'::text), ''::text), '[[:space:]]+'::text, ' '::text, 'g'::text)), ''::text)
+END, 'Sem professor'::text) AS professor
                                    FROM (mt_booking_participantes p_sub
                                      JOIN mt_bookings b_sub ON ((b_sub.booking_id = p_sub.booking_id)))
                                   WHERE ((p_sub.customer_code = rf.customer_code) AND (b_sub.status = 'ACTIVE'::text) AND (b_sub.booking_type = 'clase_colectiva'::text))
@@ -431,7 +487,10 @@ WITH view_base AS (
                           WHERE (c.customer_code = rf.customer_code)
                          LIMIT 1), 'Cliente Desconhecido'::text) AS participant_name,
                     rf.valor_faturamento,
-                    CASE WHEN rf.is_socio THEN GREATEST(COALESCE(rf.valor_bruto, (0)::numeric), (rf.valor_faturamento * (2.0)::numeric)) ELSE rf.valor_faturamento END AS valor_bruto,
+                        CASE
+                            WHEN rf.is_socio THEN GREATEST(COALESCE(rf.valor_bruto, (0)::numeric), (rf.valor_faturamento * 2.0))
+                            ELSE rf.valor_faturamento
+                        END AS valor_bruto,
                     rf.pay_date,
                     rf.paid,
                     rf.is_avulsa,
@@ -441,7 +500,7 @@ WITH view_base AS (
                    FROM resolved_faturamento rf
                   WHERE ((rf.paid = true) AND ((rf.is_avulsa = true) OR (NOT (EXISTS ( SELECT 1
                            FROM final_bookings fb
-                          WHERE ((fb.customer_code = rf.customer_code) AND (date_trunc('month'::text, (fb.booking_date)::timestamp without time zone) = date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)))))))) AND (NOT (EXISTS ( SELECT 1
+                          WHERE ((fb.customer_code = rf.customer_code) AND (date_trunc('month'::text, (fb.booking_date)::timestamp with time zone) = date_trunc('month'::text, COALESCE(rf.pay_date, (rf.data_venda)::timestamp without time zone)))))))) AND (NOT (EXISTS ( SELECT 1
                            FROM loose_class_matches lcm
                           WHERE (lcm.item_key = rf.item_key)))) AND (rf.item_canceled = false) AND (rf.sale_canceled = false) AND (COALESCE(rf.sale_type, ''::text) <> 'refund'::text) AND (rf.valor_faturamento > (0)::numeric) AND ((rf.categoria = 'Aulas'::text) OR (rf.description ~~* '%AULA%'::text) OR (rf.description ~~* '%GRUPO FIXO%'::text) OR ((rf.categoria = 'Outros'::text) AND ((rf.description ~~* '%TÊNIS%'::text) OR (rf.description ~~* '%AULA%'::text) OR (rf.description ~~* '%GRUPO FIXO%'::text)) AND ((rf.description ~~* '%ADULTO%'::text) OR (rf.description ~~* '%KIDS%'::text) OR (rf.description ~~* '%AVULSA%'::text) OR (rf.description ~~* '%GRUPO FIXO%'::text)))))
                 ), all_combined AS (
@@ -507,7 +566,7 @@ WITH view_base AS (
                     'Leandro Bonete'::text AS professor,
                     c.customer_code
                    FROM all_combined c
-                  WHERE (c.start_time IS NOT NULL AND (EXTRACT(isodow FROM c.booking_date) = (6)::numeric) AND (c.start_time = '10:00:00'::time without time zone) AND (c.professor = 'Leandro Bonete'::text))
+                  WHERE ((c.start_time IS NOT NULL) AND (EXTRACT(isodow FROM c.booking_date) = (6)::numeric) AND (c.start_time = '10:00:00'::time without time zone) AND (c.professor = 'Leandro Bonete'::text))
                 UNION ALL
                  SELECT c.booking_id,
                     c.booking_date,
@@ -529,89 +588,89 @@ WITH view_base AS (
                     'Elinton Sanches'::text AS professor,
                     c.customer_code
                    FROM all_combined c
-                  WHERE (c.start_time IS NOT NULL AND (EXTRACT(isodow FROM c.booking_date) = (6)::numeric) AND (c.start_time = '10:00:00'::time without time zone) AND (c.professor = 'Leandro Bonete'::text))
+                  WHERE ((c.start_time IS NOT NULL) AND (EXTRACT(isodow FROM c.booking_date) = (6)::numeric) AND (c.start_time = '10:00:00'::time without time zone) AND (c.professor = 'Leandro Bonete'::text))
                 ), pre_result AS (
                  SELECT c.booking_id,
                     c.booking_date,
-                    c.booking_type,
-                    c.start_time,
-                    c.venue,
-                    c.resource_name,
-                    c.description,
-                    c.professor,
-                    c.customer_code,
-                    c.participant_name,
-                    c.booking_value,
-                    c.booking_commission_base,
                     c.is_socio_benefit,
                     c.is_paid,
                     c.pay_date,
                     c.booking_value_monthly,
                     c.booking_commission_base_monthly,
                     c.is_avulsa,
-                    c.is_avulsa_grupo_fixo
+                    c.is_avulsa_grupo_fixo,
+                    c.start_time,
+                    c.booking_value,
+                    c.booking_commission_base,
+                    c.booking_type,
+                    c.participant_name,
+                    c.venue,
+                    c.resource_name,
+                    c.description,
+                    c.professor,
+                    c.customer_code
                    FROM all_combined c
-                  WHERE (c.start_time IS NULL OR NOT ((EXTRACT(isodow FROM c.booking_date) = (6)::numeric) AND (c.start_time = '10:00:00'::time without time zone) AND (c.professor = 'Leandro Bonete'::text)))
+                  WHERE ((c.start_time IS NULL) OR (NOT ((EXTRACT(isodow FROM c.booking_date) = (6)::numeric) AND (c.start_time = '10:00:00'::time without time zone) AND (c.professor = 'Leandro Bonete'::text))))
                 UNION ALL
                  SELECT kids_saturday_split.booking_id,
                     kids_saturday_split.booking_date,
-                    kids_saturday_split.booking_type,
-                    kids_saturday_split.start_time,
-                    kids_saturday_split.venue,
-                    kids_saturday_split.resource_name,
-                    kids_saturday_split.description,
-                    kids_saturday_split.professor,
-                    kids_saturday_split.customer_code,
-                    kids_saturday_split.participant_name,
-                    kids_saturday_split.booking_value,
-                    kids_saturday_split.booking_commission_base,
                     kids_saturday_split.is_socio_benefit,
                     kids_saturday_split.is_paid,
                     kids_saturday_split.pay_date,
                     kids_saturday_split.booking_value_monthly,
                     kids_saturday_split.booking_commission_base_monthly,
                     kids_saturday_split.is_avulsa,
-                    kids_saturday_split.is_avulsa_grupo_fixo
+                    kids_saturday_split.is_avulsa_grupo_fixo,
+                    kids_saturday_split.start_time,
+                    kids_saturday_split.booking_value,
+                    kids_saturday_split.booking_commission_base,
+                    kids_saturday_split.booking_type,
+                    kids_saturday_split.participant_name,
+                    kids_saturday_split.venue,
+                    kids_saturday_split.resource_name,
+                    kids_saturday_split.description,
+                    kids_saturday_split.professor,
+                    kids_saturday_split.customer_code
                    FROM kids_saturday_split
                 )
          SELECT pre_result.booking_id,
             pre_result.booking_date,
-            pre_result.booking_type,
-            pre_result.start_time,
-            pre_result.venue,
-            pre_result.resource_name,
-            pre_result.description,
-            pre_result.professor,
-            pre_result.customer_code,
-            pre_result.participant_name,
-            pre_result.booking_value,
-            pre_result.booking_commission_base,
             pre_result.is_socio_benefit,
             pre_result.is_paid,
             pre_result.pay_date,
             pre_result.booking_value_monthly,
             pre_result.booking_commission_base_monthly,
             pre_result.is_avulsa,
-            pre_result.is_avulsa_grupo_fixo
+            pre_result.is_avulsa_grupo_fixo,
+            pre_result.start_time,
+            pre_result.booking_value,
+            pre_result.booking_commission_base,
+            pre_result.booking_type,
+            pre_result.participant_name,
+            pre_result.venue,
+            pre_result.resource_name,
+            pre_result.description,
+            pre_result.professor,
+            pre_result.customer_code
            FROM pre_result
         )
  SELECT booking_id,
     booking_date,
-    booking_type,
-    start_time,
-    venue,
-    resource_name,
-    description,
-    professor,
-    customer_code,
-    participant_name,
-    booking_value,
-    booking_commission_base,
     is_socio_benefit,
     is_paid,
     pay_date,
     booking_value_monthly,
     booking_commission_base_monthly,
     is_avulsa,
-    is_avulsa_grupo_fixo
+    is_avulsa_grupo_fixo,
+    start_time,
+    booking_value,
+    booking_commission_base,
+    booking_type,
+    participant_name,
+    venue,
+    resource_name,
+    description,
+    professor,
+    customer_code
    FROM view_base;
