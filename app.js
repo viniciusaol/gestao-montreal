@@ -233,9 +233,12 @@ async function supabaseInsert(table, row) {
   return res.json();
 }
 
-async function supabaseUpsert(table, row) {
-  const url = `${SUPABASE_URL}/rest/v1/${table}`;
-  debugLog(`[REST] UPSERT ${url}`, row);
+async function supabaseUpsert(table, row, onConflictCols = null) {
+  let url = `${SUPABASE_URL}/rest/v1/${table}`;
+  if (onConflictCols) {
+    url += `?on_conflict=${encodeURIComponent(onConflictCols)}`;
+  }
+  debugLog(`[REST] POST (UPSERT) ${url}`, row);
   const token = getUserToken() || SUPABASE_KEY;
   const res = await fetch(url, {
     method: 'POST',
@@ -526,10 +529,14 @@ function getBasePriceForBooking(booking) {
 // Helper unificado para categorização de itens de faturamento
 function categorizeFaturamentoItem(row) {
   if (!row) return 'lanchonete';
-  const desc = (row.item_description || '').toLowerCase();
+  const ref = (row.reference || '').trim().replace(/^0+/, '');
+  const desc = (row.item_description || row.description || '').toLowerCase();
   const cat = (row.categoria || '').toLowerCase();
   const sub = (row.subcategoria || '').toLowerCase();
   const prod = (row.produto_padronizado || '').toLowerCase();
+
+  const isSvila = ref === '77' || desc.includes('active play') || desc.includes('svila') || cat.includes('svila') || sub.includes('svila') || prod.includes('svila');
+  if (isSvila) return 'svila';
 
   const isIntensivao = /INTENSIV/i.test(row.item_description || '');
   const isLesson = isIntensivao || cat === 'aulas' || desc.includes('aula') || desc.includes('tênis') || desc.includes('tenis') || desc.includes('kids') || desc.includes('baby') || prod.includes('tênis') || prod.includes('aula');
@@ -582,7 +589,7 @@ async function loadDashboard() {
     debugLog('Buscando repasses via REST API...');
 
     // 4. Fetch global sales data for faturamento reconciliation
-    const salesParams = `select=item_key,valor_faturamento,categoria,subcategoria,produto_padronizado,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
+    const salesParams = `select=item_key,valor_faturamento,categoria,subcategoria,produto_padronizado,item_description,reference,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
     debugLog('Buscando vendas globais para conciliação...');
 
     const [classesRes, payoutsRes, salesRes, extraRevenuesRes] = await Promise.allSettled([
@@ -1029,6 +1036,7 @@ function renderDashboardUI() {
   let globalComissionableSalesVal = 0;
   let globalLocacoesVal = 0;
   let globalConsumosVal = 0;
+  let globalSvilaSalesVal = 0;
 
   const salesData = currentSalesData || [];
   salesData.forEach(row => {
@@ -1040,15 +1048,18 @@ function renderDashboardUI() {
       globalComissionableSalesVal += val;
     } else if (categoryType === 'locacao') {
       globalLocacoesVal += val;
+    } else if (categoryType === 'svila') {
+      globalSvilaSalesVal += val;
     } else {
       globalConsumosVal += val;
     }
   });
 
+  const totalSvilaVal = extraSvilaVal + globalSvilaSalesVal;
   globalTotalCaixaVal += extraComissoesVal + extraSvilaVal;
   const globalComissionableVal = globalComissionableSalesVal;
-  const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal + extraComissoesVal + extraSvilaVal);
-  debugLog(`[Conciliação] comissionableSales=${globalComissionableSalesVal.toFixed(2)}, locacoes=${globalLocacoesVal.toFixed(2)}, consumos=${globalConsumosVal.toFixed(2)}, extraComissoes=${extraComissoesVal.toFixed(2)}, extraSvila=${extraSvilaVal.toFixed(2)}, total=${globalTotalCaixaVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
+  const globalAjustesVal = globalTotalCaixaVal - (globalComissionableVal + globalLocacoesVal + globalConsumosVal + extraComissoesVal + totalSvilaVal);
+  debugLog(`[Conciliação] comissionableSales=${globalComissionableSalesVal.toFixed(2)}, locacoes=${globalLocacoesVal.toFixed(2)}, consumos=${globalConsumosVal.toFixed(2)}, extraComissoes=${extraComissoesVal.toFixed(2)}, extraSvila=${totalSvilaVal.toFixed(2)}, total=${globalTotalCaixaVal.toFixed(2)}, ajustes=${globalAjustesVal.toFixed(2)}`);
 
   // Update DOM elements for Global Cash Reconciliation Card
   const elGlobalComissionavel = document.getElementById('global-rec-comissionavel');
@@ -1063,7 +1074,7 @@ function renderDashboardUI() {
   if (elGlobalLocacoes) elGlobalLocacoes.innerText = formatCurrency(globalLocacoesVal);
   if (elGlobalConsumos) elGlobalConsumos.innerText = formatCurrency(globalConsumosVal);
   if (elGlobalExtraComissoes) elGlobalExtraComissoes.innerText = formatCurrency(extraComissoesVal);
-  if (elGlobalExtraSvila) elGlobalExtraSvila.innerText = formatCurrency(extraSvilaVal);
+  if (elGlobalExtraSvila) elGlobalExtraSvila.innerText = formatCurrency(totalSvilaVal);
   if (elGlobalAjustes) elGlobalAjustes.innerText = formatCurrency(globalAjustesVal);
   if (elGlobalTotalCaixa) elGlobalTotalCaixa.innerText = formatCurrency(globalTotalCaixaVal);
 
@@ -1400,7 +1411,7 @@ async function loadOperationalReports() {
     // 1. Fetch data from Supabase views concurrently using Promise.allSettled
     const payParams = `select=*&mes=eq.${monthStart}`;
     const subParams = `select=*&mes=eq.${monthStart}`;
-    const itemsParams = `select=item_key,categoria,subcategoria,produto_padronizado,customer_code,valor_liquido,valor_faturamento,valor_bruto,valor_desconto,item_description,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
+    const itemsParams = `select=item_key,categoria,subcategoria,produto_padronizado,customer_code,valor_liquido,valor_faturamento,valor_bruto,valor_desconto,item_description,reference,pay_date&pay_date=gte.${monthStart}&pay_date=lt.${nextMonthStart}&order=item_key.asc`;
 
     const [
       payDataResult,
@@ -1523,6 +1534,10 @@ async function loadOperationalReports() {
     const curMonthKey = `${year}-${month}`;
     const extraComissoes = getExtraRevenueForMonth(curMonthKey, 'comissoes_eventos_patrocinios');
     const extraSvila = getExtraRevenueForMonth(curMonthKey, 'svila');
+    const svilaSalesTotal = (itemsData || []).reduce((acc, item) => {
+      return acc + (categorizeFaturamentoItem(item) === 'svila' ? (parseFloat(item.valor_faturamento) || 0) : 0);
+    }, 0);
+    const totalSvilaOperational = extraSvila + svilaSalesTotal;
 
     totalFaturamentoLiquido += extraComissoes + extraSvila;
 
@@ -1530,7 +1545,7 @@ async function loadOperationalReports() {
     const goalValExtraComissoes = document.getElementById('goal-val-extra-comissoes-current');
     const goalValExtraSvila = document.getElementById('goal-val-extra-svila-current');
     if (goalValExtraComissoes) goalValExtraComissoes.innerText = formatCurrency(extraComissoes);
-    if (goalValExtraSvila) goalValExtraSvila.innerText = formatCurrency(extraSvila);
+    if (goalValExtraSvila) goalValExtraSvila.innerText = formatCurrency(totalSvilaOperational);
 
     // Calculate discounts from itemsData
     let totalDesconto = 0;
@@ -1660,6 +1675,7 @@ async function loadOperationalReports() {
       'Aulas - Avulsas': { name: 'Aulas - Avulsas', clients: new Set(), total: 0 },
       'Locação - Quadra Avulsa': { name: 'Locação - Quadra Avulsa', clients: new Set(), total: 0 },
       'Locação - Reserva Mensal': { name: 'Locação - Reserva Mensal', clients: new Set(), total: 0 },
+      'Receita Svila': { name: 'Receita Svila', clients: new Set(), total: 0 },
       'Lanchonete': { name: 'Lanchonete', clients: new Set(), total: 0 }
     };
 
@@ -1671,11 +1687,15 @@ async function loadOperationalReports() {
       const val = parseFloat(item.valor_faturamento) || 0;
       const client = item.customer_code;
 
-      const isReservaMensal = sub.includes('reserva mensal') || prod.includes('reserva mensal');
-      const isQuadraAvulsa = cat === 'locação' || desc.includes('vouchers desconto 1º reserva') || desc.includes('voucher desconto 1º reserva');
-      const isLesson = cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby');
+      const isSvila = categorizeFaturamentoItem(item) === 'svila';
+      const isReservaMensal = !isSvila && (sub.includes('reserva mensal') || prod.includes('reserva mensal'));
+      const isQuadraAvulsa = !isSvila && (cat === 'locação' || desc.includes('vouchers desconto 1º reserva') || desc.includes('voucher desconto 1º reserva'));
+      const isLesson = !isSvila && (cat === 'aulas' || desc.includes('tênis') || desc.includes('aula') || desc.includes('kids') || desc.includes('baby'));
 
-      if (isReservaMensal) {
+      if (isSvila) {
+        groupedSubcategories['Receita Svila'].total += val;
+        if (client) groupedSubcategories['Receita Svila'].clients.add(client);
+      } else if (isReservaMensal) {
         groupedSubcategories['Locação - Reserva Mensal'].total += val;
         if (client) groupedSubcategories['Locação - Reserva Mensal'].clients.add(client);
       } else if (isQuadraAvulsa) {
@@ -6880,6 +6900,7 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
   const studentsSet = new Set();
   let locacaoRevenue = 0;
   let aulasRevenue = 0;
+  let svilaSalesRevenue = 0;
   let totalRevenue = 0;
 
   itemsData.forEach(item => {
@@ -6893,13 +6914,15 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
       }
     } else if (categoryType === 'locacao') {
       locacaoRevenue += val;
+    } else if (categoryType === 'svila') {
+      svilaSalesRevenue += val;
     }
     
     totalRevenue += val;
   });
 
   const activeStudentsCount = (typeof totalActiveStudents === 'number' && totalActiveStudents > 0) ? totalActiveStudents : studentsSet.size;
-  const lanchoneteRevenue = totalRevenue - (aulasRevenue + locacaoRevenue);
+  const lanchoneteRevenue = totalRevenue - (aulasRevenue + locacaoRevenue + svilaSalesRevenue);
   const ticketMedioAulas = activeStudentsCount > 0 ? (aulasRevenue / activeStudentsCount) : 0;
 
   // 2. Calculate Occupancy Geral
@@ -7015,7 +7038,7 @@ function renderGoalsDashboard(itemsData, courtData, totalHoursOcupadas, year, mo
 
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
   const extraComissoes = getExtraRevenueForMonth(monthKey, 'comissoes_eventos_patrocinios');
-  const extraSvila = getExtraRevenueForMonth(monthKey, 'svila');
+  const extraSvila = getExtraRevenueForMonth(monthKey, 'svila') + svilaSalesRevenue;
 
   updateGoalCard(
     'goal-card-extra-comissoes',
@@ -7328,29 +7351,7 @@ if (btnExportReportPdf) {
 setupCommentSyncHandlers();
 
 // ---- Agenda de Recebíveis Upload & Persistência ----
-async function supabaseUpsert(table, row, onConflictCols = null) {
-  let url = `${SUPABASE_URL}/rest/v1/${table}`;
-  if (onConflictCols) {
-    url += `?on_conflict=${encodeURIComponent(onConflictCols)}`;
-  }
-  debugLog(`[REST] POST (UPSERT) ${url}`, row);
-  const token = getUserToken() || SUPABASE_KEY;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'resolution=merge-duplicates'
-    },
-    body: JSON.stringify(row)
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Supabase REST upsert error ${res.status}: ${body}`);
-  }
-  return true;
-}
+// (supabaseUpsert já definido no escopo superior)
 
 async function supabaseDeleteByMonth(table, yearMonth) {
   const monthStart = `${yearMonth}-01`;
@@ -7741,6 +7742,7 @@ window.saveProvisoesRow = async function(monthKey) {
   const valor_total = parseFloat(totalInput.value) || 0;
 
   try {
+    const existing = globalProvisoesData.find(d => d.month_key === monthKey);
     const rowPayload = {
       month_key: monthKey,
       num_funcionarios: num_funcionarios,
@@ -7748,15 +7750,19 @@ window.saveProvisoesRow = async function(monthKey) {
       valor_total: valor_total,
       updated_at: new Date().toISOString()
     };
+    if (existing && existing.id) {
+      rowPayload.id = existing.id;
+    }
 
-    await supabaseUpsert('mt_provisoes_dre_config', rowPayload);
+    const saved = await supabaseUpsert('mt_provisoes_dre_config', rowPayload, 'month_key');
+    const savedObj = (Array.isArray(saved) && saved.length > 0) ? saved[0] : rowPayload;
     
     // Atualiza localmente
     const idx = globalProvisoesData.findIndex(d => d.month_key === monthKey);
     if (idx >= 0) {
-      globalProvisoesData[idx] = { ...globalProvisoesData[idx], ...rowPayload };
+      globalProvisoesData[idx] = { ...globalProvisoesData[idx], ...savedObj };
     } else {
-      globalProvisoesData.push(rowPayload);
+      globalProvisoesData.push(savedObj);
     }
 
     const rowElem = document.getElementById(`row-provisao-${monthKey}`);
@@ -7772,15 +7778,20 @@ window.saveProvisoesRow = async function(monthKey) {
   } catch (err) {
     debugError(`Erro ao salvar provisão ${monthKey}`, err);
     alert(`Erro ao salvar provisão para ${monthKey}: ${err.message}`);
+    throw err;
   }
 };
 
 window.saveAllProvisoesRows = async function() {
   const monthKeys = ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
-  for (const mKey of monthKeys) {
-    await saveProvisoesRow(mKey);
+  try {
+    for (const mKey of monthKeys) {
+      await saveProvisoesRow(mKey);
+    }
+    alert('Todas as configurações de provisões de encargos foram salvas com sucesso!');
+  } catch (err) {
+    // Erro já exibido pelo alerta do saveProvisoesRow
   }
-  alert('Todas as configurações de provisões de encargos foram salvas com sucesso!');
 };
 
 window.toggleFecharMesAtual = async function() {
